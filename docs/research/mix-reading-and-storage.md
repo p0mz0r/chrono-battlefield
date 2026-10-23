@@ -32,7 +32,7 @@ Read from the openra2 reader at `8ba59f0` (`packages/formats/src/mix/mixFile.ts`
 - **So `fetch(url, {headers: {Range: ...}})` gets 200 with the whole file.** Byte-range reads are not possible over `http://absolute/`. Early stop is possible in principle: cancel the reader after N bytes, since `Cancel()` is a no-op and reads just stop (**UNVERIFIED**, test T2). A prefix read works only from the start of a file, so you can't jump to an offset without streaming past everything before it. **[I]**
 - OBS maintainers, commit `6b6d45629207b6b01def7ef0c72e9d64a07c163b` (2026-10-05, "Additional restrictions on custom scheme handler"): "we should consider removing the http://absolute handler entirely in a future update". **[V]** This confirms the risk in #4 and #11.
 - #5 comment (OBS 32.2.1): `fetch('http://absolute/D:/...ra2.mix')` of the three full archives worked; mounted in 1.0 s. **Reported by the author, not re-run here.** The transport works; the cost is memory.
-- Version caveat: checked master of obs-browser and CEF master, not the pinned versions in OBS 32.2.1 or 33 RC. **UNVERIFIED** for the pinned versions (test T1).
+- Version caveat: checked master of obs-browser and CEF master. T1 confirms Range is ignored on OBS 32.2.1 (section 7); OBS 33 RC is still **UNVERIFIED**.
 
 ## 4. Browser storage in the OBS Local-file page (non-secure context)
 
@@ -40,20 +40,20 @@ Secure-context rule: a page is a secure context when its origin is potentially t
 
 | API | Secure-context only? | Available on OBS `http://absolute`? | Source |
 |---|---|---|---|
-| IndexedDB | no (no SecureContext on MDN) | yes, expected | MDN IndexedDB page; **UNVERIFIED** in OBS (T3) |
-| localStorage | no | yes, expected; **5 MiB** per origin | MDN "Storage quotas" (the same page also says 10 MiB in one place; use 5) |
+| IndexedDB | no (no SecureContext on MDN) | yes, verified on OBS 32.2.1 | MDN IndexedDB page; T3 |
+| localStorage | no | yes, verified on OBS 32.2.1; **5 MiB** per origin | MDN "Storage quotas" (the same page also says 10 MiB in one place; use 5) |
 | Cache Storage (`caches`) | **yes** | **no** | [MDN Cache](https://developer.mozilla.org/en-US/docs/Web/API/Cache) header |
 | OPFS | **yes** | **no** | [MDN OPFS](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API/Origin_private_file_system) header |
 | File System Access (`showDirectoryPicker`) | **yes** | **no** | [MDN showDirectoryPicker](https://developer.mozilla.org/en-US/docs/Web/API/Window/showDirectoryPicker) header |
 | `navigator.storage.estimate()` | **yes** | **no**, so quota can't be read; probe with writes | [MDN estimate](https://developer.mozilla.org/en-US/docs/Web/API/StorageManager/estimate) header |
 
-**Check of #4:** its claims hold. WebGL, IndexedDB and localStorage are the usable storage; OPFS, WebGPU and File System Access are blocked by the secure-context rule (verified above). The IndexedDB and localStorage working in OBS is not tested by me (T3). **[V]** for the blocked set; **UNVERIFIED** for the working set.
+**Check of #4:** its claims hold. WebGL, IndexedDB and localStorage are the usable storage; OPFS, WebGPU and File System Access are blocked by the secure-context rule (verified above). IndexedDB and localStorage work in OBS 32.2.1 (T3, section 7). **[V]** for both sets.
 
-**Persistence across OBS restarts [V]:** `obs-browser-plugin.cpp:359-363` sets `cache_path` and `root_cache_path` to the plugin config directory (`obs_module_config_path`, line 301). So the Chromium profile, including IndexedDB, lives on disk. Whether a restart keeps IndexedDB is **UNVERIFIED** (T3). "Refresh cache of current page" calls `ReloadIgnoreCache()` (`obs-browser-source.cpp`, `Refresh`), which is a page reload, not a storage wipe **[I]**.
+**Persistence across OBS restarts [V]:** `obs-browser-plugin.cpp:359-363` sets `cache_path` and `root_cache_path` to the plugin config directory (`obs_module_config_path`, line 301). So the Chromium profile, including IndexedDB, lives on disk. A clean OBS restart keeps both localStorage and IndexedDB (T3, verified on 32.2.1). "Refresh cache of current page" calls `ReloadIgnoreCache()` (`obs-browser-source.cpp`, `Refresh`), which is a page reload, not a storage wipe **[I]**.
 
 ## 5. Cache sizes and quotas
 
-- Chromium/Edge: an origin may store up to **60% of disk** in best-effort and persistent modes. [MDN, Storage quotas, "Chrome and Chromium-based browsers"](https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria). **[V]** For CEF in OBS this is **UNVERIFIED** (T3).
+- Chromium/Edge: an origin may store up to **60% of disk** in best-effort and persistent modes. [MDN, Storage quotas, "Chrome and Chromium-based browsers"](https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria). **[V]** In OBS 32.2.1 the IndexedDB quota is above 2.1 GB (T3); the cap was not found.
 - Decoded chunk textures are large: the prototype's terrain chunk is `2048 x 2048 x 4` = 16 MiB raw RGBA (`main.ts:23`, `191-230`). A map covering several chunks is tens to ~100 MiB of decoded pixels. **[V]** arithmetic; **UNVERIFIED** total for a real map. Store **encoded** images (PNG/WebP Blobs) and decode on demand; keep decoded textures in GPU memory only.
 - Voxel facings: 64 sprites per Rhino (32 hull + 32 turret, ADR 0002); per-sprite size **UNVERIFIED**.
 
@@ -63,7 +63,7 @@ Secure-context rule: a page is a secure context when its origin is potentially t
 
 1. **File / FileSystemFileHandle** (picker, Edge): `File.slice()` is native random access. Use it.
 2. **Dev server** (`server.mjs`, and the #11 Vite middleware): add `Range` to the handler, returning 206 and `createReadStream({start, end})`. About 10 lines. Needed only if the dev server reads the install.
-3. **OBS `http://absolute`**: no ranges. Read the top-level index with a prefix read (stop after the index bytes). For the entries, do **one streaming pass per cache miss**: copy only the wanted entries as their offsets go by, buffering a nested MIX only when it is wanted. Peak memory is about the largest wanted nested archive (`local.mix`, 34.8 MB) plus the wanted entries, not 491 MB. The pass reads the full 491 MB once; #5 measured the full read at about 1 s (streaming cost **UNVERIFIED**, T6). The length check becomes a byte count against `dataBase + body_size + 20` (flags `0x30000`).
+3. **OBS `http://absolute`**: no ranges. Read the top-level index with a prefix read (stop after the index bytes). For the entries, do **one streaming pass per cache miss**: copy only the wanted entries as their offsets go by, buffering a nested MIX only when it is wanted. Peak memory is about the largest wanted nested archive (`local.mix`, 34.8 MB) plus the wanted entries, not 491 MB. The pass reads the full 491 MB once; A plain streaming read of the 491 MB took about 1 s on OBS 32.2.1 with heap rising about 25 MB (T6, section 7). The length check becomes a byte count against `dataBase + body_size + 20` (flags `0x30000`).
 
 **Cache: what the import produces, in IndexedDB, under one key.**
 
@@ -77,21 +77,23 @@ Secure-context rule: a page is a secure context when its origin is potentially t
 **Ceiling and upgrade path:**
 
 1. OBS: one streaming pass (about 491 MB read) per install version. Peak memory is the largest wanted nested archive. Ceiling: a cache miss costs a full read.
-2. IndexedDB quota in CEF: unknown (T3). The baked output grows per map, so this is the first limit to hit.
+2. IndexedDB quota in CEF: above 2.1 GB (T3), cap not found. The baked output grows per map, so this is the first limit to hit.
 3. Removal of `http://absolute` (commit `6b6d456`): the localhost server becomes the backend behind `readRange`, with Range support (backend 2 above). Loopback is a secure context, so Cache Storage and OPFS come back if needed. Only the backend changes.
 4. GPU/heap: keep encoded blobs, decode and evict chunk textures on demand. Decoded chunks are the main heap cost after the MIX fix.
 
-## 7. Open tests (UNVERIFIED)
+## 7. Test results (OBS 32.2.1, 2026-10-23)
 
-- **T1 (Range in OBS):** in a Local-file page run `const r = await fetch('http://absolute/D:/GAMES/Origin/Command and Conquer Red Alert II/expandmd01.mix', {headers: {Range: 'bytes=0-15'}})`. Log `r.status`, `r.headers.get('content-range')`, and the byte count of the body. **Expect** 200, null, full size. Run in the OBS version you ship (32.2.1 and 33 RC).
-- **T2 (early stop):** read 1 KB from the same URL, then `reader.cancel()`. Time it against a full read. Expect fast, which confirms the prefix read for indexes.
-- **T3 (storage):** in the OBS page, log `typeof indexedDB`, `typeof localStorage`, and try writing 100 MB Blobs to IndexedDB in a loop until `QuotaExceededError`; record the cap. Restart OBS and check the data survives. Also check `window.isSecureContext` (expect false).
-- **T4 (secure context):** log `window.isSecureContext`, `typeof caches`, `typeof navigator.storage?.getDirectory`, `typeof crypto.subtle`. Expect false, undefined, undefined, undefined. Confirms the table in section 4 and that OBS does not treat the origin as secure.
-- **T5 (secure-context backend):** on `http://localhost` (dev server), confirm Cache Storage and OPFS exist. Also check whether `file://` pages get IndexedDB and OPFS in Chromium (affects whether a double-click `index.html` can use IndexedDB; it is the Edge path in the prototype README).
-- **T6 (streaming cost):** implement the streaming pass in the prototype and time it in OBS for the 491 MB read; check heap afterwards. Expect about 1 s and a heap near the wanted set.
-- **T7 (heap source):** take a heap snapshot after the current prototype load and attribute the ~120 MB beyond the 491 MB buffers. Needed to confirm the baked-chunk share.
-- **T8 (sprite and chunk sizes):** encode one Rhino facing and one 2048 px terrain chunk as PNG and WebP; record sizes. Needed for the IndexedDB budget.
-- **T9 (pinned CEF):** check CEF version and obs-browser commit for OBS 32.2.1 and 33 RC. The #4 claim "OBS 31/32 run CEF 127" was **not** checked here.
+Run in OBS 32.2.1 (obs-browser 2.26.9, CEF 127.0.6533.120, obs-websocket 5.7.4) on the owner's machine. The test page and driver lived outside the repo. Each run used a temporary scene with a Local-file browser source; the input and scene were removed and the original scene restored afterwards. OBS was started for the tests and closed after. **OBS 33 RC was not tested.**
+
+- **T1 (Range) [V]:** `fetch(..., {headers: {Range: 'bytes=0-15'}})` on `expandmd01.mix` returned status 200, no `content-range`, and a 4,813,968 B body (the full file). Ranges are ignored, as section 3 says. **Anomaly:** the response's `content-length` header reads `16`, which doesn't match the body. Don't size reads from Content-Length over `http://absolute`.
+- **T2 (early stop) [partial]:** the first 64 KB of `ra2md.mix` arrived in 1–2 ms and `cancel()` returned. This shows the prefix read is quick to start. It doesn't show that cancel stops the transfer, since bytes sent after cancel weren't counted. Still needs a server-side byte counter.
+- **T3 (storage) [V]:** `indexedDB` and `localStorage` both work. IndexedDB accepted 2,100 MB in 100 MB Blobs with no `QuotaExceededError`; the loop stopped at my 2 GB cap, so the real cap is above 2.1 GB and was not found. **Restart [V]:** a marker written before a clean OBS exit was read back after reopening OBS, in both localStorage and IndexedDB.
+- **T4 (secure context) [V]:** `isSecureContext` is false; `caches`, `navigator.storage.getDirectory` and `crypto.subtle` are all undefined. This matches the table in section 4.
+- **T5 (localhost / `file://`) [not completed]:** Edge headless printed no DOM output in this environment, across three attempts including a separate profile. Still needed.
+- **T6 (streaming cost) [V, plain stream reader, not the prototype]:** streaming `ra2.mix` (281.9 MB) took 529–563 ms, `ra2md.mix` (204.5 MB) 385–396 ms, and `expandmd01.mix` 8–14 ms, over two runs. Heap rose 24–27 MB above the start and fell to 5–21 MB after GC. Discarding bytes as they stream is cheap, so the pass in section 6 is viable. The prototype-level cost is still unmeasured. Heap figures come from `performance.memory`, which is Chromium-only.
+- **T7 (heap source) [not done]:** needs a DevTools heap snapshot of the prototype.
+- **T8 (sprite and chunk sizes) [not done]:** needs a real Rhino facing and terrain chunk from the prototype.
+- **T9 (CEF) [partial]:** the OBS 32.2.1 log gives obs-browser 2.26.9 and CEF 127.0.6533.120, which matches the page's user agent. The #4 claim about OBS 31/32 wasn't checked, and OBS 33 RC wasn't checked.
 
 ## Sources
 
