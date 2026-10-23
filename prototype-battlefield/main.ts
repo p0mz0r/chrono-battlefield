@@ -364,6 +364,14 @@ async function main() {
   for (const b of document.querySelectorAll<HTMLButtonElement>('[data-add]')) b.onclick = () => addTanks(Number(b.dataset.add));
   document.getElementById('clear')!.onclick = clearTanks;
   addTanks(Number(params.get('tanks') ?? 8));
+  // OBS browser sources can't take clicks or query params: step the load ourselves and log the frame rate.
+  if (location.hostname === 'absolute') {
+    for (const total of [8, 100, 300, 1000, 2000]) {
+      addTanks(total - tanks.length);
+      await new Promise((r) => setTimeout(r, 8000));
+      note(`OBS bench: ${fpsEl.textContent}`);
+    }
+  }
   note('ready: drag to pan, wheel to zoom');
 }
 

@@ -46718,6 +46718,13 @@ ${parts.join("\n")}
     for (const b2 of document.querySelectorAll("[data-add]")) b2.onclick = () => addTanks(Number(b2.dataset.add));
     document.getElementById("clear").onclick = clearTanks;
     addTanks(Number(params.get("tanks") ?? 8));
+    if (location.hostname === "absolute") {
+      for (const total of [8, 100, 300, 1e3, 2e3]) {
+        addTanks(total - tanks.length);
+        await new Promise((r2) => setTimeout(r2, 8e3));
+        note(`OBS bench: ${fpsEl.textContent}`);
+      }
+    }
     note("ready: drag to pan, wheel to zoom");
   }
   main().catch((e2) => {
