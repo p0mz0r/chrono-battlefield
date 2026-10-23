@@ -68,6 +68,14 @@ _Avoid_: Damage, breakdown, health
 A short, visible spell after a stun ends during which no delay can hit the tank again, so chat cannot freeze one tank forever; moves still apply.
 _Avoid_: Shield, invulnerability
 
+**Move**:
+An effect that puts a tank instantly onto another drivable cell, such as being sent back or chronoshifted; the tank drives on from there.
+_Avoid_: Teleport, warp, respawn
+
+**Ghosting**:
+A short, visible spell in which a tank stuck behind other tanks for too long drives through them until it stands on a free cell.
+_Avoid_: Noclip, unstuck
+
 **Audience interaction**:
 Any chat-triggered effect on the race, such as a missile, the chronosphere, or a boost.
 _Avoid_: Superweapon, command, power
@@ -81,6 +89,10 @@ _Avoid_: Map, level, arena
 **Course**:
 The ordered waypoints from start to finish laid over a battlefield; tanks find their own way between waypoints.
 _Avoid_: Path, track, route
+
+**Bridge**:
+A high bridge on the battlefield, with a deck tanks drive over and ground tanks drive under; during a race it can be destroyed, as long as every unfinished tank can still reach the finish, and repaired.
+_Avoid_: Overpass
 
 **Install**:
 The RA2 + Yuri's Revenge files the game reads, from a folder on the operator's PC or uploaded by hand; never committed or redistributed.
