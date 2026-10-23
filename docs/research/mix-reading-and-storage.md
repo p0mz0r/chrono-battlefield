@@ -9,7 +9,7 @@ Labels: **[V]** verified in a primary source or measured here; **[I]** my infere
 - `prototype-battlefield/main.ts:132-137` fetches each top-level MIX whole with `fetch(...).arrayBuffer()` (`urlSource`, `main.ts:46-52`). **[V]**
 - `mixFile.ts` keeps that buffer alive; `readById` returns a `subarray`, and `vfs.mountNested` reads nested MIXes as `subarray`s of the outer buffer, so nested archives add no copy (`vendor/formats/mix/mixFile.ts:184-187`, `vfs.ts:41-45`). **[V]**
 - Sizes of the three top-level MIXes on the owner's install (`stat`, read-only): `ra2.mix` 281,888,480 B, `ra2md.mix` 204,527,696 B, `expandmd01.mix` 4,813,968 B. Sum **491.2 MB**. **[V]**
-- The reported ~610 MB JS heap (#5 comment) is that 491 MB plus about 120 MB of other allocations (decoded TMP/SHP canvases, the Rhino prerender, chunk buffers). The source of the other 120 MB is **UNVERIFIED** (heap snapshot test, section 7).
+- The reported ~610 MB JS heap (#5 comment) is that 491 MB plus about 120 MB of other allocations. Stage measurement (section 7, T7) puts about 100 MiB of it in the terrain chunks' raw pixel buffers (one 16 MiB buffer per 2048 px chunk). The browser breakdown is **UNVERIFIED**: canvas backing stores may sit outside the JS heap.
 
 ## 2. MIX layout (RA2/YR)
 
@@ -55,7 +55,8 @@ Secure-context rule: a page is a secure context when its origin is potentially t
 
 - Chromium/Edge: an origin may store up to **60% of disk** in best-effort and persistent modes. [MDN, Storage quotas, "Chrome and Chromium-based browsers"](https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria). **[V]** In OBS 32.2.1 the IndexedDB quota is above 2.1 GB (T3); the cap was not found.
 - Decoded chunk textures are large: the prototype's terrain chunk is `2048 x 2048 x 4` = 16 MiB raw RGBA (`main.ts:23`, `191-230`). A map covering several chunks is tens to ~100 MiB of decoded pixels. **[V]** arithmetic; **UNVERIFIED** total for a real map. Store **encoded** images (PNG/WebP Blobs) and decode on demand; keep decoded textures in GPU memory only.
-- Voxel facings: 64 sprites per Rhino (32 hull + 32 turret, ADR 0002); per-sprite size **UNVERIFIED**.
+- Measured (T8, section 7): a 2048 px chunk is about 1.6 MB as PNG on average (96 MiB raw compresses to 9.6 MB for a six-chunk map). A Rhino's 64 facings are about 1.7 KB each for the body and 0.9 KB for the turret as PNG, so roughly 82 KB per Rhino.
+- Voxel facings: 64 sprites per Rhino (32 hull + 32 turret, ADR 0002).
 
 ## 6. Recommendation
 
@@ -91,8 +92,8 @@ Run in OBS 32.2.1 (obs-browser 2.26.9, CEF 127.0.6533.120, obs-websocket 5.7.4) 
 - **T4 (secure context) [V]:** `isSecureContext` is false; `caches`, `navigator.storage.getDirectory` and `crypto.subtle` are all undefined. This matches the table in section 4.
 - **T5 (localhost / `file://`) [not completed]:** Edge headless printed no DOM output in this environment, across three attempts including a separate profile. Still needed.
 - **T6 (streaming cost) [V, plain stream reader, not the prototype]:** streaming `ra2.mix` (281.9 MB) took 529–563 ms, `ra2md.mix` (204.5 MB) 385–396 ms, and `expandmd01.mix` 8–14 ms, over two runs. Heap rose 24–27 MB above the start and fell to 5–21 MB after GC. Discarding bytes as they stream is cheap, so the pass in section 6 is viable. The prototype-level cost is still unmeasured. Heap figures come from `performance.memory`, which is Chromium-only.
-- **T7 (heap source) [not done]:** needs a DevTools heap snapshot of the prototype.
-- **T8 (sprite and chunk sizes) [not done]:** needs a real Rhino facing and terrain chunk from the prototype.
+- **T7 (heap source) [partial, Node not the browser]:** the prototype's loading and painting code ran in Node (`vendor/` is DOM-free; `t8.ts`, temp copy of `prototype/battlefield-and-rhino`, not in the repo). Stage memory, after GC: after mounting the three top-level MIXes, 469 MiB of ArrayBuffers (= the 491 MB of archives); after the Rhino, 475 MiB; after terrain painting, 569 MiB (+94 MiB: the six 16 MiB chunk buffers, one per 2048 px chunk). So the terrain chunks account for most of the ~120 MB. Caveat: this is Node, not CEF, and `performance.memory` counts JS heap only. Whether CEF counts canvas backing stores there is **UNVERIFIED**, so the ~610 MB figure may be process memory rather than JS heap. A DevTools heap snapshot in Edge would settle it.
+- **T8 (sprite and chunk sizes) [V, PNG only]:** a 4920×3450 px map (`4_strip_mine`, desert) has six drawn chunks. PNG (zlib level 9, RGBA): first chunk 2.2 MB, average 1.6 MB, 9.6 MB total for 96 MiB raw. Rhino body atlas 256×256, 45 KB PNG, 32 facings averaging 1.7 KB each. Turret atlas 22 KB, 0.9 KB per facing. WebP not measured; no encoder in the setup. PNG already sizes the budget well enough.
 - **T9 (CEF) [partial]:** the OBS 32.2.1 log gives obs-browser 2.26.9 and CEF 127.0.6533.120, which matches the page's user agent. The #4 claim about OBS 31/32 wasn't checked, and OBS 33 RC wasn't checked.
 
 ## Sources
