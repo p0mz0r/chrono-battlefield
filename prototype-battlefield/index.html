@@ -1,0 +1,29 @@
+<!doctype html>
+<!-- PROTOTYPE, throwaway (issue #5). See README.md. -->
+<html>
+<head>
+<meta charset="utf-8">
+<title>PROTOTYPE: battlefield + Rhino</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font: 13px/1.4 monospace; color: #eee; }
+  #hud { position: fixed; top: 8px; left: 8px; z-index: 1; background: #000c; padding: 8px; max-width: 46em; }
+  #log { white-space: pre-wrap; margin: 6px 0 0; color: #9c9; max-height: 40vh; overflow: auto; }
+  #fps { color: #fd6; font-weight: bold; }
+  #picker { position: fixed; inset: 0; display: grid; place-content: center; background: #111; z-index: 2; text-align: center; }
+  #picker[hidden] { display: none; }
+</style>
+</head>
+<body>
+<div id="hud">
+  <div id="fps">loading…</div>
+  Rhinos: <button data-add="1">+1</button> <button data-add="10">+10</button> <button data-add="100">+100</button> <button id="clear">clear</button>
+  <pre id="log"></pre>
+</div>
+<div id="picker" hidden>
+  <p>Pick <b>ra2.mix</b>, <b>ra2md.mix</b>, <b>expandmd01.mix</b> and one <b>.map</b> file together<br>
+  (Ctrl-click in your RA2 folder; maps live in <code>Maps\Yuri's Revenge</code>, copy one next to the MIXes).</p>
+  <input type="file" multiple>
+</div>
+<script src="bundle.js"></script>
+</body>
+</html>

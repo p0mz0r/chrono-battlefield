@@ -1,0 +1,17 @@
+{
+  "name": "prototype-battlefield",
+  "private": true,
+  "description": "THROWAWAY prototype for issue #5: draw a real RA2/YR battlefield and a Rhino in the browser.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "build": "esbuild main.ts --bundle --format=iife --target=chrome120 --outfile=bundle.js",
+    "start": "npm run build && node server.mjs"
+  },
+  "dependencies": {
+    "pixi.js": "^8.22.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}
