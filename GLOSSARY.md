@@ -81,3 +81,7 @@ _Avoid_: Map, level, arena
 **Course**:
 The ordered waypoints from start to finish laid over a battlefield; tanks find their own way between waypoints.
 _Avoid_: Path, track, route
+
+**Install**:
+The RA2 + Yuri's Revenge files the game reads, from a folder on the operator's PC or uploaded by hand; never committed or redistributed.
+_Avoid_: Game files, assets
