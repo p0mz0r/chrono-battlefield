@@ -2,7 +2,11 @@
 
 ### Issue tracker
 
-Issues live in GitHub Issues for `p0mz0r/chrono-battlefield`; use Git for version control. See `docs/agents/issue-tracker.md`.
+Issues live in GitHub Issues for `p0mz0r/chrono-battlefield`; use Git for version control. Starting or closing a ticket: follow the wayfinding steps in `docs/agents/issue-tracker.md` (assign, resolve, close, add a pointer to the map).
+
+### RA2 install and OBS
+
+Reading game files, checking a render, or measuring frame rate: see `docs/agents/ra2-install.md`.
 
 ### Triage labels
 
