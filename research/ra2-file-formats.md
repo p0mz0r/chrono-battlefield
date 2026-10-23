@@ -106,16 +106,18 @@ ModEnc also notes that "ecache*/elocal* order is not guaranteed" (WinAPI `FindNe
 
 Sources: ModEnc MIX table and "Location of files" **[V]**; `ra2.mix` size from [ts-redalert2 `REQUIRED_MIX_SIZES`](https://github.com/huangkaoya/ts-redalert2/blob/main/src/engine/gameRes/GameResImporter.ts) **[V]**. That YR installs into the RA2 folder and that the loose files carry these exact names in current digital releases (EA app / Steam "C&C Ultimate Collection") is **[I]**. It needs checking against the owner's install.
 
-### Theater → MIX (YR column per ModEnc) [V]
-| Theater | Tile ext | MIXes |
-|---|---|---|
-| Temperate | `.tem` | `tem.mix`, `isotemp.mix`, `temperatmd.mix`, `isotemmd.mix` |
-| Snow | `.sno` | `sno.mix`, `isosnow.mix`, `snowmd.mix`, `isosnomd.mix` |
-| Urban | `.urb` | `urb.mix`, `isourb.mix`, `urbanmd.mix`, `isourbmd.mix` |
-| Desert (YR) | `.des` | `des.mix`, `isodes.mix`, `desertmd.mix`, `isodesmd.mix` |
-| NewUrban (YR) | `.ubn` | `ubn.mix`, `isoubn.mix`, `urbannmd.mix`, `isoubnmd.mix` |
-| Lunar (YR) | `.lun` | `lun.mix`, `isolun.mix`, `lunarmd.mix`, `isolunmd.mix` |
-| Generic | — | `generic.mix`, `isogen.mix`, `genermd.mix`, `isogenmd.mix` |
+### Theater → MIX
+Checked on the owner's Origin install (RA2 1.006 + YR 1.001) during the [#5 prototype](https://github.com/p0mz0r/chrono-battlefield/issues/5) **[V]**. RA2 MIXes are nested in `ra2.mix` and YR MIXes in `ra2md.mix`. Mount them all; later mounts (YR) win. ModEnc's table also lists `temperatmd`, `urbanmd`, `desertmd`, `urbannmd` and `lunarmd.mix`; **none of these exist** in this install. The YR-only theaters use `desert`, `urbann` and `lunar.mix` instead (no `md` suffix).
+
+| Theater | Tile ext | In `ra2.mix` | In `ra2md.mix` |
+|---|---|---|---|
+| Temperate | `.tem` | `temperat`, `isotemp`, `tem` | `isotemmd` |
+| Snow | `.sno` | `snow`, `isosnow`, `sno` | `snowmd`, `isosnomd` |
+| Urban | `.urb` | `urban`, `isourb`, `urb` | `isourbmd` |
+| Desert (YR) | `.des` | — | `desert`, `isodes`, `isodesmd`, `des` |
+| NewUrban (YR) | `.ubn` | — | `urbann`, `isoubn`, `isoubnmd`, `ubn` |
+| Lunar (YR) | `.lun` | — | `lunar`, `isolun`, `isolunmd`, `lun` |
+| Generic | — | `generic`, `isogen` | `genermd`, `isogenmd` |
 
 OpenRA's RA2 mod lists exactly the RA2 subset: `isosnow`, `isotemp`, `isourb`, `sno`, `snow`, `tem`, `temperat`, `urb`, `urban`, `generic`, `isogen`, `local`, `cache`, `conquer`, ... ([mod.yaml](https://github.com/OpenRA/ra2/blob/master/mods/ra2/mod.yaml)) **[V]**. Note that it also lists `snow.mix`/`temperat.mix`/`urban.mix` (theater SHP/palette mixes) separately from `sno/tem/urb.mix`; ModEnc's table merges these, so the exact split is **[I]**.
 
