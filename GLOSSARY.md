@@ -68,6 +68,38 @@ _Avoid_: Damage, breakdown, health
 A short, visible spell after a stun ends during which no delay can hit the tank again, so chat cannot freeze one tank forever; moves still apply.
 _Avoid_: Shield, invulnerability
 
+**Target protection**:
+A short, visible spell after a harmful audience interaction aimed at a tank by name lands, during which nobody can name that tank as a target; it can still be hit at random or by accident.
+_Avoid_: Cooldown, immunity
+
+**Boost**:
+An audience interaction giving a tank a short burst of extra speed; any viewer may boost any tank, and boosting again restarts the burst rather than adding to it.
+_Avoid_: Nitro, speed-up
+
+**Shield**:
+An audience interaction a racer uses on their own tank, blocking every harmful audience interaction for a few seconds; bots shield too, at random moments.
+_Avoid_: Iron Curtain, protection, invulnerability
+
+**Homing missile**:
+An audience interaction aimed at one tank by name or at random that flies to it and stuns it; only a shield stops it.
+_Avoid_: Red shell, rocket
+
+**V3 rocket**:
+An audience interaction a racer fires forward or backward from their own tank in a straight line, stunning the first tank in its path; it can be dodged.
+_Avoid_: Green shell, missile
+
+**Tesla strike**:
+An audience interaction in which a Tesla tank chronoshifts in beside a tank, stuns every tank near it after a short visible charge, and chronoshifts out.
+_Avoid_: Area strike, nuke, artillery
+
+**Chronosphere**:
+An audience interaction that moves one tank a random distance back along the course, or sometimes, as a misfire, a shorter random distance forward.
+_Avoid_: Chrono swap, teleport
+
+**Viewer cooldown**:
+The wait after a viewer uses any audience interaction before they may use another; its length depends on the interaction used.
+_Avoid_: Global cooldown, charges
+
 **Move**:
 An effect that puts a tank instantly onto another drivable cell, such as being sent back or chronoshifted; the tank drives on from there.
 _Avoid_: Teleport, warp, respawn
@@ -77,7 +109,7 @@ A short, visible spell in which a tank stuck behind other tanks for too long dri
 _Avoid_: Noclip, unstuck
 
 **Audience interaction**:
-Any chat-triggered effect on the race, such as a missile, the chronosphere, or a boost.
+Any chat-triggered effect on the race, such as a homing missile, the chronosphere, or a boost. Harmful ones delay or move a tank; boost and shield help one.
 _Avoid_: Superweapon, command, power
 
 ### The ground
