@@ -12,7 +12,7 @@ Other rules that hang off this:
 - A moved tank lands on the nearest drivable, tank-free, non-bridge cell that can reach its next waypoint, drops its old cells and re-paths by course progress; a stun carries on.
 - A tank that enters no new cell for 10 s ghosts through other tanks until it stands on a free cell.
 - Bridges can be destroyed and repaired during a race by audience interactions, but a destroy is refused unless every unfinished tank keeps a route to the finish, ignoring tanks; tanks on or under it are moved off. RA2's "can't stop under a bridge" is dropped.
-- Diagonal corner-cutting copies RA2 once an in-game test settles it; until then a diagonal step is refused when either orthogonal neighbour is blocked by terrain.
+- Diagonal steps are allowed even when both orthogonal neighbours are blocked by terrain, as in RA2 ([#18](https://github.com/p0mz0r/chrono-battlefield/issues/18), [in-game test](../research/ra2-corner-cutting.md)).
 
 ## Considered Options
 

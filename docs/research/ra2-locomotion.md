@@ -160,7 +160,7 @@ Chrono Divide, the browser RA2 reimplementation, publishes no implementation not
   - Routes of 2,000 or more steps are never returned. A route found on exactly the 10,000th cell is discarded.
   - Corridors longer than 500 blocks are abandoned.
   - At most **5 passes** per request.
-- **Diagonal corner-cutting.** **[Inf]** No source I could reach states whether a diagonal step is refused when both orthogonal neighbours are blocked. The per-step test is per destination cell only, which suggests corner-cutting is allowed. This needs in-game verification.
+- **Diagonal corner-cutting.** **Allowed**, even with both orthogonal neighbours blocked. Settled by an in-game test for #18: see [ra2-corner-cutting.md](ra2-corner-cutting.md).
 
 ## 7. Rhino stats and speed / turn model
 
@@ -224,7 +224,7 @@ This is inference to feed the movement-model decision (#9), not research fact.
 ## Open questions that may deserve their own ticket
 
 - **Map import, per-cell land type.** Can the map importer read each tile's per-cell terrain byte, ramp/slope index and level from the theater TMP files? Passability depends on it, including the Beach-is-water quirk and cliff-back Rock.
-- **Diagonal corner-cutting.** Does RA2 allow a diagonal step between two blocked orthogonal cells? No source settles it; it needs an in-game test or YR disassembly.
+- ~~**Diagonal corner-cutting.**~~ Settled: allowed ([ra2-corner-cutting.md](ra2-corner-cutting.md)).
 - **Real tick rate.** What is YR's real frame rate per game-speed setting, and what race duration and tank pacing follow from it?
 - **How racers relate to each other.** Should tanks be "friendly" (they ask each other to move aside, cost 8) or "enemy" (destroyable, which we would neuter)? This changes how jams resolve.
 - **Bridge-deck destinations.** Do bridge-deck destinations and "cannot stop under a bridge" need special handling for course waypoints placed near bridges?
