@@ -42484,6 +42484,7 @@ ${parts.join("\n")}
   init_Texture();
   init_textureFrom();
   init_Container();
+  init_Graphics();
   init_Sprite();
   init_eventemitter3();
   extensions.add(browserExt, webworkerExt);
@@ -46347,6 +46348,436 @@ ${parts.join("\n")}
     return { sprite, pivot };
   }
 
+  // stream.ts
+  var params = new URLSearchParams(location.search);
+  var NAMES = ["xXRhinoKingXx", "tankgirl_92", "ChronoLegend", "Boris", "kirov_reporting", "SovietBear", "yuri_clone_7", "MooseMcTank", "BOT Volkov", "BOT Zofia"];
+  var COLORS = ["#e33", "#39f", "#fc3", "#3c6", "#f6c", "#f93", "#9cf", "#c9f", "#aaa", "#888"];
+  var SPEED = Number(params.get("speed") ?? 3);
+  var FINISH_TIMER = Number(params.get("finishTimer") ?? 30);
+  function courseLoop(cells) {
+    const cx = cells.reduce((a2, c2) => a2 + c2.x, 0) / cells.length, cy = cells.reduce((a2, c2) => a2 + c2.y, 0) / cells.length;
+    return [...cells].sort((a2, b2) => Math.atan2(a2.y - cy, a2.x - cx) - Math.atan2(b2.y - cy, b2.x - cx)).map((c2) => ({ x: cx + (c2.x - cx) * 0.7 + 0.5, y: cy + (c2.y - cy) * 0.7 + 0.5 }));
+  }
+  function makeRace(w2) {
+    const pts = courseLoop(w2.courseCells);
+    const seg = pts.map((p2, i2) => Math.hypot(pts[(i2 + 1) % pts.length].x - p2.x, pts[(i2 + 1) % pts.length].y - p2.y));
+    const loopLen = seg.reduce((a2, b2) => a2 + b2, 0);
+    const laps = Number(params.get("laps") ?? Math.max(1, Math.round(90 * SPEED / loopLen)));
+    const racers = NAMES.map((name, i2) => {
+      const body = new Sprite(w2.bodyTex[0]);
+      body.anchor.set(0.5);
+      const tur = new Sprite(w2.turretTex[0]);
+      tur.anchor.set(0.5);
+      const c2 = new Container();
+      c2.addChild(body, tur);
+      w2.things.addChild(c2);
+      return {
+        name,
+        color: COLORS[i2],
+        bot: name.startsWith("BOT"),
+        lane: i2 % 5 - 2,
+        dist: -Math.floor(i2 / 5) * 1.5,
+        speedMul: 0.9 + Math.random() * 0.2,
+        boostUntil: 0,
+        stunUntil: 0,
+        immuneUntil: 0,
+        shieldUntil: 0,
+        finishedAt: null,
+        place: 0,
+        c: c2,
+        body,
+        tur,
+        wx: 0,
+        wy: 0,
+        facing: 8,
+        lastEvent: ""
+      };
+    }).sort(() => Math.random() - 0.5);
+    racers.forEach((r2, i2) => {
+      r2.lane = i2 % 5 - 2;
+      r2.dist = -Math.floor(i2 / 5) * 1.5;
+    });
+    const at = (d2) => {
+      let rest = (d2 % loopLen + loopLen) % loopLen;
+      for (let i2 = 0; i2 < pts.length; i2++) {
+        if (rest <= seg[i2] || i2 === pts.length - 1) {
+          const a2 = pts[i2], b2 = pts[(i2 + 1) % pts.length], f2 = Math.min(1, rest / seg[i2]);
+          return { x: a2.x + (b2.x - a2.x) * f2, y: a2.y + (b2.y - a2.y) * f2, dx: (b2.x - a2.x) / seg[i2], dy: (b2.y - a2.y) / seg[i2] };
+        }
+        rest -= seg[i2];
+      }
+      throw new Error("unreachable");
+    };
+    const race = {
+      phase: "countdown",
+      t: 0,
+      startAt: 3,
+      firstFinish: null,
+      laps,
+      loopLen,
+      total: loopLen * laps,
+      racers,
+      feed: [],
+      pts,
+      standings: () => [...racers].sort((a2, b2) => (a2.finishedAt ?? Infinity) - (b2.finishedAt ?? Infinity) || b2.dist - a2.dist),
+      lap: (r2) => Math.min(laps, Math.max(1, Math.floor(r2.dist / loopLen) + 1))
+    };
+    const viewers = ["dave_from_chat", "Lurker42", "mod_anna", "potato", "GG_EZ", "ra2_veteran", "NightOwl"];
+    const say = (text, target) => {
+      race.feed.unshift({ t: race.t, text, target });
+      race.feed.length = Math.min(race.feed.length, 8);
+      if (target) target.lastEvent = text;
+    };
+    const hit = (from, verb, r2) => {
+      if (r2.shieldUntil > race.t) return say(`${from} ${verb} \u2192 ${r2.name} (shield held)`, r2);
+      if (r2.immuneUntil > race.t) return say(`${from} ${verb} \u2192 ${r2.name} (stun immune)`, r2);
+      r2.stunUntil = race.t + 3;
+      r2.immuneUntil = race.t + 5;
+      say(`${from} ${verb} \u2192 ${r2.name} stunned`, r2);
+    };
+    const interact = () => {
+      const live = racers.filter((r3) => r3.finishedAt === null);
+      if (!live.length) return;
+      const r2 = live[Math.random() * live.length | 0];
+      const v2 = viewers[Math.random() * viewers.length | 0];
+      const roll = Math.random();
+      if (roll < 0.25) {
+        r2.boostUntil = race.t + 3;
+        say(`${v2} !boost \u2192 ${r2.name}`, r2);
+      } else if (roll < 0.4) {
+        r2.shieldUntil = race.t + 6;
+        say(`${r2.name} !shield`, r2);
+      } else if (roll < 0.55) hit(v2, "!v3", r2);
+      else if (roll < 0.7) hit(v2, "!missile", r2);
+      else if (roll < 0.85) hit(v2, "!tesla", r2);
+      else {
+        const misfire = Math.random() < 0.2;
+        const d2 = loopLen * (misfire ? 0.05 + Math.random() * 0.05 : -(0.15 + Math.random() * 0.15));
+        r2.dist = Math.max(0, r2.dist + d2);
+        say(`${v2} !chrono \u2192 ${r2.name} ${misfire ? "misfire, jumped forward" : "sent back"}`, r2);
+      }
+    };
+    let nextEvent = 5;
+    race.tick = (dt) => {
+      race.t += dt;
+      if (race.phase === "countdown" && race.t >= race.startAt) race.phase = "racing";
+      if (race.phase === "racing") {
+        if (race.t > nextEvent) {
+          interact();
+          nextEvent = race.t + 1.5 + Math.random() * 2.5;
+        }
+        for (const r2 of racers) {
+          if (r2.finishedAt !== null || r2.stunUntil > race.t) continue;
+          r2.dist += SPEED * r2.speedMul * (r2.boostUntil > race.t ? 1.6 : 1) * dt;
+          if (r2.dist >= race.total) {
+            r2.finishedAt = race.t;
+            r2.place = racers.filter((o2) => o2.finishedAt !== null).length;
+            race.firstFinish ??= race.t;
+            say(`${r2.name} finished P${r2.place}`, r2);
+          }
+        }
+        const done = racers.every((r2) => r2.finishedAt !== null);
+        if (done || race.firstFinish !== null && race.t - race.firstFinish > FINISH_TIMER) {
+          race.standings().forEach((r2, i2) => r2.place = i2 + 1);
+          race.phase = "results";
+          race.resultsAt = race.t;
+        }
+      }
+      for (const r2 of racers) {
+        const p2 = at(Math.max(0, Math.min(r2.dist, race.total)) - (r2.dist < 0 ? -r2.dist : 0));
+        const ox = -p2.dy * r2.lane * 0.7, oy = p2.dx * r2.lane * 0.7;
+        const sp = w2.toWorld(p2.x + ox, p2.y + oy);
+        r2.wx = sp.x;
+        r2.wy = sp.y;
+        const want = (Math.atan2(p2.dx, -p2.dy) / (2 * Math.PI) * 32 + 32) % 32;
+        const diff = (want - r2.facing + 48) % 32 - 16;
+        r2.facing = (r2.facing + Math.sign(diff) * Math.min(Math.abs(diff), 16 * dt) + 32) % 32;
+        const f2 = Math.round(r2.facing) % 32, tf = (f2 + Math.round(Math.sin(race.t + r2.lane) * 2) + 32) % 32;
+        r2.body.texture = w2.bodyTex[f2];
+        r2.tur.texture = w2.turretTex[tf];
+        const ang = facingAngle(f2), [px, py, pz] = w2.pivot;
+        const pp = projectModelPoint(px * Math.cos(ang) - py * Math.sin(ang), px * Math.sin(ang) + py * Math.cos(ang), pz);
+        r2.tur.position.set(pp.sx, pp.sy);
+        r2.c.position.set(sp.x, sp.y);
+        r2.c.zIndex = sp.y + 15;
+        r2.c.alpha = r2.finishedAt !== null ? Math.max(0, 1 - (race.t - r2.finishedAt)) : r2.stunUntil > race.t ? 0.6 + 0.4 * Math.sin(race.t * 20) : 1;
+      }
+    };
+    return race;
+  }
+  var css = document.createElement("style");
+  css.textContent = `
+  #sv { position: fixed; inset: 0; pointer-events: none; font: 600 22px/1.25 'Segoe UI', system-ui, sans-serif; color: #fff; z-index: 3; }
+  #sv * { box-sizing: border-box; }
+  .lbl { position: absolute; transform: translate(-50%, -100%); white-space: nowrap; }
+  .sv-bar { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: 9; pointer-events: auto; display: flex; gap: 10px; align-items: center;
+    background: #ff0; color: #000; font: bold 14px monospace; padding: 6px 12px; border-radius: 999px; box-shadow: 0 2px 10px #0008; }
+  .sv-bar button { font: bold 14px monospace; border: 0; background: #000; color: #ff0; border-radius: 999px; padding: 2px 10px; cursor: pointer; }
+`;
+  document.head.appendChild(css);
+  var el = (tag, style, html = "") => {
+    const e2 = document.createElement(tag);
+    e2.style.cssText = style;
+    e2.innerHTML = html;
+    return e2;
+  };
+  var esc = (s2) => s2.replace(/[&<>]/g, (c2) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c2]);
+  function applyCam(w2, cam, target, dt, snap = false) {
+    const k2 = snap ? 1 : 1 - Math.exp(-dt * 3);
+    cam.x += (target.x - cam.x) * k2;
+    cam.y += (target.y - cam.y) * k2;
+    cam.s += (target.s - cam.s) * k2;
+    w2.world.scale.set(cam.s);
+    w2.world.position.set(w2.app.screen.width / 2 - cam.x * cam.s, w2.app.screen.height / 2 - cam.y * cam.s);
+  }
+  var screenOf = (w2, x2, y2) => ({ x: w2.world.x + x2 * w2.world.scale.x, y: w2.world.y + y2 * w2.world.scale.y });
+  function courseBounds(w2, race) {
+    const ps = race.pts.map((p2) => w2.toWorld(p2.x, p2.y));
+    const x0 = Math.min(...ps.map((p2) => p2.x)), x1 = Math.max(...ps.map((p2) => p2.x));
+    const y0 = Math.min(...ps.map((p2) => p2.y)), y1 = Math.max(...ps.map((p2) => p2.y));
+    return { x0, x1, y0, y1, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 };
+  }
+  function countdown(race) {
+    const left = Math.ceil(race.startAt - race.t);
+    return race.phase === "countdown" ? left > 0 ? String(left) : "GO" : race.t - race.startAt < 1 ? "GO" : "";
+  }
+  var A = {
+    key: "A",
+    name: "Overview + standings tower",
+    mount(root, w2, race) {
+      const b2 = courseBounds(w2, race);
+      const cam = { x: b2.cx, y: b2.cy, s: Math.min((w2.app.screen.width - 520) / (b2.x1 - b2.x0 + 200), (w2.app.screen.height - 120) / (b2.y1 - b2.y0 + 200)) };
+      cam.x -= 180 / cam.s;
+      const line = new Graphics();
+      const ps = race.pts.map((p2) => w2.toWorld(p2.x, p2.y));
+      line.poly(ps.flatMap((p2) => [p2.x, p2.y]), true).stroke({ width: 6, color: 16772744, alpha: 0.55 });
+      ps.forEach((p2, i2) => line.circle(p2.x, p2.y, i2 === 0 ? 22 : 12).fill({ color: i2 === 0 ? 16777215 : 16772744, alpha: 0.8 }));
+      w2.world.addChildAt(line, 1);
+      const tower = el("div", "position:absolute; left:24px; top:24px; width:360px; background:#000b; border-left:6px solid #c00;");
+      const feed = el("div", "position:absolute; right:24px; bottom:70px; width:520px; font-size:18px; text-align:right;");
+      const big = el("div", "position:absolute; inset:0; display:grid; place-content:center; font-size:200px; font-weight:900; text-shadow:0 0 30px #000;");
+      const labels = el("div", "position:absolute; inset:0;");
+      root.append(labels, tower, feed, big);
+      const chips = new Map(race.racers.map((r2) => {
+        const c2 = el("div", "font-size:16px; padding:1px 6px; border-radius:4px; color:#000; margin-top:-40px;");
+        c2.className = "lbl";
+        labels.append(c2);
+        return [r2, c2];
+      }));
+      return (dt) => {
+        applyCam(w2, cam, cam, dt, true);
+        const st = race.standings();
+        tower.innerHTML = `<div style="padding:8px 12px; background:#c00; font-size:20px;">RHINO RACE \xB7 LAP ${Math.min(race.laps, Math.max(...st.map(race.lap)))}/${race.laps}</div>` + st.map((r2, i2) => `<div style="display:flex; gap:10px; padding:5px 12px; ${r2.finishedAt !== null ? "opacity:.55" : ""}">
+          <b style="width:28px">${i2 + 1}</b><span style="width:8px; background:${r2.color}"></span>
+          <span style="flex:1; overflow:hidden; text-overflow:ellipsis">${esc(r2.name)}</span>
+          <span style="font-size:16px; opacity:.8">${r2.finishedAt !== null ? "\u{1F3C1}" : r2.stunUntil > race.t ? "\u26A1" : r2.shieldUntil > race.t ? "\u{1F6E1}" : `L${race.lap(r2)}`}</span></div>`).join("");
+        feed.innerHTML = race.feed.slice(0, 5).map((f2, i2) => `<div style="opacity:${1 - i2 * 0.18}; background:#000a; display:inline-block; padding:3px 10px; margin:2px 0;">${esc(f2.text)}</div>`).join("<br>");
+        for (const [r2, c2] of chips) {
+          const p2 = screenOf(w2, r2.wx, r2.wy);
+          c2.style.left = `${p2.x}px`;
+          c2.style.top = `${p2.y}px`;
+          c2.style.background = r2.color;
+          c2.style.opacity = String(r2.c.alpha);
+          c2.textContent = String(st.indexOf(r2) + 1);
+        }
+        big.textContent = countdown(race);
+        if (race.phase === "results") {
+          big.style.cssText = "position:absolute; inset:0; display:grid; place-content:center; background:#000d;";
+          big.innerHTML = `<div style="font-size:48px; text-align:center; margin-bottom:20px;">RESULTS</div>` + race.standings().map((r2, i2) => `<div style="display:flex; gap:24px; font-size:${i2 < 3 ? 34 : 24}px; padding:4px 0; width:640px;"><b style="width:60px">${i2 + 1}.</b><span style="flex:1; color:${r2.color}">${esc(r2.name)}</span><span style="opacity:.7">${r2.finishedAt !== null ? `${(r2.finishedAt - race.startAt).toFixed(1)} s` : "DNF"}</span></div>`).join("");
+        }
+      };
+    }
+  };
+  var B = {
+    key: "B",
+    name: "Chase cam + minimap",
+    mount(root, w2, race) {
+      const cam = { x: 0, y: 0, s: Number(params.get("zoom") ?? 1.2) };
+      let first = true;
+      const ticker = el("div", "position:absolute; left:0; right:0; top:0; display:flex; gap:4px; padding:8px; background:linear-gradient(#000e,#0000); font-size:18px;");
+      const mini = document.createElement("canvas");
+      mini.width = 340;
+      mini.height = 240;
+      mini.style.cssText = "position:absolute; right:24px; top:70px; background:#000a; border:2px solid #fff4; border-radius:8px;";
+      const feed = el("div", "position:absolute; left:24px; bottom:24px; width:560px; font-size:20px;");
+      const big = el("div", "position:absolute; inset:0; display:grid; place-content:center; font-size:200px; font-weight:900; text-shadow:0 0 30px #000;");
+      const labels = el("div", "position:absolute; inset:0;");
+      root.append(labels, ticker, mini, feed, big);
+      const tags = new Map(race.racers.map((r2) => {
+        const c2 = el("div", "margin-top:-44px; text-align:center; text-shadow:0 0 4px #000, 0 0 2px #000;");
+        c2.className = "lbl";
+        labels.append(c2);
+        return [r2, c2];
+      }));
+      const ctx = mini.getContext("2d");
+      const b2 = courseBounds(w2, race);
+      const ms = Math.min((mini.width - 30) / (b2.x1 - b2.x0), (mini.height - 30) / (b2.y1 - b2.y0));
+      const m2 = (x2, y2) => [mini.width / 2 + (x2 - b2.cx) * ms, mini.height / 2 + (y2 - b2.cy) * ms];
+      return (dt) => {
+        const st = race.standings();
+        const lead = race.phase === "results" ? null : st.find((r2) => r2.finishedAt === null) ?? st[0];
+        const fin = w2.toWorld(race.pts[0].x, race.pts[0].y);
+        applyCam(w2, cam, lead ? { x: lead.wx, y: lead.wy, s: cam.s } : { x: fin.x, y: fin.y, s: cam.s }, dt, first);
+        first = false;
+        ticker.innerHTML = `<span style="padding:4px 10px; background:#c00">LAP ${lead ? race.lap(lead) : race.laps}/${race.laps}</span>` + st.map((r2, i2) => `<span style="padding:4px 10px; background:#000a; border-bottom:4px solid ${r2.color}; ${r2.finishedAt !== null ? "opacity:.5" : ""}">${i2 + 1} ${esc(r2.name.slice(0, 10))}</span>`).join("");
+        ctx.clearRect(0, 0, mini.width, mini.height);
+        ctx.strokeStyle = "#ffee8899";
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        race.pts.forEach((p2, i2) => {
+          const q = w2.toWorld(p2.x, p2.y);
+          const [x2, y2] = m2(q.x, q.y);
+          i2 ? ctx.lineTo(x2, y2) : ctx.moveTo(x2, y2);
+        });
+        ctx.closePath();
+        ctx.stroke();
+        for (const r2 of race.racers) {
+          if (r2.c.alpha < 0.05) continue;
+          const [x2, y2] = m2(r2.wx, r2.wy);
+          ctx.fillStyle = r2.color;
+          ctx.beginPath();
+          ctx.arc(x2, y2, r2 === lead ? 8 : 5, 0, 7);
+          ctx.fill();
+        }
+        for (const [r2, c2] of tags) {
+          const p2 = screenOf(w2, r2.wx, r2.wy);
+          c2.style.left = `${p2.x}px`;
+          c2.style.top = `${p2.y}px`;
+          c2.style.opacity = String(r2.c.alpha);
+          c2.innerHTML = `<span style="color:${r2.color}">${st.indexOf(r2) + 1}</span> ${esc(r2.name)}<br><span style="font-size:15px; opacity:.85">${r2.stunUntil > race.t ? "\u26A1 STUNNED" : r2.shieldUntil > race.t ? "\u{1F6E1} shield" : r2.boostUntil > race.t ? "\xBB boost" : `lap ${race.lap(r2)}/${race.laps}`}</span>`;
+        }
+        feed.innerHTML = race.phase === "results" ? "" : race.feed.slice(0, 4).map((f2) => `<div style="background:#000a; padding:3px 10px; margin:3px 0; border-left:4px solid ${f2.target?.color ?? "#fff"}">${esc(f2.text)}</div>`).join("");
+        big.textContent = countdown(race);
+        if (race.phase === "results") {
+          const [p1, p2, p3, ...rest] = race.standings();
+          const card = (r2, n2, h2) => r2 ? `<div style="text-align:center; width:300px;"><div style="font-size:30px; color:${r2.color}">${esc(r2.name)}</div>
+          <div style="height:${h2}px; background:#000c; border-top:6px solid ${r2.color}; font-size:80px; font-weight:900; display:grid; place-content:center;">${n2}</div></div>` : "";
+          big.style.cssText = "position:absolute; inset:0; display:flex; flex-direction:column; justify-content:flex-end; align-items:center; padding-bottom:60px; background:linear-gradient(#0000 30%, #000c);";
+          big.innerHTML = `<div style="display:flex; align-items:flex-end; gap:12px;">${card(p2, 2, 180)}${card(p1, 1, 260)}${card(p3, 3, 130)}</div>
+          <div style="font-size:18px; margin-top:16px; opacity:.85">${rest.map((r2) => `${r2.place}. ${esc(r2.name)}`).join(" \xB7 ")}</div>`;
+        }
+      };
+    }
+  };
+  var C = {
+    key: "C",
+    name: "Director cuts + lower third",
+    mount(root, w2, race) {
+      const b2 = courseBounds(w2, race);
+      const cam = { x: b2.cx, y: b2.cy, s: 1.5 };
+      let focus = null, why = "", cutAt = -99, seenFeed = 0;
+      const top5 = el("div", "position:absolute; right:24px; top:24px; width:300px; background:#000b; font-size:18px;");
+      const lower = el("div", "position:absolute; left:80px; bottom:80px; display:flex; align-items:stretch; min-width:620px;");
+      const flash = el("div", "position:absolute; inset:0; background:#fff; opacity:0;");
+      const big = el("div", "position:absolute; inset:0; display:grid; place-content:center; font-size:200px; font-weight:900; text-shadow:0 0 30px #000;");
+      const tag = el("div", "margin-top:-50px; font-size:18px; padding:2px 8px; background:#000a;");
+      tag.className = "lbl";
+      root.append(flash, tag, top5, lower, big);
+      const cut = (r2, reason) => {
+        focus = r2;
+        why = reason;
+        cutAt = race.t;
+        flash.style.transition = "none";
+        flash.style.opacity = "0.35";
+        requestAnimationFrame(() => {
+          flash.style.transition = "opacity .4s";
+          flash.style.opacity = "0";
+        });
+      };
+      let revealed = 0, revealAt = 0;
+      return (dt) => {
+        const st = race.standings();
+        const live = st.filter((r2) => r2.finishedAt === null);
+        if (race.feed.length && race.feed[0].t > seenFeed) {
+          seenFeed = race.feed[0].t;
+          if (race.feed[0].target && race.t - cutAt > 2.5 && race.feed[0].target.finishedAt === null) cut(race.feed[0].target, race.feed[0].text);
+        }
+        if (live.length && (!focus || focus.finishedAt !== null || race.t - cutAt > 7)) {
+          if (why.startsWith("Leader") && live.length > 1) {
+            let bi = 0;
+            for (let i2 = 1; i2 < live.length - 1; i2++) if (live[i2].dist - live[i2 + 1].dist < live[bi].dist - live[bi + 1].dist) bi = i2;
+            cut(live[bi + 1], `Battle for P${st.indexOf(live[bi]) + 1}`);
+          } else cut(live[0], "Leader");
+        }
+        const tgt = focus && race.phase !== "results" ? { x: focus.wx, y: focus.wy, s: cam.s } : cam;
+        applyCam(w2, cam, tgt, dt, race.t - cutAt < 0.05);
+        top5.innerHTML = `<div style="padding:6px 10px; background:#fff; color:#000">TOP 5</div>` + st.slice(0, 5).map((r2, i2) => `<div style="display:flex; padding:4px 10px; ${r2 === focus ? "background:#fff3" : ""}"><b style="width:26px">${i2 + 1}</b><span style="flex:1; color:${r2.color}">${esc(r2.name)}</span>${r2.finishedAt !== null ? "\u{1F3C1}" : ""}</div>`).join("") + (focus && st.indexOf(focus) >= 5 ? `<div style="display:flex; padding:4px 10px; background:#fff3; border-top:1px solid #fff4"><b style="width:26px">${st.indexOf(focus) + 1}</b><span style="flex:1; color:${focus.color}">${esc(focus.name)}</span></div>` : "");
+        if (focus && race.phase !== "results") {
+          const p2 = screenOf(w2, focus.wx, focus.wy);
+          tag.style.left = `${p2.x}px`;
+          tag.style.top = `${p2.y}px`;
+          tag.textContent = "\u25BC";
+          tag.style.color = focus.color;
+          lower.innerHTML = `<div style="background:${focus.color}; color:#000; font-size:64px; font-weight:900; padding:0 22px; display:grid; place-content:center;">${st.indexOf(focus) + 1}</div>
+          <div style="background:#000d; padding:10px 20px; flex:1;"><div style="font-size:36px">${esc(focus.name)}</div>
+          <div style="font-size:18px; opacity:.85">${esc(why)} \xB7 lap ${race.lap(focus)}/${race.laps}${focus.lastEvent && focus.lastEvent !== why ? ` \xB7 last: ${esc(focus.lastEvent)}` : ""}</div></div>`;
+        } else lower.innerHTML = "";
+        big.textContent = countdown(race);
+        if (race.phase === "results") {
+          const order = race.standings().reverse();
+          if (revealed < order.length && race.t > revealAt) {
+            revealed++;
+            revealAt = race.t + (revealed >= order.length - 3 ? 2 : 1.2);
+          }
+          big.style.cssText = "position:absolute; inset:0; display:flex; flex-direction:column-reverse; justify-content:center; align-items:center; background:#000d;";
+          big.innerHTML = order.slice(0, revealed).map((r2) => `<div style="font-size:${r2.place === 1 ? 56 : r2.place <= 3 ? 36 : 24}px; padding:3px; color:${r2.place === 1 ? r2.color : "#fff"}">${r2.place}. ${esc(r2.name)}</div>`).join("");
+        }
+      };
+    }
+  };
+  function runStreamView(w2) {
+    const variants = [A, B, C];
+    let race = makeRace(w2);
+    let idx = Math.max(0, variants.findIndex((v2) => v2.key === (params.get("variant") ?? "A").toUpperCase()));
+    let root = null, update = null;
+    const bar = el("div", "");
+    bar.className = "sv-bar";
+    if (params.get("bar") !== "0") document.body.append(bar);
+    const mount = () => {
+      root?.remove();
+      w2.world.children.filter((c2) => c2 instanceof Graphics).forEach((c2) => c2.destroy());
+      root = el("div", "");
+      root.id = "sv";
+      document.body.append(root);
+      update = variants[idx].mount(root, w2, race);
+      const v2 = variants[idx];
+      bar.innerHTML = `<button data-d="-1">\u25C0</button> PROTOTYPE ${v2.key} (${v2.name}) <button data-d="1">\u25B6</button> <button data-r>restart race</button>`;
+      const u2 = new URL(location.href);
+      u2.searchParams.set("variant", v2.key);
+      history.replaceState(null, "", u2);
+    };
+    const go = (d2) => {
+      idx = (idx + d2 + variants.length) % variants.length;
+      mount();
+    };
+    const restart = () => {
+      race.racers.forEach((r2) => r2.c.destroy());
+      race = makeRace(w2);
+      mount();
+    };
+    bar.addEventListener("click", (e2) => {
+      const b2 = e2.target.closest("button");
+      if (!b2) return;
+      if (b2.dataset.d) go(Number(b2.dataset.d));
+      else restart();
+    });
+    addEventListener("keydown", (e2) => {
+      if (e2.target.closest("input, textarea, [contenteditable]")) return;
+      if (e2.key === "ArrowLeft") go(-1);
+      if (e2.key === "ArrowRight") go(1);
+      if (e2.key === "r") restart();
+    });
+    for (let t2 = Number(params.get("skip") ?? 0); t2 > 0 && !(race.phase === "results" && race.t - race.resultsAt > 12); t2 -= 0.05) race.tick(0.05);
+    mount();
+    w2.app.ticker.add((tk) => {
+      const dt = Math.min(0.1, tk.deltaMS / 1e3);
+      race.tick(dt);
+      update?.(dt);
+      if (race.phase === "results" && race.t - race.resultsAt > 20) restart();
+    });
+    return race;
+  }
+
   // main.ts
   var OBS_INSTALL = "http://absolute/D:/GAMES/Origin/Command and Conquer Red Alert II";
   var DEFAULT_MAP = "Maps/Yuri's Revenge/4_strip_mine.map";
@@ -46384,7 +46815,7 @@ ${parts.join("\n")}
   };
   var THEATER_LETTER = { temperate: "t", snow: "a", urban: "u", desert: "d", newurban: "n", lunar: "l" };
   var CHUNK = 2048;
-  var params = new URLSearchParams(location.search);
+  var params2 = new URLSearchParams(location.search);
   var log = document.getElementById("log");
   var stats = [];
   var t0 = performance.now();
@@ -46394,7 +46825,7 @@ ${parts.join("\n")}
     console.log(msg);
   }
   function installRoot() {
-    if (params.get("root")) return params.get("root");
+    if (params2.get("root")) return params2.get("root");
     if (location.hostname === "absolute") return OBS_INSTALL;
     if (location.protocol.startsWith("http")) return "/ra2";
     return null;
@@ -46463,7 +46894,7 @@ ${parts.join("\n")}
   async function main() {
     const root = installRoot();
     let src;
-    let mapName = params.get("map") ?? DEFAULT_MAP;
+    let mapName = params2.get("map") ?? DEFAULT_MAP;
     if (root) {
       src = urlSource(root);
       note(`reading from ${root}`);
@@ -46638,93 +47069,20 @@ ${parts.join("\n")}
     const turretTex = frameTextures(turret.sprite);
     note(`Rhino prerendered (2x32 facings) in ${(performance.now() - tv).toFixed(0)} ms`);
     const cells = tiles.map((t2) => [t2.x, t2.y]);
-    const tanks = [];
-    const pickTarget = (k2) => {
-      const [x2, y2] = cells[Math.random() * cells.length | 0];
-      k2.tx = x2 + 0.5;
-      k2.ty = y2 + 0.5;
-    };
-    const addTanks = (n2) => {
-      for (let i2 = 0; i2 < n2; i2++) {
-        const [x2, y2] = cells[Math.random() * cells.length | 0];
-        const body = new Sprite(bodyTex[0]);
-        body.anchor.set(0.5);
-        const tur = new Sprite(turretTex[0]);
-        tur.anchor.set(0.5);
-        const c2 = new Container();
-        c2.addChild(body, tur);
-        things.addChild(c2);
-        const k2 = { c: c2, body, tur, x: x2 + 0.5, y: y2 + 0.5, tx: 0, ty: 0, facing: 0, turretOff: 0 };
-        pickTarget(k2);
-        tanks.push(k2);
-      }
-    };
-    const clearTanks = () => {
-      tanks.splice(0).forEach((k2) => k2.c.destroy());
-    };
-    const SPEED = 2.5;
-    const ROT = 16;
-    app.ticker.add((tk) => {
-      const dt = tk.deltaMS / 1e3;
-      for (const k2 of tanks) {
-        const dx = k2.tx - k2.x, dy = k2.ty - k2.y, d2 = Math.hypot(dx, dy);
-        if (d2 < 0.1) {
-          pickTarget(k2);
-          continue;
-        }
-        const want = (Math.atan2(dx, -dy) / (2 * Math.PI) * 32 + 32) % 32;
-        let diff = (want - k2.facing + 48) % 32 - 16;
-        const turn = Math.sign(diff) * Math.min(Math.abs(diff), ROT * dt);
-        k2.facing = (k2.facing + turn + 32) % 32;
-        if (Math.abs(diff) < 2) {
-          k2.x += dx / d2 * Math.min(d2, SPEED * dt);
-          k2.y += dy / d2 * Math.min(d2, SPEED * dt);
-        }
-        k2.turretOff = Math.sin(performance.now() / 900 + k2.tx) * 4;
-        const f2 = Math.round(k2.facing) % 32, tf = (Math.round(k2.facing + k2.turretOff) + 32) % 32;
-        k2.body.texture = bodyTex[f2];
-        k2.tur.texture = turretTex[tf];
-        const ang = facingAngle(f2), [px, py, pz] = turret.pivot;
-        const p2 = projectModelPoint(px * Math.cos(ang) - py * Math.sin(ang), px * Math.sin(ang) + py * Math.cos(ang), pz);
-        k2.tur.position.set(p2.sx, p2.sy);
-        const rx = Math.floor(k2.x), ry = Math.floor(k2.y), z = heightAt.get(ry * 1e3 + rx) ?? 0;
-        k2.c.position.set((k2.x - k2.y) * 30 - minX + 30, (k2.x + k2.y - z) * 15 - minY);
-        k2.c.zIndex = (k2.x + k2.y) * 15 + 15;
-      }
+    const starts = map.waypoints.filter((w2) => w2.number < 8);
+    const courseCells = starts.length >= 3 ? starts : [cells[0], cells[cells.length / 3 | 0], cells[2 * cells.length / 3 | 0]].map(([x2, y2]) => ({ x: x2, y: y2 }));
+    note(`course: ${courseCells.length} start waypoints as a loop`);
+    runStreamView({
+      app,
+      world,
+      things,
+      bodyTex,
+      turretTex,
+      pivot: turret.pivot,
+      courseCells,
+      toWorld: (x2, y2) => ({ x: (x2 - y2) * 30 - minX + 30, y: (x2 + y2 - (heightAt.get(Math.floor(y2) * 1e3 + Math.floor(x2)) ?? 0)) * 15 - minY })
     });
-    const startCell = map.waypoints.find((w2) => w2.number === 0) ?? { x: cells[0][0], y: cells[0][1] };
-    world.position.set(app.screen.width / 2 - cellX(startCell.x, startCell.y), app.screen.height / 2 - cellY(startCell.x, startCell.y));
-    let drag = null;
-    app.canvas.addEventListener("pointerdown", (e2) => drag = { x: e2.clientX - world.x, y: e2.clientY - world.y });
-    addEventListener("pointerup", () => drag = null);
-    addEventListener("pointermove", (e2) => drag && world.position.set(e2.clientX - drag.x, e2.clientY - drag.y));
-    app.canvas.addEventListener("wheel", (e2) => {
-      const s2 = Math.min(3, Math.max(0.15, world.scale.x * (e2.deltaY < 0 ? 1.15 : 1 / 1.15)));
-      const k2 = s2 / world.scale.x;
-      world.position.set(e2.clientX - (e2.clientX - world.x) * k2, e2.clientY - (e2.clientY - world.y) * k2);
-      world.scale.set(s2);
-    });
-    const fpsEl = document.getElementById("fps");
-    const frames = [];
-    app.ticker.add((tk) => {
-      frames.push(tk.deltaMS);
-      if (frames.length > 120) frames.shift();
-    });
-    setInterval(() => {
-      const sorted = [...frames].sort((a2, b2) => b2 - a2);
-      const avg = frames.reduce((a2, b2) => a2 + b2, 0) / frames.length;
-      fpsEl.textContent = `${(1e3 / avg).toFixed(0)} fps avg, ${(1e3 / (sorted[1] ?? avg)).toFixed(0)} fps 1% low, ${tanks.length} Rhinos, ${app.renderer.name}`;
-    }, 500);
-    for (const b2 of document.querySelectorAll("[data-add]")) b2.onclick = () => addTanks(Number(b2.dataset.add));
-    document.getElementById("clear").onclick = clearTanks;
-    addTanks(Number(params.get("tanks") ?? 8));
-    if (location.hostname === "absolute") {
-      for (const total of [8, 100, 300, 1e3, 2e3]) {
-        addTanks(total - tanks.length);
-        await new Promise((r2) => setTimeout(r2, 8e3));
-        note(`OBS bench: ${fpsEl.textContent}`);
-      }
-    }
+    document.getElementById("hud").hidden = params2.get("log") !== "1";
     note("ready: drag to pan, wheel to zoom");
   }
   main().catch((e2) => {

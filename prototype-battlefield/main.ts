@@ -1,4 +1,4 @@
-// PROTOTYPE, throwaway (issue #5). Reads a local RA2 + YR install, draws one
+// PROTOTYPE, throwaway (issue #5, reused for #25 stream views: see stream.ts). Reads a local RA2 + YR install, draws one
 // battlefield with its theater art and drives prerendered Rhino voxels over it.
 // Parsers and the voxel prerenderer are vendored from openra2 (GPL-3.0), which
 // is fine for a throwaway branch only; see issue #12 for the real licence call.
@@ -6,8 +6,9 @@
 import { Application, Container, Rectangle, Sprite, Texture } from 'pixi.js';
 import { HvaFile, IniFile, MapFile, MixFile, Palette, ShpFile, TmpFile, Vfs, VxlFile } from './vendor/formats/index.js';
 import { buildTileSlots, clearTileGlobalNum, theaterArtExt, theaterIniName } from './vendor/dev/theater.js';
-import { facingAngle, projectModelPoint, renderTurretToSprite, renderVoxelToSprite } from './vendor/dev/voxelRender.js';
+import { renderTurretToSprite, renderVoxelToSprite } from './vendor/dev/voxelRender.js';
 import type { ConvertedSprite } from './vendor/dev/sprite.js';
+import { runStreamView } from './stream.js';
 
 // Calibration knob: where the install lives when the page runs as an OBS "Local file".
 const OBS_INSTALL = 'http://absolute/D:/GAMES/Origin/Command and Conquer Red Alert II';
@@ -288,90 +289,16 @@ async function main() {
   const turretTex = frameTextures(turret.sprite);
   note(`Rhino prerendered (2x32 facings) in ${(performance.now() - tv).toFixed(0)} ms`);
 
-  // --- tanks: drive between random cells, turn toward the target, turret wanders ---
+  // --- the fake race and the stream-view variants (issue #25) ---
   const cells = tiles.map((t) => [t.x, t.y] as const);
-  type Tank = { c: Container; body: Sprite; tur: Sprite; x: number; y: number; tx: number; ty: number; facing: number; turretOff: number };
-  const tanks: Tank[] = [];
-  const pickTarget = (k: Tank) => {
-    const [x, y] = cells[(Math.random() * cells.length) | 0]!;
-    k.tx = x + 0.5; k.ty = y + 0.5;
-  };
-  const addTanks = (n: number) => {
-    for (let i = 0; i < n; i++) {
-      const [x, y] = cells[(Math.random() * cells.length) | 0]!;
-      const body = new Sprite(bodyTex[0]); body.anchor.set(0.5);
-      const tur = new Sprite(turretTex[0]); tur.anchor.set(0.5);
-      const c = new Container(); c.addChild(body, tur); things.addChild(c);
-      const k: Tank = { c, body, tur, x: x + 0.5, y: y + 0.5, tx: 0, ty: 0, facing: 0, turretOff: 0 };
-      pickTarget(k);
-      tanks.push(k);
-    }
-  };
-  const clearTanks = () => { tanks.splice(0).forEach((k) => k.c.destroy()); };
-
-  const SPEED = 2.5; // cells per second
-  const ROT = 16; // facings per second
-  app.ticker.add((tk) => {
-    const dt = tk.deltaMS / 1000;
-    for (const k of tanks) {
-      const dx = k.tx - k.x, dy = k.ty - k.y, d = Math.hypot(dx, dy);
-      if (d < 0.1) { pickTarget(k); continue; }
-      // facing 0 = north (-y), clockwise, 32 steps
-      const want = ((Math.atan2(dx, -dy) / (2 * Math.PI)) * 32 + 32) % 32;
-      let diff = ((want - k.facing + 48) % 32) - 16;
-      const turn = Math.sign(diff) * Math.min(Math.abs(diff), ROT * dt);
-      k.facing = (k.facing + turn + 32) % 32;
-      if (Math.abs(diff) < 2) { k.x += (dx / d) * Math.min(d, SPEED * dt); k.y += (dy / d) * Math.min(d, SPEED * dt); }
-      k.turretOff = Math.sin(performance.now() / 900 + k.tx) * 4;
-      const f = Math.round(k.facing) % 32, tf = (Math.round(k.facing + k.turretOff) + 32) % 32;
-      k.body.texture = bodyTex[f]!;
-      k.tur.texture = turretTex[tf]!;
-      const ang = facingAngle(f), [px, py, pz] = turret.pivot;
-      const p = projectModelPoint(px * Math.cos(ang) - py * Math.sin(ang), px * Math.sin(ang) + py * Math.cos(ang), pz);
-      k.tur.position.set(p.sx, p.sy);
-      const rx = Math.floor(k.x), ry = Math.floor(k.y), z = heightAt.get(ry * 1000 + rx) ?? 0;
-      k.c.position.set((k.x - k.y) * 30 - minX + 30, (k.x + k.y - z) * 15 - minY);
-      k.c.zIndex = (k.x + k.y) * 15 + 15;
-    }
+  const starts = map.waypoints.filter((w) => w.number < 8);
+  const courseCells = starts.length >= 3 ? starts : [cells[0]!, cells[(cells.length / 3) | 0]!, cells[((2 * cells.length) / 3) | 0]!].map(([x, y]) => ({ x, y }));
+  note(`course: ${courseCells.length} start waypoints as a loop`);
+  runStreamView({
+    app, world, things, bodyTex, turretTex, pivot: turret.pivot as [number, number, number], courseCells,
+    toWorld: (x, y) => ({ x: (x - y) * 30 - minX + 30, y: (x + y - (heightAt.get(Math.floor(y) * 1000 + Math.floor(x)) ?? 0)) * 15 - minY }),
   });
-
-  // --- camera: drag to pan, wheel to zoom ---
-  const startCell = map.waypoints.find((w) => w.number === 0) ?? { x: cells[0]![0], y: cells[0]![1] };
-  world.position.set(app.screen.width / 2 - cellX(startCell.x, startCell.y), app.screen.height / 2 - cellY(startCell.x, startCell.y));
-  let drag: { x: number; y: number } | null = null;
-  app.canvas.addEventListener('pointerdown', (e) => (drag = { x: e.clientX - world.x, y: e.clientY - world.y }));
-  addEventListener('pointerup', () => (drag = null));
-  addEventListener('pointermove', (e) => drag && world.position.set(e.clientX - drag.x, e.clientY - drag.y));
-  app.canvas.addEventListener('wheel', (e) => {
-    const s = Math.min(3, Math.max(0.15, world.scale.x * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
-    const k = s / world.scale.x;
-    world.position.set(e.clientX - (e.clientX - world.x) * k, e.clientY - (e.clientY - world.y) * k);
-    world.scale.set(s);
-  });
-
-  // --- HUD: frame rate and controls ---
-  const fpsEl = document.getElementById('fps')!;
-  const frames: number[] = [];
-  app.ticker.add((tk) => {
-    frames.push(tk.deltaMS);
-    if (frames.length > 120) frames.shift();
-  });
-  setInterval(() => {
-    const sorted = [...frames].sort((a, b) => b - a);
-    const avg = frames.reduce((a, b) => a + b, 0) / frames.length;
-    fpsEl.textContent = `${(1000 / avg).toFixed(0)} fps avg, ${(1000 / (sorted[1] ?? avg)).toFixed(0)} fps 1% low, ${tanks.length} Rhinos, ${app.renderer.name}`;
-  }, 500);
-  for (const b of document.querySelectorAll<HTMLButtonElement>('[data-add]')) b.onclick = () => addTanks(Number(b.dataset.add));
-  document.getElementById('clear')!.onclick = clearTanks;
-  addTanks(Number(params.get('tanks') ?? 8));
-  // OBS browser sources can't take clicks or query params: step the load ourselves and log the frame rate.
-  if (location.hostname === 'absolute') {
-    for (const total of [8, 100, 300, 1000, 2000]) {
-      addTanks(total - tanks.length);
-      await new Promise((r) => setTimeout(r, 8000));
-      note(`OBS bench: ${fpsEl.textContent}`);
-    }
-  }
+  document.getElementById('hud')!.hidden = params.get('log') !== '1';
   note('ready: drag to pan, wheel to zoom');
 }
 
