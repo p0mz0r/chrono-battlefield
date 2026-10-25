@@ -18,6 +18,10 @@ _Avoid_: Player, participant
 The streamer running the game; starts each race and sets its options.
 _Avoid_: Admin, host, user
 
+**Course maker**:
+Whoever lays a course in the editor, sometimes also the author of its map file; decides the course's waypoints, laps and finish.
+_Avoid_: Map maker, designer
+
 ### The race
 
 **Race**:
@@ -41,7 +45,7 @@ A tank in the race that no racer owns, added to fill a thin field and labelled a
 _Avoid_: AI racer, NPC, racer
 
 **Finish area**:
-The cells at the course's last waypoint; a tank that enters it has finished and leaves the battlefield.
+The marked circle of cells, three tanks wide, around a course's finish cell; a tank that enters it with no waypoints left has finished and leaves the battlefield.
 _Avoid_: Finish line, goal
 
 **Finish timer**:
@@ -132,12 +136,36 @@ _Avoid_: Log, chat reply, toast
 An imported RA2 / Yuri's Revenge map, used as the terrain a race is run on.
 _Avoid_: Map, level, arena
 
+**Map file**:
+The `.map`, `.yrm` or `.mpr` file a battlefield is imported from, either shipped with the game or a custom map made in Final Alert 2.
+_Avoid_: Battlefield, scenario
+
 **Course**:
-The ordered waypoints from start to finish laid over a battlefield; tanks find their own way between waypoints.
+A start grid, ordered waypoints and a finish area laid over a battlefield; tanks find their own way between waypoints. One battlefield can carry many courses.
 _Avoid_: Path, track, route
 
+**Waypoint**:
+One cell on a course that tanks must pass close to, in order, on their way to the finish.
+_Avoid_: Checkpoint, node, gate
+
+**Lap section**:
+A run of consecutive waypoints on a course that tanks drive a set number of times before going on; a circuit is a course that is one lap section.
+_Avoid_: Loop, circuit, lap
+
+**Start grid**:
+The ten cells where a course's tanks are placed at random before the start countdown.
+_Avoid_: Grid, spawn, starting line
+
+**Ideal line**:
+The fastest route from the start grid through a course's waypoints in order, each lap section repeated, to the finish area, ignoring tanks; course progress is measured along it.
+_Avoid_: Racing line, centre line, path
+
+**Leading tank**:
+The unfinished tank with the most course progress.
+_Avoid_: Leader, first place, pole
+
 **Bridge**:
-A high bridge on the battlefield, with a deck tanks drive over and ground tanks drive under; during a race it can be destroyed, as long as every unfinished tank can still reach the finish, and repaired.
+A high bridge on the battlefield, with a deck tanks drive over and ground tanks drive under; during a race it can be destroyed, as long as every unfinished tank can still reach the finish, and repaired. Only the bridges a course puts in play, labelled `B1`, `B2` and on, can be targeted.
 _Avoid_: Overpass
 
 **Install**:
