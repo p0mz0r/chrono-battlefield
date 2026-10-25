@@ -112,6 +112,20 @@ _Avoid_: Noclip, unstuck
 Any chat-triggered effect on the race, such as a homing missile, the chronosphere, or a boost. Harmful ones delay or move a tank; boost and shield help one.
 _Avoid_: Superweapon, command, power
 
+### Chat
+
+**Chat command**:
+A chat line that is exactly one listed verb, such as `!rhino` or `!missile`, plus at most its one argument; case and extra spaces don't matter, and every other line is ignored silently.
+_Avoid_: Message, redemption
+
+**Command list**:
+The subtle on-screen list of the chat commands available right now, such as `!rhino` during the join window; a chat command not on it is ignored silently.
+_Avoid_: Help, menu
+
+**Interaction feed**:
+The short on-stream lines telling a viewer why an available chat command failed, such as a cooldown or an unknown name; the game posts nothing to chat itself.
+_Avoid_: Log, chat reply, toast
+
 ### The ground
 
 **Battlefield**:
