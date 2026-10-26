@@ -8,7 +8,7 @@ export interface TerrainChunk {
   x: number;
   y: number;
   /** CHUNK×CHUNK RGBA pixels. */
-  rgba: Uint8ClampedArray;
+  rgba: Uint8ClampedArray<ArrayBuffer>;
 }
 
 export interface Terrain {
@@ -53,7 +53,7 @@ export function bakeTerrain(map: MapFile, vfs: Vfs): Terrain {
   }
   const width = maxX - minX, height = maxY - minY;
   const cols = Math.ceil(width / CHUNK);
-  const buffers: (Uint8ClampedArray | undefined)[] = [];
+  const buffers: (Uint8ClampedArray<ArrayBuffer> | undefined)[] = [];
   const put = (x: number, y: number, v: number) => {
     if (x < 0 || y < 0 || x >= width || y >= height) return;
     const ci = Math.floor(y / CHUNK) * cols + Math.floor(x / CHUNK);
