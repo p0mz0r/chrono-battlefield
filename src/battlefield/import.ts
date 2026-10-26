@@ -51,7 +51,8 @@ export async function importBattlefield(read: ReadFile, path: string): Promise<B
   const countries = new Set(stock.typeList('Countries').map((c) => c.toLowerCase()));
   const overrides = map.ini.sectionNames().filter((name) => {
     const lower = name.toLowerCase();
-    if (HONOURED.has(lower) || countries.has(lower) || lower === 'specialflags' || !stock.rules.hasSection(name)) return false;
+    if (['specialflags', 'triggers', 'tags', 'events', 'actions', 'teamtypes', 'taskforces', 'scripttypes', 'aitriggertypes'].includes(lower)) return true;
+    if (HONOURED.has(lower) || countries.has(lower) || !stock.rules.hasSection(name)) return false;
     return map.ini.getSection(name)!.entries.some((e) => e.key.toLowerCase() !== 'image');
   });
   if (overrides.length) warnings.push(`ignored rule overrides: ${overrides.join(', ')}`);

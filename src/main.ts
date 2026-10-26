@@ -1,13 +1,31 @@
-import { Application, Container, Graphics, Sprite, Texture } from 'pixi.js';
+import { Application, Container, Graphics, Rectangle, Sprite, Texture } from 'pixi.js';
+import { prerenderRhino } from './assets/rhino.js';
+import { importBattlefield } from './battlefield/import.js';
 import type { CellGrid } from './battlefield/grid.js';
-import { importBattlefield, type Battlefield } from './battlefield/import.js';
 import { CHUNK } from './battlefield/terrain.js';
 import { readInstall } from './install/read.js';
+import { createTank, isDriving, LEPTONS_PER_CELL, orderMove, tankCell, tick, TICK_HZ, type Cell } from './movement/index.js';
+import { loadMap, mountTheater } from './ra2/mount.js';
+import { facingAngle, projectModelPoint } from './ra2/render/voxelRender.js';
+import type { ConvertedSprite } from './ra2/render/sprite.js';
 
-// Dev page: draws one battlefield. `?map=<path inside the install>`; `?grid=1` or `G` overlays passability;
-// `?cell=x,y&zoom=1` centres on a cell instead of fitting the whole battlefield.
+// Dev page: one battlefield's terrain and one Rhino that drives to a clicked cell.
+// `?map=<path inside the install>`, `?start=x,y`, `?to=x,y` (order on load), `?zoom=N` (follow the tank), `?grid=1` (show passability).
 const status = document.getElementById('status')!;
 const params = new URLSearchParams(location.search);
+const cellParam = (name: string): Cell | undefined => {
+  const [x, y] = (params.get(name) ?? '').split(',').map(Number);
+  return Number.isInteger(x) && Number.isInteger(y) ? { x: x!, y: y! } : undefined;
+};
+
+function frameTextures(s: ConvertedSprite): Texture[] {
+  const canvas = document.createElement('canvas');
+  canvas.width = s.atlasWidth;
+  canvas.height = s.atlasHeight;
+  canvas.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(s.colorRgba), s.atlasWidth, s.atlasHeight), 0, 0);
+  const source = Texture.from(canvas).source;
+  return s.frames.map((f) => new Texture({ source, frame: new Rectangle(f.x, f.y, f.w, f.h) }));
+}
 
 const canvasTexture = (rgba: Uint8ClampedArray<ArrayBuffer>, width: number, height: number) => {
   const canvas = document.createElement('canvas');
@@ -34,12 +52,42 @@ function passability(grid: CellGrid, originX: number, originY: number): Graphics
   return g;
 }
 
-function draw(app: Application, battlefield: Battlefield) {
-  const { terrain, images, objects, grid } = battlefield;
+async function main() {
+  const mapPath = params.get('map') ?? 'Hills.mmx';
+  const map = await loadMap(readInstall, mapPath);
+  const vfs = await mountTheater(readInstall, map.theater);
+  const battlefield = await importBattlefield(readInstall, mapPath);
+  const { terrain, images, objects } = battlefield;
+  const cells = battlefield.grid;
+  const grid = {
+    width: cells.width, height: cells.height,
+    speed: (x: number, y: number) => x < 0 || y < 0 || x >= cells.width || y >= cells.height ? 0 : cells.blocked[y * cells.width + x] ? 0 : cells.speed[y * cells.width + x] ?? 0,
+    level: (x: number, y: number) => cells.level[y * cells.width + x] ?? 0,
+  };
+  const rhino = prerenderRhino(vfs, map.theater);
+
+  const { originX: minX, originY: minY } = terrain;
+  /** Battlefield px of a point in cell units (cell centre = x + 0.5). */
+  const toScreen = (fx: number, fy: number, z: number) => ({ x: (fx - fy) * 30 + 30 - minX, y: (fx + fy - z) * 15 - minY });
+  const toCell = (sx: number, sy: number): Cell => {
+    let c = { x: 0, y: 0 };
+    for (let i = 0, z = 0; i < 3; i++, z = grid.level(c.x, c.y)) {
+      const a = (sx + minX - 30) / 30, b = (sy + minY) / 15 + z;
+      c = { x: Math.floor((a + b) / 2), y: Math.floor((b - a) / 2) };
+    }
+    return c;
+  };
+
+  const app = new Application();
+  await app.init({ resizeTo: window, background: '#000' });
+  document.body.prepend(app.canvas);
   const world = new Container();
   app.stage.addChild(world);
   for (const chunk of terrain.chunks) {
-    const sprite = new Sprite(canvasTexture(chunk.rgba, CHUNK, CHUNK));
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = CHUNK;
+    canvas.getContext('2d')!.putImageData(new ImageData(chunk.rgba, CHUNK, CHUNK), 0, 0);
+    const sprite = new Sprite(Texture.from(canvas));
     sprite.position.set(chunk.x, chunk.y);
     world.addChild(sprite);
   }
@@ -52,44 +100,88 @@ function draw(app: Application, battlefield: Battlefield) {
     things.addChild(sprite);
   }
   world.addChild(things);
-  const overlay = passability(grid, terrain.originX, terrain.originY);
+  const overlay = passability(cells, terrain.originX, terrain.originY);
   overlay.visible = params.get('grid') === '1';
   world.addChild(overlay);
   addEventListener('keydown', (e) => { if (e.key === 'g' || e.key === 'G') overlay.visible = !overlay.visible; });
 
-  const cell = params.get('cell')?.split(',').map(Number);
-  const place = () => {
-    if (cell) {
-      const zoom = Number(params.get('zoom') ?? 1);
-      world.scale.set(zoom);
-      const [x = 0, y = 0] = cell;
-      world.position.set(app.screen.width / 2 - ((x - y) * 30 - terrain.originX) * zoom, app.screen.height / 2 - ((x + y) * 15 - terrain.originY) * zoom);
-    } else {
-      world.scale.set(Math.min(app.screen.width / terrain.width, app.screen.height / terrain.height));
-    }
-  };
-  place();
-  app.renderer.on('resize', place);
-}
+  const trail = new Graphics();
+  world.addChild(trail);
 
-async function main() {
-  const mapPath = params.get('map') ?? 'Hills.mmx';
-  const battlefield = await importBattlefield(readInstall, mapPath);
-  const app = new Application();
-  await app.init({ resizeTo: window, background: '#000' });
-  document.body.prepend(app.canvas);
-  draw(app, battlefield);
-  const { grid } = battlefield;
-  status.textContent = [
-    `${mapPath}: ${battlefield.theater}, ${grid.width}×${grid.height} cells, ${battlefield.objects.length} objects, ` +
-      `bridges ${grid.bridges.filter((b) => b.kind === 'high').length} high / ${grid.bridges.filter((b) => b.kind === 'low').length} low. G: passability`,
-    ...battlefield.warnings.map((w) => `warning: ${w}`),
-  ].join('\n');
-  document.body.dataset.ready = 'true';
+  // The Rhino.
+  const bodyTex = frameTextures(rhino.body), turretTex = frameTextures(rhino.turret.sprite);
+  const body = new Sprite(bodyTex[0]), turret = new Sprite(turretTex[0]);
+  body.anchor.set(0.5);
+  turret.anchor.set(0.5);
+  const tankView = new Container();
+  tankView.addChild(body, turret);
+  things.addChild(tankView);
+
+  const waypoint = map.waypoints.find((w) => w.number === 0);
+  let start = cellParam('start') ?? (waypoint && { x: waypoint.x, y: waypoint.y }) ?? { x: grid.width >> 1, y: grid.height >> 1 };
+  if (!grid.speed(start.x, start.y)) {
+    let best = Infinity;
+    const want = start;
+    for (let y = 0; y < grid.height; y++) for (let x = 0; x < grid.width; x++) {
+      const d = Math.hypot(x - want.x, y - want.y);
+      if (grid.speed(x, y) && d < best) [best, start] = [d, { x, y }];
+    }
+  }
+  const tank = createTank(start);
+  let prev = { x: tank.x, y: tank.y };
+  const order = (to: Cell) => {
+    const ok = orderMove(tank, grid, to);
+    status.textContent = `${mapPath}: Rhino ${ok ? 'driving' : 'cannot reach'} ${to.x},${to.y}`;
+  };
+
+  const focus = cellParam('cell');
+  const zoom = Number(params.get('zoom')) || (focus ? 1 : 0);
+  const fit = () => world.scale.set(zoom || Math.min(app.screen.width / terrain.width, app.screen.height / terrain.height));
+  fit();
+  app.renderer.on('resize', fit);
+  app.stage.eventMode = 'static';
+  app.stage.hitArea = app.screen;
+  app.stage.on('pointerdown', (e) => {
+    const p = world.toLocal(e.global);
+    order(toCell(p.x, p.y));
+  });
+
+  // Fixed-step simulation, drawn interpolated.
+  let acc = 0;
+  app.ticker.add((t) => {
+    acc += t.deltaMS / 1000;
+    for (let n = 0; acc >= 1 / TICK_HZ && n < 10; n++, acc -= 1 / TICK_HZ) {
+      prev = { x: tank.x, y: tank.y };
+      tick(tank, grid);
+    }
+    const a = Math.min(acc * TICK_HZ, 1);
+    const fx = (prev.x + (tank.x - prev.x) * a) / LEPTONS_PER_CELL, fy = (prev.y + (tank.y - prev.y) * a) / LEPTONS_PER_CELL;
+    // The prerender's frame 0 looks along -x (screen up-left); movement facing 0 is -y (up-right).
+    const f = (Math.round(tank.facing / 2048) + 8) % 32;
+    body.texture = bodyTex[f]!;
+    turret.texture = turretTex[f]!;
+    const ang = facingAngle(f), [px, py, pz] = rhino.turret.pivot;
+    const tp = projectModelPoint(px * Math.cos(ang) - py * Math.sin(ang), px * Math.sin(ang) + py * Math.cos(ang), pz);
+    turret.position.set(tp.sx, tp.sy);
+    const p = toScreen(fx, fy, grid.level(Math.floor(fx), Math.floor(fy)));
+    tankView.position.set(p.x, p.y);
+    tankView.zIndex = (fx + fy + 1) * 15;
+    if (params.get('grid') && isDriving(tank)) trail.circle(p.x, p.y, 1.5).fill(0x00ffff);
+    const center = focus ? toScreen(focus.x, focus.y, grid.level(focus.x, focus.y)) : p;
+    if (zoom) world.position.set(app.screen.width / 2 - center.x * zoom, app.screen.height / 2 - center.y * zoom);
+    const c = tankCell(tank);
+    document.body.dataset.tank = `${c.x},${c.y},${isDriving(tank) ? "driving" : "stopped"}`;
+    document.body.dataset.pose = `${tank.x},${tank.y},${tank.facing}`;
+  });
+
+  status.textContent = `${mapPath}: ${map.theater}, ${terrain.missing} missing tiles. Rhino at ${start.x},${start.y}; click a cell to drive. G: passability. ${battlefield.warnings.join('; ')}`;
+  const to = cellParam('to');
+  if (to) order(to);
+  document.body.dataset.ready = String(terrain.missing === 0);
 }
 
 main().catch((err: unknown) => {
-  status.textContent = String(err instanceof Error ? err.message : err);
+  status.textContent = String(err);
   status.style.color = '#f66';
   document.body.dataset.ready = 'error';
 });
