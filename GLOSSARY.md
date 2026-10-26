@@ -25,8 +25,12 @@ _Avoid_: Map maker, designer
 ### The race
 
 **Race**:
-One round of the game, from the join window opening until every tank has finished or the finish timer runs out.
+One round of the game, from the join window opening until every tank has finished, the finish timer runs out or the operator ends it. A race the operator ends before it has got far enough is cancelled and has no results.
 _Avoid_: Game, match, round
+
+**Race setup**:
+The on-stream screen between races where the operator picks the course and the race's options, then opens the join window; it remembers the last choices.
+_Avoid_: Lobby, menu, settings
 
 **Join window**:
 The opening phase of a race, started by the operator, during which viewers can join as racers; it closes when its time runs out or the field is full, and nobody joins after it closes.
