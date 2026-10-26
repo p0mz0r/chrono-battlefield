@@ -9,6 +9,8 @@ Tags:
 
 ModEnc was unreachable during this research (direct: HTTP 403, Wayback: 429), so nothing here rests on it.
 
+> **Correction (2026-10-26, owner):** low bridges are bridges in play too. The wooden low bridges are destroyable in the real game, and a destroy takes out the whole bridge: an Ivan plants the bomb on the repair hut and the bridge explodes. So any contiguous run of high (`BRIDGE*`/`BRIDGEB*`) or low (`LOBRDG*`/`LOBRDB*`) bridge cells can be labelled `B1`…, and Lunar maps can have bridges in play (low ones). A map's `DestroyableBridges` flag is ignored: the course maker decides. Where this doc says low bridges stay terrain and "`!bridge` targets high bridges only", that was an inference from the glossary of the time, now superseded.
+
 ## Answer
 
 1. **All six theaters import with all their art.** Each theater's control INI, its three palettes and its MIXes are present in a combined install, and every tile that a scanned map uses resolves. **[Install]**
@@ -100,7 +102,7 @@ A map file is **supported** when, reading only stock files (`ra2.mix`, `ra2md.mi
 3. **Overlay.** Every overlay byte other than `0xFF` indexes into `[OverlayTypes]` (the map's list if it has one, else rulesmd) by position, and that type's art resolves in that theater.
 4. **Trees and buildings.** Every `[Terrain]` and `[Structures]` type is in the stock or map type list, and its art resolves in that theater by the CNCMaps rule (§1): `Image=` merged key by key (map over rules), then `Theater=`, then the NewTheater swap, `G` fallback, original name. `InvisibleInGame=yes` needs no art.
 5. **Ignored, with a warning listing them:** other rules overrides (land-type speeds, `[HTNK]`, `[General]`, `[SpecialFlags]`), and units, infantry, aircraft, triggers and AI.
-6. **Bridges in play** (`B1`…): each must be a contiguous run of `BRIDGE1/2` or `BRIDGEB1/2` overlay cells. Lunar maps can't have any.
+6. **Bridges in play** (`B1`…): each must be a contiguous run of high (`BRIDGE1/2`, `BRIDGEB1/2`) or low (`LOBRDG*`, `LOBRDB*`) bridge overlay cells. Lunar maps can have low ones only.
 
 Under this rule, 609 of the 684 maps on the install pass: all 53 Westwood maps; Temperate 280/310, Snow 142/158, Urban 68/84, New Urban 29/35, Desert 86/89, Lunar 4/8. **[Install]** The check is cheap enough to run live in the editor [Inf]: one map plus its theater's file lookups, with no decoding of TMP pixels beyond reading the header.
 
