@@ -14,3 +14,8 @@ test('discovery tries the saved path, then the Origin, EA app and Steam folders'
   installs.delete(ORIGIN);
   expect((await findInstall(undefined, exists)).root).toBe(EA_APP);
 });
+
+test('a folder lacking a required file names it', async () => {
+  const exists = async (path: string) => path.startsWith('E:/RA2/') && !path.endsWith('/expandmd01.mix');
+  expect(await findInstall('E:/RA2', exists)).toEqual({ partial: [{ root: 'E:/RA2', missing: ['expandmd01.mix'] }] });
+});

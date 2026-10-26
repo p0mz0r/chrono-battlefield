@@ -1,34 +1,149 @@
+type Read = (path: string) => Promise<Uint8Array>;
+
+const missingFile = (path: string) => new Error(`Missing install file: ${path}`);
+
+/** Install reads in `npm run dev`: the `/ra2/` middleware serving `RA2_DIR`. */
+const readDev: Read = async (path) => {
+  const res = await fetch(`/ra2/${path.split('/').map(encodeURIComponent).join('/')}`);
+  if (!res.ok) throw missingFile(path);
+  return new Uint8Array(await res.arrayBuffer());
+};
+
+/** In an OBS Local-file source the page is on `http://absolute/`, which fetches any file by absolute path. */
+const inObs = () => location.hostname === 'absolute';
+const absoluteUrl = (path: string) => `http://absolute/${path.split('/').map(encodeURIComponent).join('/')}`;
+
+/** Whether a file exists, without reading it (the body is cancelled; a missing file takes OBS ~2.3 s to fail). */
+async function existsAbsolute(path: string): Promise<boolean> {
+  try {
+    const res = await fetch(absoluteUrl(path));
+    await res.body?.cancel();
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+function readFolder(root: string): Read {
+  return async (path) => {
+    // ponytail: whole file per read (OBS ignores Range); #50 streams only the wanted entries.
+    const res = await fetch(absoluteUrl(`${root}/${path}`)).catch(() => undefined);
+    if (!res?.ok) throw missingFile(path);
+    return new Uint8Array(await res.arrayBuffer());
+  };
+}
+
+// Uploaded files, stored as-is in IndexedDB, keyed by lower-case file name.
+function uploads<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const open = indexedDB.open('rhino-race-uploads', 1);
+    open.onupgradeneeded = () => open.result.createObjectStore('files');
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const db = open.result;
+      const tx = db.transaction('files', mode);
+      const req = run(tx.objectStore('files'));
+      tx.oncomplete = () => (db.close(), resolve(req.result));
+      tx.onerror = tx.onabort = () => (db.close(), reject(tx.error));
+    };
+  });
+}
+
+const readUploads: Read = async (path) => {
+  const file = await uploads<Blob | undefined>('readonly', (s) => s.get(path.slice(path.lastIndexOf('/') + 1).toLowerCase()));
+  if (!file) throw missingFile(path);
+  return new Uint8Array(await file.arrayBuffer());
+};
+
+export const uploadedNames = async () => (await uploads('readonly', (s) => s.getAllKeys())).map(String);
+export const clearUploads = () => uploads('readwrite', (s) => s.clear());
+
+/** Stores the files as-is; returns the required names still missing. Once complete, they replace the saved path. */
+export async function storeUploads(files: File[]): Promise<string[]> {
+  for (const file of files) await uploads('readwrite', (s) => s.put(file, file.name.toLowerCase()));
+  const names = await uploadedNames();
+  const missing = REQUIRED.filter((n) => !names.includes(n));
+  if (!missing.length) localStorage.removeItem(PATH_KEY);
+  return missing;
+}
+
+let backend: Read = readDev;
+
 /**
  * Reads one file of the operator's RA2 + YR install, by its path inside the install folder
  * (`ra2.mix`, `Maps/Yuri's Revenge/x.map`). Every install read goes through here (ADR 0004).
- * Backend so far: the dev server's `/ra2/` middleware serving `RA2_DIR`.
+ * Backends: the dev server's `/ra2/` middleware, a folder over OBS's `http://absolute/`, or uploaded files.
+ * Throws `Missing install file: <path>`.
  */
-export async function readInstall(path: string): Promise<Uint8Array> {
-  const res = await fetch(`/ra2/${path.split('/').map(encodeURIComponent).join('/')}`);
-  if (!res.ok) throw new Error(`Missing install file: ${path}`);
-  return new Uint8Array(await res.arrayBuffer());
+export function readInstall(path: string): Promise<Uint8Array> {
+  return backend(path);
+}
+
+const PATH_KEY = 'rhino-race.installPath';
+export const savedPath = () => localStorage.getItem(PATH_KEY) ?? '';
+
+/** Checks one folder and saves it as the install path. Returns what's wrong with it, if anything. */
+export async function useFolder(path: string): Promise<string[]> {
+  path = normalizePath(path);
+  if (!path) {
+    localStorage.removeItem(PATH_KEY);
+    return [];
+  }
+  const found = await findInstall(path, existsAbsolute, []);
+  if (found.root) localStorage.setItem(PATH_KEY, found.root);
+  return found.root ? [] : describe(found, path);
+}
+
+function describe(found: Discovery, saved?: string): string[] {
+  const lines = found.partial.map((p) => `${p.root} is missing ${p.missing.join(', ')}`);
+  if (saved && !found.partial.some((p) => p.root === normalizePath(saved))) lines.unshift(`Nothing readable at ${saved}`);
+  return lines;
+}
+
+/**
+ * Picks the backend: the saved path, then the Origin, EA app and Steam folders, then uploaded files.
+ * Uploads come first when the operator's last choice was uploading (which clears the saved path).
+ * Returns why none worked (empty when one did).
+ */
+export async function openInstall(): Promise<string[]> {
+  if (import.meta.env.DEV) return [];
+  const saved = savedPath();
+  const names = await uploadedNames();
+  const lacking = REQUIRED.filter((n) => !names.includes(n));
+  const uploaded = names.length > 0 && !lacking.length;
+  const problems: string[] = [];
+  if (inObs() && !(uploaded && !saved)) {
+    const found = await findInstall(saved, existsAbsolute);
+    if (found.root) {
+      backend = readFolder(found.root);
+      return [];
+    }
+    problems.push(...describe(found, saved), 'No install in the Origin, EA app or Steam folders');
+  }
+  if (uploaded) {
+    backend = readUploads;
+    return [];
+  }
+  if (names.length) problems.push(`Uploaded files are missing ${lacking.join(', ')}`);
+  return problems.length ? problems : ['No install found'];
 }
 
 /** The files an install must have, beside the maps. */
 export const REQUIRED = ['ra2.mix', 'ra2md.mix', 'expandmd01.mix'];
 
 const GAME = 'Command and Conquer Red Alert II';
-// Tried in this order after the saved path. Origin, EA app, Steam defaults first, then the same
-// launchers' library folders as people commonly put them on other drives.
-// ponytail: a guessed list (the launchers' own config doesn't name the folder); the setup screen covers the rest.
+// Tried in this order after the saved path: the Origin, EA app and Steam defaults, then the same
+// launchers' library folders where people often move them.
+// ponytail: a guessed list (the launchers' config doesn't name the folder), kept short because each absent
+// folder costs OBS ~2.3 s with 6 fetches at a time; the setup screen covers the rest.
 const DEFAULT_ROOTS = [
   `C:/Program Files (x86)/Origin Games/${GAME}`,
   `C:/Program Files/EA Games/${GAME}`,
   `C:/Program Files (x86)/Steam/steamapps/common/${GAME}`,
-  ...['C', 'D', 'E', 'F'].flatMap((d) => [
-    `${d}:/Origin Games/${GAME}`,
-    `${d}:/Games/Origin/${GAME}`,
-    `${d}:/Games/Origin Games/${GAME}`,
-    `${d}:/EA Games/${GAME}`,
-    `${d}:/Games/EA Games/${GAME}`,
-    `${d}:/SteamLibrary/steamapps/common/${GAME}`,
-    `${d}:/Games/Steam/steamapps/common/${GAME}`,
-  ]),
+  `D:/Games/Origin/${GAME}`,
+  `D:/Origin Games/${GAME}`,
+  `D:/EA Games/${GAME}`,
+  `D:/SteamLibrary/steamapps/common/${GAME}`,
 ];
 
 /** `D:\Games\RA2\` or `"D:/Games/RA2"` → `D:/Games/RA2`. */
@@ -44,10 +159,17 @@ export interface Discovery {
 }
 
 /** Tries the saved path, then the default folders. `exists` checks one absolute path. */
-export async function findInstall(saved: string | undefined, exists: (path: string) => Promise<boolean>): Promise<Discovery> {
-  const roots = [...new Set([...(saved ? [normalizePath(saved)] : []), ...DEFAULT_ROOTS])];
+export async function findInstall(
+  saved: string | undefined,
+  exists: (path: string) => Promise<boolean>,
+  defaults = DEFAULT_ROOTS,
+): Promise<Discovery> {
+  saved = saved && normalizePath(saved);
+  const roots = [...new Set([...(saved ? [saved] : []), ...defaults])];
+  // One probe per folder, all at once, so absent folders fail side by side rather than in turn.
+  const present = await Promise.all(roots.map((root) => root === saved || exists(`${root}/${REQUIRED[0]}`)));
   const partial: Discovery['partial'] = [];
-  for (const root of roots) {
+  for (const root of roots.filter((_, i) => present[i])) {
     const found = await Promise.all(REQUIRED.map((f) => exists(`${root}/${f}`)));
     const missing = REQUIRED.filter((_, i) => !found[i]);
     if (!missing.length) return { root, partial };
