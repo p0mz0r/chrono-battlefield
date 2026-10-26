@@ -2,7 +2,8 @@ import { Application, Container, Graphics, Rectangle, Sprite, Texture } from 'pi
 import { prerenderRhino } from './assets/rhino.js';
 import { tileGrid } from './battlefield/passability.js';
 import { CHUNK, bakeTerrain } from './battlefield/terrain.js';
-import { readInstall } from './install/read.js';
+import { openInstall, readInstall } from './install/read.js';
+import { bindSetupKey, showSetup } from './install/setup.js';
 import { createTank, isDriving, LEPTONS_PER_CELL, orderMove, tankCell, tick, TICK_HZ, type Cell } from './movement/index.js';
 import { loadMap, mountTheater } from './ra2/mount.js';
 import { facingAngle, projectModelPoint } from './ra2/render/voxelRender.js';
@@ -27,6 +28,13 @@ function frameTextures(s: ConvertedSprite): Texture[] {
 }
 
 async function main() {
+  bindSetupKey();
+  const problems = await openInstall();
+  if (problems.length) {
+    status.textContent = 'RA2 + YR install not found';
+    showSetup(problems);
+    return;
+  }
   const mapPath = params.get('map') ?? 'Hills.mmx';
   const map = await loadMap(readInstall, mapPath);
   const vfs = await mountTheater(readInstall, map.theater);
@@ -150,4 +158,5 @@ main().catch((err: unknown) => {
   status.textContent = String(err);
   status.style.color = '#f66';
   document.body.dataset.ready = 'error';
+  if (/^Missing install file/.test(String((err as Error)?.message))) showSetup([(err as Error).message]);
 });
