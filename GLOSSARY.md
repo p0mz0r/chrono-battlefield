@@ -165,7 +165,7 @@ The unfinished tank with the most course progress.
 _Avoid_: Leader, first place, pole
 
 **Bridge**:
-A high bridge on the battlefield, with a deck tanks drive over and ground tanks drive under; during a race it can be destroyed, as long as every unfinished tank can still reach the finish, and repaired. Only the bridges a course puts in play, labelled `B1`, `B2` and on, can be targeted.
+A bridge on the battlefield: a high bridge, with a deck tanks drive over and ground tanks drive under, or a low bridge, a strip of road over water. During a race it can be destroyed, whole, as long as every unfinished tank can still reach the finish, and repaired. Only the bridges the course maker puts in play, labelled `B1`, `B2` and on, can be targeted; the map's own `DestroyableBridges` setting is ignored. In RA2 the bomb goes on the bridge's repair hut and the whole bridge explodes.
 _Avoid_: Overpass
 
 **Install**:
