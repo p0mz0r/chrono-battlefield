@@ -21,6 +21,15 @@ describeInstall('importBattlefield on the install', () => {
     expect(grid.blocked.some(Boolean)).toBe(true);
     expect(battlefield.objects.length).toBeGreaterThan(0);
   }, 30_000);
+  it('refuses an invalid tile index instead of silently drawing clear ground', async () => {
+    // One LZO literal cell at (1,1), tile 999999, sub-tile 0, height 0.
+    const pack = Buffer.from([15, 0, 11, 0, 28, 1, 0, 1, 0, 63, 66, 15, 0, 0, 0, 0, 17, 0, 0]).toString('base64');
+    const text = `[Map]\nTheater=TEMPERATE\n[IsoMapPack5]\n1=${pack}\n`;
+    const read = (path: string) => path === 'invalid.map' ? Promise.resolve(new TextEncoder().encode(text)) : readFromDir(path);
+    const reason = await importBattlefield(read, 'invalid.map').then(() => 'accepted', (error: Error) => error.message);
+    expect(reason).toMatch(/cells have no tile art/);
+  }, 30_000);
+
   it('honours map Image overrides and refuses missing art in its theater', async () => {
     const source = MixFile.parse(await readFromDir('Hills.mmx')).read('hills.map')!;
     const text = new TextDecoder().decode(source) + '\n[TerrainTypes]\n999=TESTTREE\n[Terrain]\n100100=TESTTREE\n[TESTTREE]\nImage=MISSING_TEST_ART\n';

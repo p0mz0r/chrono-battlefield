@@ -38,8 +38,10 @@ export function tileLookup(stock: Stock): (t: IsoTile) => TmpTile | undefined {
   };
   return (t) => {
     let num = t.tileNum, sub = t.subTile;
-    if (num === 0xffff || num >= slots.length) num = clearNum;
-    const file = tmp(slots[num]!.file);
+    if (num === 0xffff) num = clearNum;
+    const slot = slots[num];
+    if (!slot) return undefined;
+    const file = tmp(slot.file);
     if (!file) return undefined;
     if (num === clearNum) sub = (t.x % file.blocksX) + (t.y % file.blocksY) * file.blocksX;
     return sub < file.tileCount ? file.getTile(sub) : undefined;
