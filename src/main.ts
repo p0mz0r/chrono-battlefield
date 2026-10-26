@@ -2,6 +2,7 @@ import { Application, Container, Sprite, Texture } from 'pixi.js';
 import { CHUNK, bakeTerrain } from './battlefield/terrain.js';
 import { readInstall } from './install/read.js';
 import { loadMap, mountTheater } from './ra2/mount.js';
+import { Stock } from './battlefield/stock.js';
 
 // Dev page: draws one battlefield's terrain, fitted to the window. `?map=<path inside the install>`.
 const status = document.getElementById('status')!;
@@ -10,7 +11,7 @@ async function main() {
   const mapPath = new URLSearchParams(location.search).get('map') ?? 'Hills.mmx';
   const map = await loadMap(readInstall, mapPath);
   const vfs = await mountTheater(readInstall, map.theater);
-  const terrain = bakeTerrain(map, vfs);
+  const terrain = bakeTerrain(new Stock(map, vfs));
 
   const app = new Application();
   await app.init({ resizeTo: window, background: '#000' });
