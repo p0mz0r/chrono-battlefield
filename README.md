@@ -6,7 +6,7 @@ A chat-driven race of RA2 Rhino tanks over a real Red Alert 2 / Yuri's Revenge b
 
 Needs Node 24 and an RA2 + YR install. Set `RA2_DIR` to the install folder.
 
-- `npm run dev` serves the page and the install (under `/ra2/`). It draws one battlefield's terrain: `?map=<path inside the install>`, e.g. `?map=SinkSwim.yro` or `?map=Maps/Yuri's Revenge/2_lanaeris.map` (default `Hills.mmx`).
+- `npm run dev` serves the page and the install (under `/ra2/`). It imports and draws one battlefield: `?map=<path inside the install>`, e.g. `?map=SinkSwim.yro` or `?map=Maps/Yuri's Revenge/2_lanaeris.map` (default `Hills.mmx`). An unsupported map shows why it was refused. `G` (or `?grid=1`) overlays the cell grid's passability: red impassable or blocked, yellow slow, blue ramp, cyan high-bridge deck. `?cell=x,y&zoom=1` centres on a cell.
 - `npm test` runs the tests. Tests that read the install skip when `RA2_DIR` is unset.
 - `npm run typecheck`, `npm run build` (to `dist/`).
 
@@ -16,7 +16,7 @@ Needs Node 24 and an RA2 + YR install. Set `RA2_DIR` to the install folder.
 |---|---|
 | `src/install/` | Install access. `readInstall(path)` is the one function every install read goes through (ADR 0004). |
 | `src/ra2/` | RA2 file readers copied from openra2 (MIX, INI, map, TMP, SHP, VXL/HVA, PAL) and `mount.ts`, which mounts the game MIXes for one theater and loads map files. |
-| `src/battlefield/` | Battlefield import: turns a map plus the install into what the game draws and drives on. So far, terrain baked into chunk textures. |
+| `src/battlefield/` | Battlefield import: `importBattlefield(read, path)` turns a map plus the stock install files into terrain chunks, placed overlay/tree/building images and the cell grid, or refuses it under the support rule. `grid.ts` is the cell grid movement drives on, as plain data. |
 | `src/main.ts` | The page. |
 | `test/` | Test helpers (reading `RA2_DIR`). Tests sit next to the code as `*.test.ts`. |
 | `vite.config.ts` | Includes the dev middleware that serves `RA2_DIR`. |
