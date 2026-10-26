@@ -29,4 +29,5 @@ function serveInstall(): Plugin {
   };
 }
 
-export default defineConfig({ plugins: [serveInstall()] });
+// Relative asset URLs: OBS loads dist/index.html from http://absolute/<path>/.
+export default defineConfig({ base: './', plugins: [serveInstall()] });
