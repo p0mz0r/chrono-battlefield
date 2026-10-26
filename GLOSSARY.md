@@ -130,6 +130,28 @@ _Avoid_: Help, menu
 The short on-stream lines telling a viewer why an available chat command failed, such as a cooldown or an unknown name; the game posts nothing to chat itself.
 _Avoid_: Log, chat reply, toast
 
+### On stream
+
+**Camera mode**:
+How the stream's camera shows a race, switched by the operator: **Overview** or **Director**.
+_Avoid_: View, cam
+
+**Overview**:
+The camera mode that holds the whole course in one still frame; tanks are small, so their labels are number chips.
+_Avoid_: Map view, wide shot
+
+**Director**:
+The camera mode that zooms in and cuts between the leading tank, the closest fight for a place and the tank last hit, captioning the tank on screen with its name and place; labels show names.
+_Avoid_: Chase cam, spectator, auto-cam
+
+**Standings**:
+The live table of every tank in the race, in order of finish then course progress, each with its status and course progress as a % of the whole race; shown in both camera modes, never cut to the top few.
+_Avoid_: Leaderboard, rankings, top 5
+
+**Results**:
+The screen after a race listing every tank's placing with its finish time, or DNF if unfinished.
+_Avoid_: Podium, scoreboard
+
 ### The ground
 
 **Battlefield**:
