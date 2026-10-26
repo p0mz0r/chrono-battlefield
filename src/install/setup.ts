@@ -4,6 +4,7 @@ import { clearUploads, savedPath, storeUploads, uploadedNames, useFolder } from 
 const dialog = document.createElement('dialog');
 dialog.id = 'setup';
 dialog.innerHTML = `
+<style>#setup input, #setup button { font: inherit; }</style>
 <h2>Install setup</h2>
 <ul class="problems"></ul>
 <form method="dialog" class="path">
@@ -11,10 +12,10 @@ dialog.innerHTML = `
   <button value="use">Use this folder</button>
 </form>
 <p><label>Or upload <b>ra2.mix</b>, <b>ra2md.mix</b>, <b>expandmd01.mix</b> and the maps:<br>
-  <input type="file" multiple accept=".mix,.map,.mmx,.yro,.mpr,.yrm"></label></p>
+  <input type="file" multiple></label></p>
 <p class="stored"></p>
 <p><button class="clear">Clear stored files</button> <button class="close">Close</button></p>`;
-dialog.style.cssText = 'font:14px/1.5 sans-serif;background:#111;color:#ddd;border:1px solid #666;max-width:46em';
+dialog.style.cssText = 'font:20px/1.5 sans-serif;background:#111;color:#ddd;border:1px solid #666;max-width:46em';
 const $ = <T extends Element>(sel: string) => dialog.querySelector<T>(sel)!;
 const pathInput = $<HTMLInputElement>('input[name=path]');
 const fileInput = $<HTMLInputElement>('input[type=file]');
