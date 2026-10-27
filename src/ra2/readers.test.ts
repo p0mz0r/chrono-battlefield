@@ -77,6 +77,9 @@ describeInstall('RA2 readers', () => {
     expect(sample.sampleRate).toBe(22050);
     expect(sample.samples.length).toBeGreaterThan(1000);
     expect(sample.samples.some(value => Math.abs(value) > 100)).toBe(true);
+    const pcm = bank.decode('icraloop')!;
+    expect(pcm.samples.length).toBe(bank.entry('icraloop')!.size / 2);
+    expect(pcm.samples.some(value => value !== 0)).toBe(true);
   });
 
   it('audio: resolves the selected stock cues in the INIs and banks', async () => {
