@@ -10,6 +10,7 @@ import { loadCourse, mapHash, type CourseFile } from './race/course.js';
 import { commandList, createRace, secondsLeft, standings, tickRace, type Race, type Racer } from './race/race.js';
 import { directorShot, type Shot } from './race/camera.js';
 import { mountStreamView, type CameraMode } from './race/view.js';
+import { mountOperator, readChoices } from './race/operator.js';
 
 // The race page: a bundled course over its battlefield, the race as the stream sees it (camera modes in race/camera.ts,
 // overlay in race/view.ts; the dev panel's button switches Overview / Director).
@@ -70,6 +71,7 @@ function hudText(race: Race): string {
     case 'countdown': heading = `${name}\n${left}`; break;
     case 'racing': heading = `${name}${race.timer > 0 ? `: finish timer ${left} s` : ''}`; break;
     case 'results': heading = `${name}: results`; break;
+    case 'cancelled': heading = `${name}: Race cancelled`; break;
   }
   const commands = commandList(race);
   return `${heading}\n${rows}${commands.length ? `\n\n${commands.join('  ')}` : ''}${race.phase === 'racing' && race.feed.length ? `\n\n${race.feed.join('\n')}` : ''}`;
@@ -88,8 +90,9 @@ async function main() {
     showSetup(problems);
     return;
   }
-  const courseName = params.get('course'), edit = import.meta.env.DEV && params.get('edit') === '1';
-  let file = Object.entries(COURSES).find(([path]) => !courseName || path.endsWith(`/${courseName}.json`))?.[1];
+  const savedCourse = readChoices().course;
+  const courseName = params.get('course') ?? (savedCourse && savedCourse !== 'random' ? savedCourse : undefined), edit = import.meta.env.DEV && params.get('edit') === '1';
+  let file = Object.entries(COURSES).find(([path]) => !courseName || path === courseName || path.endsWith(`/${courseName}.json`))?.[1];
   if (!file && !edit) throw new Error(`No course ${courseName}`);
   const mapPath = edit && params.get('map') || file!.map;
   const source = edit && params.get('map') ? (params.get('source') === 'shipped' ? 'shipped' : 'install') : file!.source;
@@ -116,7 +119,6 @@ async function main() {
   const level = (x: number, y: number) => grid.level[y * grid.width + x] ?? 0;
   const race = createRace(course, grid, Number(params.get('seed') ?? Date.now() % 1e9));
   const sounds = await loadSounds(read);
-  window.addEventListener('keydown', event => { if (event.key.toLowerCase() === 'm' && !event.repeat) sounds.mute(); });
 
   const { originX: minX, originY: minY } = terrain;
   /** Battlefield px of a point in cell units (cell centre = x + 0.5). */
@@ -244,7 +246,6 @@ async function main() {
   const focus = cellParam('cell');
   const zoom = Number(params.get('zoom')) || (focus ? 1 : 0);
   let cameraMode: CameraMode = 'overview';
-  const switchCamera = () => { cameraMode = cameraMode === 'overview' ? 'director' : 'overview'; };
   const drawOverlay = edit ? undefined : mountStreamView();
   if (edit) world.scale.set(Math.min(app.screen.width / terrain.width, app.screen.height / terrain.height));
   const bounds = course.line.map((point) => toScreen(point.x, point.y, level(Math.floor(point.x), Math.floor(point.y))));
@@ -393,7 +394,10 @@ async function main() {
   document.body.dataset.load = `${loadMs},${cached ? 'cached' : 'imported'}`;
   status.textContent = `${course.file.name} on ${mapPath} (${map.theater}, ${cached ? 'from cache' : 'imported'} in ${loadMs} ms), ideal line ${course.length.toFixed(0)} cells. G: passability and ideal line.`;
   if (edit) (await import('./race/editor.js')).mountEditor(app, world, grid, mapBytes, file!, toScreen, params.has('map'));
-  else if (import.meta.env.DEV) (await import('./race/devPanel.js')).mountDevPanel(race, params, switchCamera);
+  else {
+    mountOperator(race, COURSES, Object.entries(COURSES).find(([, candidate]) => candidate === file)?.[0] ?? '', (mode) => { cameraMode = mode; }, sounds.mute);
+    if (import.meta.env.DEV) (await import('./race/devPanel.js')).mountDevPanel(race, params);
+  }
   document.body.dataset.ready = String(terrain.missing === 0);
 }
 

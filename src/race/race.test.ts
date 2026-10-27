@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CellGrid } from '../movement/index.js';
 import { loadCourse, mapHash, type CourseFile } from './course.js';
-import { chat, commandList, createRace, openJoinWindow, standings, tickRace, type Race, type Racer } from './race.js';
+import { chat, commandList, createRace, endRace, openJoinWindow, standings, tickRace, type Race, type Racer } from './race.js';
 import { TICK_HZ } from '../movement/index.js';
 import { readdirSync, readFileSync } from 'node:fs';
 import { describeInstall, readFromDir } from '../../test/install.js';
@@ -429,6 +429,48 @@ describe('racing', () => {
 });
 
 describe('ending', () => {
+  it('cancels before halfway, but ends with results at halfway', () => {
+    const race = racing();
+    endRace(race);
+    expect(race.phase).toBe('cancelled');
+    expect(race.results).toEqual([]);
+
+    const next = racing();
+    next.racers[0]!.finishedAt = next.frame;
+    for (const r of next.racers.slice(1)) r.progress = next.course.length * 3 / 7;
+    endRace(next);
+    expect(next.phase).toBe('results');
+    expect(next.results).toHaveLength(8);
+
+    const joining = createRace(course(), ARENA, 1);
+    openJoinWindow(joining);
+    endRace(joining);
+    expect(joining.phase).toBe('cancelled');
+
+    const countdown = createRace(course(), ARENA, 1);
+    openJoinWindow(countdown, { joinSeconds: 1 });
+    say(countdown, 'a', '!rhino');
+    ticks(countdown, TICK_HZ);
+    endRace(countdown);
+    expect(countdown.phase).toBe('cancelled');
+  });
+
+  it('pause freezes chat, cooldowns, protections and the finish timer', () => {
+    const race = racing();
+    expect(say(race, 'a', '!shield').ok).toBe(true);
+    race.racers[0]!.finishedAt = race.frame;
+    race.timer = 2 * TICK_HZ;
+    race.paused = true;
+    const before = [race.frame, race.timer, race.field.frame, race.racers[0]!.shieldUntil];
+    ticks(race, 3 * TICK_HZ);
+    expect([race.frame, race.timer, race.field.frame, race.racers[0]!.shieldUntil]).toEqual(before);
+    expect(say(race, 'b', '!boost').reason).toBe('ignored');
+    expect(commandList(race)).toEqual([]);
+    race.paused = false;
+    tickRace(race);
+    expect(race.timer).toBe(2 * TICK_HZ - 1);
+  });
+
   it('ends the race when the finish timer runs out and places unfinished tanks by course progress', () => {
     const race = createRace(course(loopCourse(3)), ARENA, 2);
     openJoinWindow(race, { joinSeconds: 1, finishSeconds: 5 });
