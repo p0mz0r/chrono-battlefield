@@ -1,7 +1,18 @@
-import { MapFile, Vfs } from './index.js';
+import { MapFile, MixFile, Vfs } from './index.js';
 
 /** Reads one install file by its path inside the install folder. The app passes `readInstall`; tests read `RA2_DIR`. */
-export type ReadFile = (path: string) => Promise<Uint8Array>;
+export type ReadFile = ((path: string, offset?: number, length?: number) => Promise<Uint8Array>) & {
+  ranges?: (path: string, ranges: readonly { offset: number; length: number }[]) => Promise<Uint8Array[]>;
+};
+
+export async function installIndexes(read: ReadFile): Promise<Uint8Array[]> {
+  const result: Uint8Array[] = [];
+  for (const name of TOP_MIXES) {
+    const prefix = await read(name, 0, 92);
+    result.push(await read(name, 0, MixFile.indexSize(prefix)));
+  }
+  return result;
+}
 
 // Never cncnet.mix or ra2mode.mix: CnCNet's client files change the stock rules.
 const TOP_MIXES = ['ra2.mix', 'ra2md.mix', 'expandmd01.mix'] as const;
@@ -31,10 +42,23 @@ export async function mountTheater(read: ReadFile, theater: string): Promise<Vfs
   if (!own) throw new Error(`Unknown theater: ${theater}`);
   const vfs = new Vfs();
   for (const top of TOP_MIXES) {
-    const mix = vfs.mountData(await read(top));
-    for (const name of [...(COMMON[top] ?? []), ...(own[top] ?? [])]) {
-      if (!vfs.mountNested(mix, `${name}.mix`)) throw new Error(`Missing install file: ${top} > ${name}.mix`);
+    const names = [...(COMMON[top] ?? []), ...(own[top] ?? [])];
+    if (!read.ranges || top === 'expandmd01.mix') {
+      const mix = vfs.mountData(await read(top));
+      for (const name of names) {
+        if (!vfs.mountNested(mix, `${name}.mix`)) throw new Error(`Missing install file: ${top} > ${name}.mix`);
+      }
+      continue;
     }
+    const prefix = await read(top, 0, 92);
+    const index = MixFile.parseIndex(await read(top, 0, MixFile.indexSize(prefix)));
+    const entries = names.map(name => {
+      const entry = index.getEntry(`${name}.mix`);
+      if (!entry) throw new Error(`Missing install file: ${top} > ${name}.mix`);
+      return { offset: entry.offset, length: entry.size };
+    });
+    // Only the common and current theater's nested archives are needed; top-level movies/audio never enter memory.
+    for (const bytes of await read.ranges(top, entries)) vfs.mountData(bytes);
   }
   return vfs;
 }
