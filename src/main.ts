@@ -7,10 +7,12 @@ import { loadCourse as loadCourseArt, type Sprite as CachedSprite } from './load
 import { facingAngle, projectModelPoint } from './ra2/render/voxelRender.js';
 import { loadCourse, mapHash, type CourseFile } from './race/course.js';
 import { commandList, createRace, secondsLeft, standings, tickRace, type Race, type Racer } from './race/race.js';
+import { directorShot, type Shot } from './race/camera.js';
 import { mountStreamView, type CameraMode } from './race/view.js';
 
-// The race page: a bundled course over its battlefield, the headless race drawn plainly (#45 does the stream view).
-// `?course=<file name without .json>`, `?seed=N` (race seed), `?zoom=N` (follow the leading tank), `?cell=x,y` (centre
+// The race page: a bundled course over its battlefield, the race as the stream sees it (camera modes in race/camera.ts,
+// overlay in race/view.ts; the dev panel's button switches Overview / Director).
+// `?course=<file name without .json>`, `?seed=N` (race seed), `?zoom=N` (fixed zoom), `?cell=x,y` (centre
 // there), `?grid=1` (passability, ideal line, waypoints). Dev only: `?fast=N` runs N× game speed, and the
 // test-chat panel's URL shortcuts (race/devPanel.ts).
 const status = document.getElementById('status')!;
@@ -24,6 +26,9 @@ const cellParam = (name: string): Cell | undefined => {
 /** Courses bundled at build from `courses/*.json`. */
 const COURSES = import.meta.glob<CourseFile>('../courses/*.json', { eager: true, import: 'default' });
 const COURSE_MAPS = import.meta.glob<string>('../courses/maps/*', { eager: true, query: '?url', import: 'default' });
+
+/** World scale under which tank labels are number chips rather than names (Overview ≈ 0.7, Director ≥ 1.8). */
+const CHIPS_BELOW = 1.2;
 
 /** A cached WebP decoded straight into a texture; its pixels never sit in a JS buffer. */
 const blobTexture = async (image: Blob) => Texture.from(await createImageBitmap(image));
@@ -176,22 +181,27 @@ async function main() {
 
   // The Rhinos: one view per racer once its tank is on the start grid, labelled with its name.
   const bodyTex = await frameTextures(rhino.body), turretTex = await frameTextures(rhino.turret);
-  const views = new Map<Racer, { view: Container; body: Sprite; turret: Sprite; effects: Graphics; chip: Graphics; label: Text; prev: { x: number; y: number } }>();
+  // Labels sit on their own layer over everything, at a constant screen size: number chips zoomed out, names zoomed in.
+  const tags = new Container();
+  world.addChild(tags);
+  const views = new Map<Racer, { view: Container; body: Sprite; turret: Sprite; effects: Graphics; tag: Container; chip: Graphics; label: Text; prev: { x: number; y: number } }>();
   const viewOf = (r: Racer) => {
     let v = views.get(r);
     if (!v) {
       const body = new Sprite(bodyTex[0]), turret = new Sprite(turretTex[0]);
       body.anchor.set(0.5);
       turret.anchor.set(0.5);
-      const label = new Text({ text: r.name, style: { fill: r.bot ? 0xcccccc : 0xffff80, fontSize: 12, fontFamily: 'sans-serif', stroke: { color: 0x000000, width: 3 } } });
+      const label = new Text({ text: r.name, style: { fill: r.bot ? 0xdddddd : 0xffff80, fontSize: 20, fontWeight: '700', fontFamily: 'Segoe UI, sans-serif', stroke: { color: 0x000000, width: 4 } } });
       label.anchor.set(0.5, 1);
-      label.position.set(0, -14);
+      const chip = new Graphics().circle(0, -16, 16).fill(r.bot ? 0x5d6b7d : 0xbd2020).stroke({ color: 0xffffff, width: 2 });
+      const tag = new Container();
+      tag.addChild(chip, label);
+      tags.addChild(tag);
       const view = new Container();
       const effects = new Graphics();
-      const chip = new Graphics().circle(0, -21, 11).fill(r.bot ? 0x7b899b : 0xc52c2c);
-      view.addChild(effects, body, turret, chip, label);
+      view.addChild(effects, body, turret);
       things.addChild(view);
-      views.set(r, (v = { view, body, turret, effects, chip, label, prev: { x: r.tank!.x, y: r.tank!.y } }));
+      views.set(r, (v = { view, body, turret, effects, tag, chip, label, prev: { x: r.tank!.x, y: r.tank!.y } }));
     }
     return v;
   };
@@ -205,8 +215,8 @@ async function main() {
   const bounds = course.line.map((point) => toScreen(point.x, point.y, level(Math.floor(point.x), Math.floor(point.y))));
   const minCourseX = Math.min(...bounds.map((p) => p.x)), maxCourseX = Math.max(...bounds.map((p) => p.x));
   const minCourseY = Math.min(...bounds.map((p) => p.y)), maxCourseY = Math.max(...bounds.map((p) => p.y));
-  const overviewScale = () => Math.min((app.screen.width - 440) / (maxCourseX - minCourseX + 120), (app.screen.height - 160) / (maxCourseY - minCourseY + 120));
-  let directorFocus: Racer | undefined, directorReason = 'Leader', cutAt = -Infinity, seenHit = -1;
+  const overviewScale = () => Math.min((app.screen.width - 440) / (maxCourseX - minCourseX + 320), (app.screen.height - 160) / (maxCourseY - minCourseY + 320));
+  let shot: Shot | undefined;
 
   // Fixed-step simulation, drawn interpolated.
   const fast = import.meta.env.DEV ? Number(params.get('fast')) || 1 : 1;
@@ -219,15 +229,23 @@ async function main() {
     }
     for (const [r, v] of views) if (!race.racers.includes(r)) { // a new race
       v.view.destroy({ children: true });
+      v.tag.destroy({ children: true });
       views.delete(r);
+    }
+    if (!edit) { // the camera, before anything is placed: labels counter-scale against it
+    shot = cameraMode === 'director' && race.phase === 'racing' ? directorShot(race, shot) : undefined;
+    const scale = zoom || (cameraMode === 'director' && race.phase === 'racing' ? Math.max(1.8, overviewScale() * 2.5) : overviewScale());
+    const target = focus ? toScreen(focus.x, focus.y, level(focus.x, focus.y)) : shot?.racer.tank ? toScreen(shot.racer.tank.x / LEPTONS_PER_CELL, shot.racer.tank.y / LEPTONS_PER_CELL, spotLevel(grid, shot.racer.tank.cell)) : { x: (minCourseX + maxCourseX) / 2, y: (minCourseY + maxCourseY) / 2 };
+    world.scale.set(scale);
+    world.position.set((app.screen.width + (cameraMode === 'overview' ? 360 : 0)) / 2 - target.x * scale, app.screen.height / 2 - target.y * scale);
     }
     const a = Math.min(acc * TICK_HZ, 1);
     const ordered = standings(race);
     for (const r of race.racers) {
       const tank = r.tank;
       if (!tank) continue;
-      const { view, body, turret, effects, chip, label, prev } = viewOf(r);
-      view.visible = r.finishedAt === undefined; // finished tanks leave the battlefield
+      const { view, body, turret, effects, tag, chip, label, prev } = viewOf(r);
+      view.visible = tag.visible = r.finishedAt === undefined; // finished tanks leave the battlefield
       const fx = (prev.x + (tank.x - prev.x) * a) / LEPTONS_PER_CELL, fy = (prev.y + (tank.y - prev.y) * a) / LEPTONS_PER_CELL;
       // The prerender's frame 0 looks along -x (screen up-left); movement facing 0 is -y (up-right).
       const f = (Math.round(tank.facing / 2048) + 8) % 32;
@@ -246,10 +264,13 @@ async function main() {
       view.position.set(p.x, p.y);
       view.zIndex = (fx + fy + 1) * 15 + (tank.cell.deck ? 60 : 0);
       view.alpha = tank.ghost ? 0.5 : 1;
-      const place = ordered.findIndex((s) => s.name === r.name) + 1;
-      label.text = cameraMode === 'director' || zoom ? r.name : String(place);
-      chip.visible = cameraMode === 'overview' && !zoom;
-      label.style.fontSize = chip.visible ? 13 : 12;
+      chip.visible = world.scale.x < CHIPS_BELOW;
+      const text = chip.visible ? String(ordered.findIndex((s) => s.name === r.name) + 1) : r.name;
+      if (label.text !== text) label.text = text;
+      label.style.fontSize = chip.visible ? 18 : 20;
+      label.y = chip.visible ? -4 : 0;
+      tag.position.set(p.x, p.y - 22);
+      tag.scale.set(1 / world.scale.x);
     }
     for (const effect of bridgeEffects) {
       const destroyed = !!grid.bridges[effect.id]!.destroyed;
@@ -272,33 +293,7 @@ async function main() {
       const p = toScreen(x, y, spotLevel(grid, t.cell));
       missiles.circle(p.x, p.y - 20 * Math.sin(flight * Math.PI), 5).fill(0xffdd50);
     }
-    if (!edit) {
-    const live = ordered.map((s) => race.racers.find((r) => r.name === s.name)!).filter((r) => r.finishedAt === undefined);
-    if (cameraMode === 'director' && race.phase === 'racing') {
-      if (race.lastHit && race.lastHitFrame > seenHit && race.frame - cutAt > 2.5 * TICK_HZ) {
-        seenHit = race.lastHitFrame;
-        directorFocus = race.lastHit;
-        directorReason = 'Just hit';
-        cutAt = race.frame;
-      } else if (live.length && (!directorFocus || directorFocus.finishedAt !== undefined || race.frame - cutAt >= 7 * TICK_HZ)) {
-        if (directorReason === 'Leader' && live.length > 1) {
-          let closest = 0;
-          for (let i = 1; i < live.length - 1; i++) if (live[i]!.progress - live[i + 1]!.progress < live[closest]!.progress - live[closest + 1]!.progress) closest = i;
-          directorFocus = live[closest + 1];
-          directorReason = `Battle for P${closest + 1}`;
-        } else {
-          directorFocus = live[0];
-          directorReason = 'Leader';
-        }
-        cutAt = race.frame;
-      }
-    }
-    const scale = zoom || (cameraMode === 'director' && race.phase === 'racing' ? Math.max(1.8, overviewScale() * 2.5) : overviewScale());
-    const target = focus ? toScreen(focus.x, focus.y, level(focus.x, focus.y)) : cameraMode === 'director' && race.phase === 'racing' && directorFocus?.tank ? toScreen(directorFocus.tank.x / LEPTONS_PER_CELL, directorFocus.tank.y / LEPTONS_PER_CELL, spotLevel(grid, directorFocus.tank.cell)) : { x: (minCourseX + maxCourseX) / 2, y: (minCourseY + maxCourseY) / 2 };
-    world.scale.set(scale);
-    world.position.set((app.screen.width + (cameraMode === 'overview' ? 360 : 0)) / 2 - target.x * scale, app.screen.height / 2 - target.y * scale);
-    drawOverlay!(race, cameraMode, directorFocus, directorReason);
-    }
+    drawOverlay?.(race, shot);
     hud.textContent = hudText(race);
     // For headless checks.
     Object.assign(document.body.dataset, {
