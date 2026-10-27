@@ -54,6 +54,113 @@ const racing = (seed = 1) => {
 };
 
 describe('audience interactions', () => {
+  it('fires V3 past the firer into the first tank, and misses one that dodges', () => {
+    const race = racing();
+    const firer = race.racers[0]!, near = race.racers[1]!, far = race.racers[2]!;
+    for (const r of race.racers) if (r.bot) r.botNext = Infinity;
+    for (const r of race.racers) r.tank!.stunnedUntil = 1000;
+    for (const [r, x, y] of [[firer, 10, 10], [near, 10, 7], [far, 10, 4]] as const) {
+      r.tank!.x = (x + 0.5) * 256; r.tank!.y = (y + 0.5) * 256;
+      r.tank!.cell = { x, y, deck: false };
+    }
+    firer.tank!.facing = 0;
+    expect(say(race, 'a', '!v3 fwd').ok).toBe(true); // works while stunned
+    ticks(race, 2 * TICK_HZ);
+    expect(near.stunUntil).toBeGreaterThan(race.frame);
+    expect(firer.stunUntil).toBe(0);
+    expect(far.stunUntil).toBe(0);
+
+    race.cooldowns.delete('a');
+    near.tank!.x = 13.5 * 256; near.tank!.cell.x = 13;
+    expect(say(race, 'a', '!v3 fwd').ok).toBe(true);
+    ticks(race, 2 * TICK_HZ);
+    expect(far.stunUntil).toBeGreaterThan(race.frame);
+    expect(near.stunUntil).toBeLessThanOrEqual(race.frame);
+  });
+
+  it('defaults the leading racer to a backward V3, and detonates Tesla after two seconds in a three-cell radius', () => {
+    const race = racing();
+    const leader = race.racers[0]!, behind = race.racers[1]!, other = race.racers[2]!;
+    for (const r of race.racers) if (r.bot) r.botNext = Infinity;
+    for (const r of race.racers) r.tank!.stunnedUntil = 1000;
+    for (const [r, x, y] of [[leader, 10, 10], [behind, 10, 13], [other, 15, 13]] as const) {
+      r.tank!.x = (x + 0.5) * 256; r.tank!.y = (y + 0.5) * 256;
+      r.tank!.cell = { x, y, deck: false };
+    }
+    leader.progress = race.course.length;
+    leader.tank!.facing = 0;
+    expect(say(race, 'a', '!v3').ok).toBe(true);
+    console.log(JSON.stringify(race.v3s), standings(race).map(s=>s.name+':'+s.finishTime+':'+s.progress));
+    ticks(race, 2 * TICK_HZ);
+    console.log(race.racers.map(r=>r.name+':'+r.stunUntil+':'+r.tank!.x/256+','+r.tank!.y/256));
+    expect(behind.stunUntil).toBeGreaterThan(race.frame);
+
+    ticks(race, 3 * TICK_HZ);
+    behind.tank!.x = 10.5 * 256; behind.tank!.y = 13.5 * 256;
+    behind.tank!.cell = { x: 10, y: 13, deck: false };
+    behind.tank!.stunnedUntil = 1000;
+    behind.shieldUntil = race.frame + 6 * TICK_HZ;
+    other.tank!.x = 12.5 * 256; other.tank!.y = 13.5 * 256; other.tank!.cell = { x: 12, y: 13, deck: false };
+    const out = race.racers[3]!;
+    out.tank!.x = 17.5 * 256; out.tank!.y = 13.5 * 256; out.tank!.cell = { x: 17, y: 13, deck: false };
+    expect(say(race, 'viewer', '!tesla Kara').ok).toBe(true);
+    ticks(race, 2 * TICK_HZ - 1);
+    expect(other.stunUntil).toBeLessThanOrEqual(race.frame);
+    tickRace(race);
+    expect(behind.stunUntil).toBeLessThanOrEqual(race.frame); // shield
+    expect(other.stunUntil).toBeGreaterThan(race.frame);
+    expect(out.stunUntil).toBeLessThanOrEqual(race.frame);
+  });
+
+  it('keeps the Tesla tank beside its target through the charge, so a target driving on is still stunned', () => {
+    const race = racing();
+    for (const r of race.racers) r.botNext = Infinity;
+    const kara = race.racers[1]!, from = { x: kara.tank!.x / 256, y: kara.tank!.y / 256 };
+    expect(say(race, 'viewer', '!tesla Kara').ok).toBe(true);
+    ticks(race, 2 * TICK_HZ);
+    expect(Math.hypot(kara.tank!.x / 256 - from.x, kara.tank!.y / 256 - from.y)).toBeGreaterThan(3);
+    expect(kara.stunUntil).toBeGreaterThan(race.frame);
+  });
+
+  it('counts the leading tank among unfinished tanks only for the V3 default', () => {
+    const race = racing();
+    const firer = race.racers[0]!, ahead = race.racers[1]!, behind = race.racers[2]!, done = race.racers[3]!;
+    for (const r of race.racers) { r.botNext = Infinity; r.tank!.stunnedUntil = 1000; }
+    for (const [r, x, y] of [[firer, 10, 10], [ahead, 10, 7], [behind, 10, 13]] as const) {
+      r.tank!.x = (x + 0.5) * 256; r.tank!.y = (y + 0.5) * 256;
+      r.tank!.cell = { x, y, deck: false };
+    }
+    firer.tank!.facing = 0;
+    for (const r of race.racers) r.progress = 0;
+    firer.progress = 50;
+    done.progress = 99; done.finishedAt = race.frame; race.timer = race.finishFrames;
+    expect(say(race, 'a', '!v3').ok).toBe(true);
+    ticks(race, 2 * TICK_HZ);
+    expect(behind.stunUntil).toBeGreaterThan(race.frame);
+    expect(ahead.stunUntil).toBe(0);
+  });
+
+  it('runs bot shields and V3s on a repeatable seeded schedule', () => {
+    const trace = (seed: number) => {
+      const race = createRace(course(), ARENA, seed);
+      openJoinWindow(race, { joinSeconds: 1 }); say(race, 'a', '!rhino');
+      ticks(race, 4 * TICK_HZ);
+      const events: string[] = [];
+      for (let i = 0; i < 30 * TICK_HZ; i++) {
+        const shields = race.racers.filter((r) => r.bot && r.shieldUntil > race.frame).length;
+        const rockets = race.v3s.length;
+        tickRace(race);
+        if (race.racers.filter((r) => r.bot && r.shieldUntil > race.frame).length > shields) events.push(`shield:${race.frame}`);
+        if (race.v3s.length > rockets) events.push(`v3:${race.frame}`);
+      }
+      return events;
+    };
+    expect(trace(7)).toEqual(trace(7));
+    expect(trace(7)).not.toEqual(trace(8));
+    expect(trace(7).some((event) => event.startsWith('shield'))).toBe(true);
+    expect(trace(7).some((event) => event.startsWith('v3'))).toBe(true);
+  });
+
   const kaneOf = (race: Race) => race.racers.find((r) => r.name === 'Kane')!;
   const cellIndex = (race: Race, r: Racer) => r.tank!.cell.y * race.field.grid.width + r.tank!.cell.x;
   /** Every other tank's spots, to check a move never lands on one. */
@@ -272,6 +379,7 @@ describe('joining', () => {
 /** Opens a race, joins `viewers`, and ticks to the results (or `maxTicks`), recording each tank's centre every frame. */
 function runRace(file: CourseFile, seed: number, viewers: string[], opts: { finishSeconds?: number; maxTicks?: number } = {}) {
   const race = createRace(course(file), ARENA, seed);
+  race.enabled.delete('v3'); race.enabled.delete('shield'); // isolate course traversal from audience effects
   openJoinWindow(race, { joinSeconds: 1, finishSeconds: opts.finishSeconds ?? 60 });
   for (const v of viewers) say(race, v, '!rhino');
   const trace = new Map<string, { x: number; y: number; progress: number }[]>();

@@ -14,6 +14,8 @@ const COMMANDS = {
   boost: { hint: ' [name]', cooldown: 20, racers: false },
   shield: { hint: '', cooldown: 30, racers: true },
   missile: { hint: ' [name]', cooldown: 30, racers: false },
+  v3: { hint: ' [back|fwd]', cooldown: 20, racers: true },
+  tesla: { hint: ' [name]', cooldown: 45, racers: false },
   chrono: { hint: ' [name]', cooldown: 45, racers: false },
   bridge: { hint: ' B1', cooldown: 60, racers: false },
 } as const;
@@ -57,6 +59,8 @@ export interface Racer {
   stunUntil: number;
   immunityUntil: number;
   protectedUntil: number;
+  botNext: number;
+  botV3Next: boolean;
 }
 
 export interface Race {
@@ -78,6 +82,9 @@ export interface Race {
   feed: string[];
   feedUntil: Map<string, number>;
   missiles: { target: Racer; named: boolean; launched: number; arrives: number; x: number; y: number }[];
+  v3s: { firer: Racer; x: number; y: number; dx: number; dy: number; travelled: number }[];
+  /** Tesla strikes charging: the Tesla tank stays beside `target` (x, y in cells) until it goes off. */
+  teslas: { target: Racer; named: boolean; x: number; y: number; arrives: number }[];
   bridgeGrid: BridgeGrid | undefined;
 }
 
@@ -92,7 +99,7 @@ export interface Standing {
 
 export function createRace(course: Course, grid: CellGrid, seed: number): Race {
   const bridgeGrid = 'bridge' in grid && 'bridges' in grid ? grid as BridgeGrid : undefined;
-  return { course, field: createField(grid, seed), phase: 'idle', racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions.filter((verb) => verb !== 'bridge' || (bridgeGrid && course.file.bridges.length))), cooldowns: new Map(), feed: [], feedUntil: new Map(), missiles: [], bridgeGrid };
+  return { course, field: createField(grid, seed), phase: 'idle', racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions.filter((verb) => verb !== 'bridge' || (bridgeGrid && course.file.bridges.length))), cooldowns: new Map(), feed: [], feedUntil: new Map(), missiles: [], v3s: [], teslas: [], bridgeGrid };
 }
 
 export function commandList(race: Race): string[] {
@@ -111,6 +118,8 @@ export function openJoinWindow(race: Race, { joinSeconds = 90, finishSeconds = 6
   race.feed.length = 0;
   race.feedUntil.clear();
   race.missiles.length = 0;
+  race.v3s.length = 0;
+  race.teslas.length = 0;
   for (const [id, bridge] of race.bridgeGrid?.bridges.entries() ?? []) {
     if (bridge.destroyed) repairBridge(race.bridgeGrid!, id);
     bridge.changedAt = undefined;
@@ -138,7 +147,7 @@ export function chat(race: Race, line: ChatLine): ChatResult {
     return { ok: true, reason: `joined as ${name}` };
   }
   if (race.phase !== 'racing' || !race.enabled.has(verb)) return IGNORED;
-  if ((verb === 'shield' && words.length !== 1) || (verb === 'bridge' && words.length !== 2) || (verb !== 'shield' && words.length > 2)) return IGNORED;
+  if ((verb === 'shield' && words.length !== 1) || (verb === 'bridge' && words.length !== 2) || (verb === 'v3' && words[1] && !['back', 'fwd'].includes(words[1])) || (verb !== 'shield' && words.length > 2)) return IGNORED;
   const reject = (reason: string): ChatResult => {
     if ((race.feedUntil.get(line.viewerId) ?? 0) <= race.frame) {
       race.feed.push(`${line.name}: ${reason}`);
@@ -158,7 +167,7 @@ export function chat(race: Race, line: ChatLine): ChatResult {
   let target: Racer | undefined;
   let named = false;
   let shift: Shift | undefined;
-  if (verb === 'shield') {
+  if (verb === 'shield' || verb === 'v3') {
     target = race.racers.find((r) => r.viewerId === line.viewerId && r.finishedAt === undefined);
     if (!target) return reject('not a racing racer');
   } else if (words[1]) {
@@ -172,11 +181,11 @@ export function chat(race: Race, line: ChatLine): ChatResult {
       target = matches[0];
     }
     if (!target) return reject('unknown name');
-    if ((verb === 'missile' || verb === 'chrono') && target.protectedUntil > race.frame) return reject('target protected');
-    if (verb === 'missile' && target.immunityUntil > race.frame && target.shieldUntil <= race.frame) return reject('target unable');
+    if ((verb === 'missile' || verb === 'tesla' || verb === 'chrono') && target.protectedUntil > race.frame) return reject('target protected');
+    if ((verb === 'missile' || verb === 'tesla') && target.immunityUntil > race.frame && target.shieldUntil <= race.frame) return reject('target unable');
     if (verb === 'chrono' && (target.shieldUntil > race.frame || !(shift = chronoshift(race, target)))) return reject('target unable');
   } else {
-    const candidates = race.racers.filter((r) => r.finishedAt === undefined && (verb !== 'missile' || r.immunityUntil <= race.frame || r.shieldUntil > race.frame) && (verb !== 'chrono' || r.shieldUntil <= race.frame));
+    const candidates = race.racers.filter((r) => r.finishedAt === undefined && ((verb !== 'missile' && verb !== 'tesla') || r.immunityUntil <= race.frame || r.shieldUntil > race.frame) && (verb !== 'chrono' || r.shieldUntil <= race.frame));
     target = candidates[Math.floor(random(race.field) * candidates.length)];
     // A random chronosphere rerolls among tanks a move can land.
     while (verb === 'chrono' && target && !(shift = chronoshift(race, target))) {
@@ -190,6 +199,10 @@ export function chat(race: Race, line: ChatLine): ChatResult {
     target.boostUntil = race.frame + 5 * TICK_HZ;
     target.tank!.speedFactor = 1.5;
   } else if (verb === 'shield') target.shieldUntil = race.frame + 6 * TICK_HZ;
+  else if (verb === 'v3') {
+    const back = words[1] === 'back' || (!words[1] && standings(race).find((s) => s.finishTime === undefined)?.name === target.name);
+    launchV3(race, target, back);
+  } else if (verb === 'tesla') race.teslas.push({ target, named, x: target.tank!.x / 256, y: target.tank!.y / 256, arrives: race.frame + 2 * TICK_HZ });
   else if (verb === 'missile') race.missiles.push({ target, named, launched: race.frame, arrives: race.frame + Math.round(1.5 * TICK_HZ), x: target.tank!.x / 256 - 6, y: target.tank!.y / 256 - 6 });
   else if (verb === 'chrono') {
     // A move: the tank drives on from its new cell towards the waypoint after it (re-pathed next frame).
@@ -223,7 +236,22 @@ function chronoshift(race: Race, racer: Racer): Shift | undefined {
 }
 
 const racer = (race: Race, name: string, viewerId?: string): Racer =>
-  ({ viewerId, name, bot: viewerId === undefined, tank: undefined, next: 0, progress: 0, finishedAt: undefined, tie: random(race.field), boostUntil: 0, shieldUntil: 0, stunUntil: 0, immunityUntil: 0, protectedUntil: 0 });
+  ({ viewerId, name, bot: viewerId === undefined, tank: undefined, next: 0, progress: 0, finishedAt: undefined, tie: random(race.field), boostUntil: 0, shieldUntil: 0, stunUntil: 0, immunityUntil: 0, protectedUntil: 0, botNext: 0, botV3Next: false });
+
+function launchV3(race: Race, firer: Racer, back: boolean): void {
+  const facing = firer.tank!.facing * 2 * Math.PI / 65536;
+  const sign = back ? -1 : 1;
+  race.v3s.push({ firer, x: firer.tank!.x / 256, y: firer.tank!.y / 256,
+    dx: Math.sin(facing) * sign, dy: -Math.cos(facing) * sign, travelled: 0 });
+}
+
+function hit(race: Race, r: Racer, named: boolean): void {
+  if (r.finishedAt !== undefined || r.shieldUntil > race.frame || r.immunityUntil > race.frame) return;
+  r.stunUntil = race.frame + 3 * TICK_HZ;
+  r.immunityUntil = r.stunUntil + 3 * TICK_HZ;
+  r.tank!.stunnedUntil = race.field.frame + 3 * TICK_HZ;
+  if (named) r.protectedUntil = race.frame + 15 * TICK_HZ;
+}
 
 /** Closes the join window: bots fill to 8, tanks go on random start cells facing the first waypoint, 3-2-1. */
 function closeJoinWindow(race: Race) {
@@ -242,6 +270,7 @@ function closeJoinWindow(race: Race) {
     const c = cells[i]!;
     r.tank = addTank(race.field, c, { facing: Math.round((Math.atan2(first.x - c.x, c.y - first.y) / (2 * Math.PI)) * 65536) & 0xffff });
     r.progress = courseProgress(race.course, c.x + 0.5, c.y + 0.5, 0);
+    if (r.bot) { r.botNext = 5 * TICK_HZ + Math.floor(random(race.field) * 5 * TICK_HZ); r.botV3Next = random(race.field) < 0.5; }
   });
   race.phase = 'countdown';
   race.timer = 3 * TICK_HZ;
@@ -270,17 +299,39 @@ const near = (tank: Tank, c: Cell) => !tank.cell.deck && Math.hypot(tank.x / 256
 function drive(race: Race) {
   const { course, field } = race;
   race.frame++;
+  for (const r of race.racers) if (r.bot && r.finishedAt === undefined && race.frame >= r.botNext) {
+    if (r.botV3Next && race.enabled.has('v3')) launchV3(race, r, random(field) < 0.5);
+    else if (!r.botV3Next && race.enabled.has('shield')) r.shieldUntil = race.frame + 6 * TICK_HZ;
+    r.botV3Next = !r.botV3Next;
+    r.botNext = race.frame + (5 + Math.floor(random(field) * 5)) * TICK_HZ;
+  }
   for (const r of race.racers) if (r.tank && r.boostUntil <= race.frame) r.tank.speedFactor = 1;
   for (let i = race.missiles.length - 1; i >= 0; i--) {
     const missile = race.missiles[i]!;
     if (missile.arrives > race.frame) continue;
     race.missiles.splice(i, 1);
     const r = missile.target;
-    if (r.finishedAt !== undefined || r.shieldUntil > race.frame || r.immunityUntil > race.frame) continue;
-    r.stunUntil = race.frame + 3 * TICK_HZ;
-    r.immunityUntil = r.stunUntil + 3 * TICK_HZ;
-    r.tank!.stunnedUntil = field.frame + 3 * TICK_HZ;
-    if (missile.named) r.protectedUntil = race.frame + 15 * TICK_HZ;
+    hit(race, r, missile.named);
+  }
+  for (let i = race.v3s.length - 1; i >= 0; i--) {
+    const v3 = race.v3s[i]!, px = v3.x, py = v3.y;
+    v3.x += v3.dx * (12 / (1.5 * TICK_HZ)); v3.y += v3.dy * (12 / (1.5 * TICK_HZ));
+    v3.travelled += 12 / (1.5 * TICK_HZ);
+    const hits = race.racers.filter((r) => r !== v3.firer && r.finishedAt === undefined && r.tank)
+      .map((r) => {
+        const x = r.tank!.x / 256 - px, y = r.tank!.y / 256 - py;
+        return { r, along: x * v3.dx + y * v3.dy, aside: Math.abs(x * v3.dy - y * v3.dx) };
+      }).filter(({ along, aside }) => along >= 0 && along <= 12 / (1.5 * TICK_HZ) && aside <= 0.55)
+      .sort((a, b) => a.along - b.along)[0];
+    if (hits) { hit(race, hits.r, false); race.v3s.splice(i, 1); }
+    else if (v3.travelled >= 12) race.v3s.splice(i, 1);
+  }
+  for (let i = race.teslas.length - 1; i >= 0; i--) {
+    const strike = race.teslas[i]!, t = strike.target;
+    if (t.finishedAt === undefined) Object.assign(strike, { x: t.tank!.x / 256, y: t.tank!.y / 256 });
+    if (strike.arrives > race.frame) continue;
+    race.teslas.splice(i, 1);
+    for (const r of race.racers) if (r.finishedAt === undefined && r.tank && Math.hypot(r.tank.x / 256 - strike.x, r.tank.y / 256 - strike.y) <= 3) hit(race, r, strike.named && r === t);
   }
   tick(field);
   const anyFinished = race.racers.some((r) => r.finishedAt !== undefined);
