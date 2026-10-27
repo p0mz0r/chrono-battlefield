@@ -137,13 +137,32 @@ async function main() {
   world.addChild(finish);
   const textures = await Promise.all(images.map((img) => blobTexture(img.image)));
   const things = new Container({ sortableChildren: true });
+  const bridgeSprites = new Map<number, Sprite[]>();
   for (const obj of objects) {
     const sprite = new Sprite(textures[obj.image]);
     sprite.position.set(obj.x, obj.y);
     sprite.zIndex = obj.z;
     things.addChild(sprite);
+    const bridge = obj.kind === 'overlay' ? grid.bridge[obj.cellY * grid.width + obj.cellX] ?? -1 : -1;
+    if (bridge >= 0) {
+      if (!bridgeSprites.has(bridge)) bridgeSprites.set(bridge, []);
+      bridgeSprites.get(bridge)!.push(sprite);
+    }
   }
   world.addChild(things);
+  const bridgeEffects = course.file.bridges.map(([x, y]) => {
+    const id = grid.bridge[y * grid.width + x]!, bridge = grid.bridges[id]!;
+    const flash = new Graphics();
+    for (const i of bridge.cells) {
+      const cx = i % grid.width, cy = (i - cx) / grid.width;
+      const z = bridge.kind === 'high' ? grid.level[i]! + 4 : grid.level[i]!;
+      const p = toScreen(cx, cy, z);
+      flash.poly([p.x, p.y, p.x + 30, p.y + 15, p.x, p.y + 30, p.x - 30, p.y + 15]).fill(0xffffff);
+    }
+    flash.visible = false;
+    world.addChild(flash);
+    return { id, flash, destroyed: !!bridge.destroyed, changedAt: -Infinity };
+  });
   const missiles = new Graphics();
   world.addChild(missiles);
   const overlay = passability(grid, terrain.originX, terrain.originY);
@@ -231,6 +250,18 @@ async function main() {
       label.text = cameraMode === 'director' || zoom ? r.name : String(place);
       chip.visible = cameraMode === 'overview' && !zoom;
       label.style.fontSize = chip.visible ? 13 : 12;
+    }
+    for (const effect of bridgeEffects) {
+      const destroyed = !!grid.bridges[effect.id]!.destroyed;
+      if (destroyed !== effect.destroyed) {
+        effect.destroyed = destroyed;
+        effect.changedAt = race.frame;
+        effect.flash.tint = destroyed ? 0xff8c32 : 0x50e8ff;
+        for (const sprite of bridgeSprites.get(effect.id) ?? []) sprite.visible = !destroyed;
+      }
+      const age = race.frame - effect.changedAt;
+      effect.flash.visible = age >= 0 && age < TICK_HZ;
+      if (effect.flash.visible) effect.flash.alpha = 0.7 * (1 - age / TICK_HZ);
     }
     missiles.clear();
     for (const m of race.missiles) {
