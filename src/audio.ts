@@ -52,7 +52,7 @@ export async function loadSounds(read: ReadFile): Promise<{ play(cue: string): v
       const buffer = context.createBuffer(1, decoded.samples.length, decoded.sampleRate);
       buffer.copyToChannel(Float32Array.from(decoded.samples, sample => sample / 32768), 0);
       const limit = section.getInt('Limit');
-      loaded.set(cue, { buffer, limit: limit > 0 ? limit : Infinity, volume: Number(section.getString('Volume', '1')) });
+      loaded.set(cue, { buffer, limit: limit > 0 ? limit : Infinity, volume: Number(section.getString('Volume', '100')) / 100 });
     });
   }
   const active = new Map<Cue, number>();
