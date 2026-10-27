@@ -112,6 +112,16 @@ describe('audience interactions', () => {
     expect(out.stunUntil).toBeLessThanOrEqual(race.frame);
   });
 
+  it('keeps the Tesla tank beside its target through the charge, so a target driving on is still stunned', () => {
+    const race = racing();
+    for (const r of race.racers) r.botNext = Infinity;
+    const kara = race.racers[1]!, from = { x: kara.tank!.x / 256, y: kara.tank!.y / 256 };
+    expect(say(race, 'viewer', '!tesla Kara').ok).toBe(true);
+    ticks(race, 2 * TICK_HZ);
+    expect(Math.hypot(kara.tank!.x / 256 - from.x, kara.tank!.y / 256 - from.y)).toBeGreaterThan(3);
+    expect(kara.stunUntil).toBeGreaterThan(race.frame);
+  });
+
   it('counts the leading tank among unfinished tanks only for the V3 default', () => {
     const race = racing();
     const firer = race.racers[0]!, ahead = race.racers[1]!, behind = race.racers[2]!, done = race.racers[3]!;

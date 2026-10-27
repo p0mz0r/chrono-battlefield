@@ -82,7 +82,8 @@ export interface Race {
   feedUntil: Map<string, number>;
   missiles: { target: Racer; named: boolean; launched: number; arrives: number; x: number; y: number }[];
   v3s: { firer: Racer; x: number; y: number; dx: number; dy: number; travelled: number }[];
-  teslas: { x: number; y: number; namedTarget?: Racer; arrives: number }[];
+  /** Tesla strikes charging: the Tesla tank stays beside `target` (x, y in cells) until it goes off. */
+  teslas: { target: Racer; named: boolean; x: number; y: number; arrives: number }[];
   bridgeGrid: BridgeGrid | undefined;
 }
 
@@ -193,7 +194,7 @@ export function chat(race: Race, line: ChatLine): ChatResult {
   else if (verb === 'v3') {
     const back = words[1] === 'back' || (!words[1] && standings(race).find((s) => s.finishTime === undefined)?.name === target.name);
     launchV3(race, target, back);
-  } else if (verb === 'tesla') race.teslas.push({ x: target.tank!.x / 256, y: target.tank!.y / 256, namedTarget: named ? target : undefined, arrives: race.frame + 2 * TICK_HZ });
+  } else if (verb === 'tesla') race.teslas.push({ target, named, x: target.tank!.x / 256, y: target.tank!.y / 256, arrives: race.frame + 2 * TICK_HZ });
   else race.missiles.push({ target, named, launched: race.frame, arrives: race.frame + Math.round(1.5 * TICK_HZ), x: target.tank!.x / 256 - 6, y: target.tank!.y / 256 - 6 });
   return { ok: true, reason: `${verb} ${target.name}` };
 }
@@ -290,10 +291,11 @@ function drive(race: Race) {
     else if (v3.travelled >= 12) race.v3s.splice(i, 1);
   }
   for (let i = race.teslas.length - 1; i >= 0; i--) {
-    const strike = race.teslas[i]!;
+    const strike = race.teslas[i]!, t = strike.target;
+    if (t.finishedAt === undefined) Object.assign(strike, { x: t.tank!.x / 256, y: t.tank!.y / 256 });
     if (strike.arrives > race.frame) continue;
     race.teslas.splice(i, 1);
-    for (const r of race.racers) if (r.finishedAt === undefined && r.tank && Math.hypot(r.tank.x / 256 - strike.x, r.tank.y / 256 - strike.y) <= 3) hit(race, r, r === strike.namedTarget);
+    for (const r of race.racers) if (r.finishedAt === undefined && r.tank && Math.hypot(r.tank.x / 256 - strike.x, r.tank.y / 256 - strike.y) <= 3) hit(race, r, strike.named && r === t);
   }
   tick(field);
   const anyFinished = race.racers.some((r) => r.finishedAt !== undefined);
