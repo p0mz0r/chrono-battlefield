@@ -21,6 +21,8 @@ const STEP_LEPTONS = LEPTONS_PER_CELL / 24;
 const BLOCKAGE_PATH_DELAY = 60;
 /** rulesmd `PathDelay=.01` minutes ≈ 9 frames between route searches while blocked. */
 const PATH_DELAY = 9;
+/** A tank that wants to move but enters no new cell for this many frames (10 s) ghosts. */
+export const GHOST_AFTER = 10 * TICK_HZ;
 
 export interface Tank {
   readonly id: number;
@@ -54,6 +56,8 @@ export interface Tank {
   blockedSince: number;
   /** Frame of the next route search while blocked. */
   nextSearch: number;
+  /** Last frame the tank entered a new cell, or didn't want to move. */
+  lastNewCell: number;
 }
 
 /** All tanks on one battlefield, stepped together. */
@@ -62,13 +66,23 @@ export interface Field {
   readonly tanks: Tank[];
   /** Frames since the field was created. */
   frame: number;
+  /** mulberry32 state: the per-race seed's random stream. */
+  rng: number;
 }
 
 const centre = (c: number) => c * LEPTONS_PER_CELL + LEPTONS_PER_CELL / 2;
 const wrap = (f: number) => ((f % 65536) + 65536) % 65536;
 
-export function createField(grid: CellGrid, _seed: number): Field {
-  return { grid, tanks: [], frame: 0 };
+export function createField(grid: CellGrid, seed: number): Field {
+  return { grid, tanks: [], frame: 0, rng: seed >>> 0 };
+}
+
+/** mulberry32: a uniform float in [0, 1) from the field's seeded stream. */
+function random(field: Field): number {
+  let t = (field.rng = (field.rng + 0x6d2b79f5) >>> 0);
+  t = Math.imul(t ^ (t >>> 15), t | 1);
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 }
 
 /** Puts a tank on the ground of `cell`. */
@@ -77,7 +91,7 @@ export function addTank(field: Field, cell: Cell, opts: { facing?: number; speed
   const tank: Tank = {
     id: field.tanks.length, x: centre(cell.x), y: centre(cell.y), facing: opts.facing ?? 0,
     speedFactor: opts.speedFactor ?? 1, cell: spot, ghost: false, goal: undefined,
-    path: [], track: -1, trackIndex: 0, headTo: { ...spot }, ahead: [], speed: 0, accum: 0, blockedSince: -1, nextSearch: 0,
+    path: [], track: -1, trackIndex: 0, headTo: { ...spot }, ahead: [], speed: 0, accum: 0, blockedSince: -1, nextSearch: 0, lastNewCell: field.frame,
   };
   field.tanks.push(tank);
   return tank;
@@ -97,6 +111,7 @@ export function orderMove(field: Field, tank: Tank, to: Cell): boolean {
   if (!route) return false;
   tank.goal = { x: to.x, y: to.y };
   tank.path = route;
+  tank.lastNewCell = field.frame;
   return true;
 }
 
@@ -156,13 +171,30 @@ function makeWay(field: Field, tank: Tank, asker: Tank): void {
   if (fallback !== undefined) tank.path = [fallback];
 }
 
-/** Advances every tank one frame. */
+/** The tank keeping `tank` out of `spot`: none while ghosting. */
+const blocking = (field: Field, spot: Spot, tank: Tank) => (tank.ghost ? undefined : holder(field, spot, tank));
+
+/** Advances every tank one frame, in an order shuffled from the race seed so no tank always goes first. */
 export function tick(field: Field): void {
-  for (const tank of field.tanks) tickTank(field, tank);
+  const order = [...field.tanks];
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(random(field) * (i + 1));
+    [order[i], order[j]] = [order[j]!, order[i]!];
+  }
+  for (const tank of order) tickTank(field, tank);
   field.frame++;
 }
 
 function tickTank(field: Field, tank: Tank): void {
+  const wants = isDriving(tank) || (tank.goal !== undefined && !(tank.cell.x === tank.goal.x && tank.cell.y === tank.goal.y));
+  if (!wants) tank.lastNewCell = field.frame;
+  else if (!tank.ghost && field.frame - tank.lastNewCell >= GHOST_AFTER) tank.ghost = true;
+  if (tank.ghost && !wants) {
+    // Stopped on its goal while ghosting: whoever else is here makes way.
+    const other = holder(field, tank.cell, tank);
+    if (!other) tank.ghost = false;
+    else makeWay(field, other, tank);
+  }
   if (tank.track === -1 && !startTrack(field, tank)) return;
   tank.accum += tank.speed;
   while (tank.accum >= STEP_LEPTONS) {
@@ -194,7 +226,7 @@ function startTrack(field: Field, tank: Tank): boolean {
     tank.path = [];
     return false;
   }
-  const blocker = holder(field, dest, tank);
+  const blocker = blocking(field, dest, tank);
   if (blocker) {
     makeWay(field, blocker, tank);
     if (tank.blockedSince < 0) {
@@ -212,7 +244,7 @@ function startTrack(field: Field, tank: Tank): boolean {
   if (!TRACK_CONTROL[face * 8 + next]![0]) next = face;
   let two = (TRACK_CONTROL[face * 8 + next]![2] & F_D) !== 0;
   let far = two ? stepTo(grid, dest, next) : undefined;
-  if (far && holder(field, far, tank)) far = undefined;
+  if (far && blocking(field, far, tank)) far = undefined;
   if (!far) {
     next = face;
     two = false;
@@ -238,6 +270,7 @@ function followTrack(field: Field, tank: Tank): boolean {
     tank.cell = { ...tank.headTo };
     tank.ahead = [];
     tank.track = -1;
+    if (tank.ghost && !holder(field, tank.cell, tank)) tank.ghost = false;
     if (!tank.path.length && tank.goal && tank.cell.x === tank.goal.x && tank.cell.y === tank.goal.y) tank.goal = undefined;
     return false;
   }
@@ -249,7 +282,10 @@ function followTrack(field: Field, tank: Tank): boolean {
   tank.y = centre(tank.headTo.y) + dy;
   tank.facing = wrap(dir * 256);
   const near = (c: Cell) => Math.hypot(centre(c.x) - tank.x, centre(c.y) - tank.y);
-  while (tank.ahead[0] && near(tank.ahead[0]) < near(tank.cell)) tank.cell = tank.ahead.shift()!;
+  while (tank.ahead[0] && near(tank.ahead[0]) < near(tank.cell)) {
+    tank.cell = tank.ahead.shift()!;
+    tank.lastNewCell = field.frame;
+  }
 
   // Track jumping: at the jump point of a curve, chain straight into the next curve.
   const nextFace = tank.path[0];
@@ -257,7 +293,7 @@ function followTrack(field: Field, tank: Tank): boolean {
     const jumpTo = endFacing * 8 + nextFace;
     const target = TRACK_CONTROL[jumpTo]![0];
     const c = stepTo(grid, tank.headTo, nextFace);
-    if (target && RAW_TRACKS[target - 1]!.entry && c && !holder(field, c, tank)) {
+    if (target && RAW_TRACKS[target - 1]!.entry && c && !blocking(field, c, tank)) {
       tank.track = jumpTo;
       tank.trackIndex = RAW_TRACKS[target - 1]!.entry;
       tank.headTo = c;

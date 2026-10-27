@@ -197,4 +197,69 @@ describe('movement', () => {
     expect(longestStay).toBeGreaterThanOrEqual(60);
     expect(tankCell(slow).x).toBeLessThan(8); // passed it while it was still driving
   });
+
+  it('resolves a head-on jam in a one-cell corridor', () => {
+    const field = createField(grid([
+      '..#####..',
+      '.........',
+      '..#####..',
+    ]), 1);
+    const east = addTank(field, { x: 0, y: 1 }, { facing: 16384 });
+    const west = addTank(field, { x: 8, y: 1 }, { facing: 49152 });
+    orderMove(field, east, { x: 8, y: 1 });
+    orderMove(field, west, { x: 0, y: 1 });
+    run(field);
+    expect([key(east), key(west)]).toEqual(['8,1', '0,1']);
+  });
+
+  it('ghosts a tank stuck for 10 s until it stands on a free cell', () => {
+    const field = createField(grid(['.....']), 1);
+    const stuck = addTank(field, { x: 0, y: 0 }, { facing: 16384 });
+    const cornered = addTank(field, { x: 3, y: 0 }, { facing: 16384 });
+    orderMove(field, stuck, { x: 4, y: 0 });
+    let lastNewCell = 0, ghostedAfter = -1, cell = key(stuck);
+    while ((isDriving(stuck) || stuck.ghost) && field.frame < 3000) {
+      tick(field);
+      expectNoOverlap(field);
+      if (stuck.ghost && ghostedAfter < 0) ghostedAfter = field.frame - lastNewCell;
+      if (key(stuck) !== cell) [cell, lastNewCell] = [key(stuck), field.frame];
+    }
+    expect(ghostedAfter).toBeGreaterThanOrEqual(300);
+    expect(ghostedAfter).toBeLessThan(310);
+    expect(stuck.ghost).toBe(false);
+    expect([key(stuck), key(cornered)]).toEqual(['4,0', '3,0']);
+  });
+
+  it('sends ten tanks through a choke point, replaying the same from the same seed', () => {
+    const choke = [
+      '.....#.....',
+      '.....#.....',
+      '.....#.....',
+      '.....#.....',
+      '...........',
+      '.....#.....',
+      '.....#.....',
+      '.....#.....',
+      '.....#.....',
+      '.....#.....',
+    ];
+    const race = (seed: number) => {
+      const field = createField(grid(choke), seed);
+      for (let i = 0; i < 10; i++) {
+        const t = addTank(field, { x: i % 2, y: i }, { facing: 16384 });
+        orderMove(field, t, { x: 9 + (i % 2), y: i });
+      }
+      const trace: string[] = [];
+      while (field.tanks.some(isDriving) && field.frame < 6000) {
+        tick(field);
+        expectNoOverlap(field);
+        trace.push(field.tanks.map((t) => `${t.x},${t.y},${t.facing}`).join(' '));
+      }
+      return { field, trace };
+    };
+    const a = race(7), b = race(7), c = race(8);
+    expect(a.field.tanks.map(key)).toEqual(a.field.tanks.map((_, i) => `${9 + (i % 2)},${i}`));
+    expect(a.trace).toEqual(b.trace);
+    expect(a.trace).not.toEqual(c.trace);
+  });
 });
