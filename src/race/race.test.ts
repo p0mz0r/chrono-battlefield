@@ -3,6 +3,11 @@ import type { CellGrid } from '../movement/index.js';
 import { loadCourse, mapHash, type CourseFile } from './course.js';
 import { chat, createRace, openJoinWindow, standings, tickRace, type Race } from './race.js';
 import { TICK_HZ } from '../movement/index.js';
+import { readdirSync, readFileSync } from 'node:fs';
+import { describeInstall, readFromDir } from '../../test/install.js';
+import { importBattlefield } from '../battlefield/import.js';
+
+const COURSES: Record<string, CourseFile> = Object.fromEntries(readdirSync('courses').filter((f) => f.endsWith('.json')).map((f) => [f, JSON.parse(readFileSync(`courses/${f}`, 'utf8'))]));
 
 /** A grid from rows of chars: `.` clear ground, `#` blocked. */
 function grid(rows: string[]): CellGrid {
@@ -177,4 +182,13 @@ describe('course progress', () => {
     expect(run(7)).toBe(run(7));
     expect(run(7)).not.toBe(run(8));
   });
+});
+
+describeInstall('bundled courses', () => {
+  it.each(Object.keys(COURSES))('%s loads over its battlefield from the install', async (path) => {
+    const file = COURSES[path]!;
+    const course = loadCourse(file, await readFromDir(file.map), (await importBattlefield(readFromDir, file.map)).grid);
+    expect(course.startGrid).toHaveLength(10);
+    expect(course.finishArea.size).toBeGreaterThan(0);
+  }, 30_000);
 });
