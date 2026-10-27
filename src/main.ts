@@ -10,8 +10,9 @@ import { loadMap, mountTheater } from './ra2/mount.js';
 import { facingAngle, projectModelPoint } from './ra2/render/voxelRender.js';
 import type { ConvertedSprite } from './ra2/render/sprite.js';
 
-// Dev page: one battlefield's terrain and one Rhino that drives to a clicked cell.
-// `?map=<path inside the install>`, `?start=x,y`, `?to=x,y` (order on load), `?zoom=N` (follow the tank), `?grid=1` (show passability).
+// Dev page: one battlefield's terrain and ten Rhinos that drive to a clicked cell.
+// `?map=<path inside the install>`, `?start=x,y`, `?to=x,y` (order on load), `?tanks=N` (10), `?seed=N`,
+// `?zoom=N` (follow the first tank), `?cell=x,y` (centre there), `?grid=1` (show passability).
 const status = document.getElementById('status')!;
 const params = new URLSearchParams(location.search);
 const cellParam = (name: string): Cell | undefined => {
@@ -112,31 +113,37 @@ async function main() {
   const trail = new Graphics();
   world.addChild(trail);
 
-  // The Rhino.
+  // The Rhinos.
   const bodyTex = frameTextures(rhino.body), turretTex = frameTextures(rhino.turret.sprite);
-  const body = new Sprite(bodyTex[0]), turret = new Sprite(turretTex[0]);
-  body.anchor.set(0.5);
-  turret.anchor.set(0.5);
-  const tankView = new Container();
-  tankView.addChild(body, turret);
-  things.addChild(tankView);
+  /** Drivable ground cells, nearest to `c` first. */
+  const nearest = (c: Cell, n: number): Cell[] => {
+    const cells: [number, Cell][] = [];
+    for (let y = 0; y < grid.height; y++) for (let x = 0; x < grid.width; x++) {
+      if (drivable(grid, x, y) && grid.deck[y * grid.width + x]! < 0) cells.push([Math.hypot(x - c.x, y - c.y), { x, y }]);
+    }
+    return cells.sort((a, b) => a[0] - b[0]).slice(0, n).map(([, cell]) => cell);
+  };
 
   const waypoint = map.waypoints.find((w) => w.number === 0);
-  let start = cellParam('start') ?? (waypoint && { x: waypoint.x, y: waypoint.y }) ?? { x: grid.width >> 1, y: grid.height >> 1 };
-  if (!drivable(grid, start.x, start.y)) {
-    let best = Infinity;
-    const want = start;
-    for (let y = 0; y < grid.height; y++) for (let x = 0; x < grid.width; x++) {
-      const d = Math.hypot(x - want.x, y - want.y);
-      if (drivable(grid, x, y) && d < best) [best, start] = [d, { x, y }];
-    }
-  }
-  const field = createField(grid, 1);
-  const tank = addTank(field, start);
-  let prev = { x: tank.x, y: tank.y };
+  const start = cellParam('start') ?? (waypoint && { x: waypoint.x, y: waypoint.y }) ?? { x: grid.width >> 1, y: grid.height >> 1 };
+  const field = createField(grid, Number(params.get('seed') ?? 1));
+  const tanks = nearest(start, Number(params.get('tanks') ?? 10)).map((c) => addTank(field, c));
+  const views = tanks.map(() => {
+    const body = new Sprite(bodyTex[0]), turret = new Sprite(turretTex[0]);
+    body.anchor.set(0.5);
+    turret.anchor.set(0.5);
+    const view = new Container();
+    view.addChild(body, turret);
+    things.addChild(view);
+    return { view, body, turret };
+  });
+  let prev = tanks.map((t) => ({ x: t.x, y: t.y }));
+  /** Each tank to its own cell near `to`, farthest tank to the farthest goal so they don't cross. */
   const order = (to: Cell) => {
-    const ok = orderMove(field, tank, to);
-    status.textContent = `${mapPath}: Rhino ${ok ? 'driving' : 'cannot reach'} ${to.x},${to.y}`;
+    const goals = nearest(to, tanks.length);
+    const byDistance = [...tanks].sort((a, b) => Math.hypot(a.cell.x - to.x, a.cell.y - to.y) - Math.hypot(b.cell.x - to.x, b.cell.y - to.y));
+    const ok = byDistance.filter((t, i) => goals[i] && orderMove(field, t, goals[i]!)).length;
+    status.textContent = `${mapPath}: ${ok}/${tanks.length} Rhinos driving to ${to.x},${to.y}`;
   };
 
   const focus = cellParam('cell');
@@ -151,35 +158,56 @@ async function main() {
     order(toCell(p.x, p.y));
   });
 
+  // Dev check for headless runs: frames in which two non-ghost tanks held the same spot.
+  let overlaps = 0;
+  const countOverlap = () => {
+    const seen = new Set<string>();
+    for (const t of tanks) for (const s of t.ghost ? [] : [t.cell, ...t.ahead]) {
+      const k = `${s.x},${s.y},${s.deck}`;
+      if (seen.has(k)) return overlaps++;
+      seen.add(k);
+    }
+  };
+
   // Fixed-step simulation, drawn interpolated.
   let acc = 0;
   app.ticker.add((t) => {
     acc += t.deltaMS / 1000;
     for (let n = 0; acc >= 1 / TICK_HZ && n < 10; n++, acc -= 1 / TICK_HZ) {
-      prev = { x: tank.x, y: tank.y };
+      prev = tanks.map((t) => ({ x: t.x, y: t.y }));
       tick(field);
+      countOverlap();
     }
     const a = Math.min(acc * TICK_HZ, 1);
-    const fx = (prev.x + (tank.x - prev.x) * a) / LEPTONS_PER_CELL, fy = (prev.y + (tank.y - prev.y) * a) / LEPTONS_PER_CELL;
-    // The prerender's frame 0 looks along -x (screen up-left); movement facing 0 is -y (up-right).
-    const f = (Math.round(tank.facing / 2048) + 8) % 32;
-    body.texture = bodyTex[f]!;
-    turret.texture = turretTex[f]!;
-    const ang = facingAngle(f), [px, py, pz] = rhino.turret.pivot;
-    const tp = projectModelPoint(px * Math.cos(ang) - py * Math.sin(ang), px * Math.sin(ang) + py * Math.cos(ang), pz);
-    turret.position.set(tp.sx, tp.sy);
-    const p = toScreen(fx, fy, spotLevel(grid, tank.cell));
-    tankView.position.set(p.x, p.y);
-    tankView.zIndex = (fx + fy + 1) * 15;
-    if (params.get('grid') && isDriving(tank)) trail.circle(p.x, p.y, 1.5).fill(0x00ffff);
-    const center = focus ? toScreen(focus.x, focus.y, level(focus.x, focus.y)) : p;
-    if (zoom) world.position.set(app.screen.width / 2 - center.x * zoom, app.screen.height / 2 - center.y * zoom);
-    const c = tankCell(tank);
-    document.body.dataset.tank = `${c.x},${c.y},${isDriving(tank) ? "driving" : "stopped"}`;
-    document.body.dataset.pose = `${tank.x},${tank.y},${tank.facing}`;
+    tanks.forEach((tank, i) => {
+      const { view, body, turret } = views[i]!;
+      const fx = (prev[i]!.x + (tank.x - prev[i]!.x) * a) / LEPTONS_PER_CELL, fy = (prev[i]!.y + (tank.y - prev[i]!.y) * a) / LEPTONS_PER_CELL;
+      // The prerender's frame 0 looks along -x (screen up-left); movement facing 0 is -y (up-right).
+      const f = (Math.round(tank.facing / 2048) + 8) % 32;
+      body.texture = bodyTex[f]!;
+      turret.texture = turretTex[f]!;
+      const ang = facingAngle(f), [px, py, pz] = rhino.turret.pivot;
+      const tp = projectModelPoint(px * Math.cos(ang) - py * Math.sin(ang), px * Math.sin(ang) + py * Math.cos(ang), pz);
+      turret.position.set(tp.sx, tp.sy);
+      const p = toScreen(fx, fy, spotLevel(grid, tank.cell));
+      view.position.set(p.x, p.y);
+      // ponytail: deck tanks draw over everything (bridge pieces' art overlaps several cells); #45 does proper sorting.
+      view.zIndex = (fx + fy + 1) * 15 + (tank.cell.deck ? 1e6 : 0);
+      view.alpha = tank.ghost ? 0.5 : 1;
+      if (params.get('grid') && isDriving(tank)) trail.circle(p.x, p.y, 1.5).fill(0x00ffff);
+    });
+    const lead = tanks[0];
+    const center = focus ? toScreen(focus.x, focus.y, level(focus.x, focus.y)) : lead && toScreen(lead.x / LEPTONS_PER_CELL, lead.y / LEPTONS_PER_CELL, spotLevel(grid, lead.cell));
+    if (zoom && center) world.position.set(app.screen.width / 2 - center.x * zoom, app.screen.height / 2 - center.y * zoom);
+    document.body.dataset.tanks = tanks.map((t) => {
+      const c = tankCell(t);
+      return `${c.x},${c.y},${c.deck ? 'deck' : 'ground'},${t.ghost ? 'ghost' : ''},${isDriving(t) ? 'driving' : 'stopped'}`;
+    }).join(';');
+    document.body.dataset.overlaps = String(overlaps);
+    document.body.dataset.frame = String(field.frame);
   });
 
-  status.textContent = `${mapPath}: ${map.theater}, ${terrain.missing} missing tiles. Rhino at ${start.x},${start.y}; click a cell to drive. G: passability. ${battlefield.warnings.join('; ')}`;
+  status.textContent = `${mapPath}: ${map.theater}, ${terrain.missing} missing tiles. ${tanks.length} Rhinos at ${start.x},${start.y}; click a cell to send them. G: passability. ${battlefield.warnings.join('; ')}`;
   const to = cellParam('to');
   if (to) order(to);
   document.body.dataset.ready = String(terrain.missing === 0);
