@@ -26,6 +26,8 @@ export interface CellGrid {
   readonly blocked: ArrayLike<boolean>;
   /** High-bridge deck level (cell level + 4), or -1. */
   readonly deck: ArrayLike<number>;
+  /** Imported bridge run index, when available. */
+  readonly bridge?: ArrayLike<number>;
 }
 
 /** rulesmd `[Road] Track=100%`: the speed on a high-bridge deck. */
