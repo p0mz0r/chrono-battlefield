@@ -1,4 +1,4 @@
-﻿// Ported from the XCC library by Olaf van der Spek (GPLv3) — misc/aud_decode.cpp.
+// Ported from the XCC library by Olaf van der Spek (GPLv3) — misc/aud_decode.cpp.
 //
 // IMA-ADPCM decoder for RA2/YR audio bag chunks.
 //
@@ -102,5 +102,3 @@ export function decodeImaBlock(
   }
   return o - outPos;
 }
-
-
