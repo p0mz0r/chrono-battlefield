@@ -15,6 +15,7 @@ export interface Bridge {
   /** Runtime state while this bridge is in play. */
   destroyed?: boolean;
   intactSpeed?: number[];
+  changedAt?: number;
 }
 
 /**
