@@ -160,4 +160,14 @@ describe('movement', () => {
     run(field);
     expect([key(a), key(b)]).toEqual(['4,2', '2,4']);
   });
+
+  it('asks a stationary tank in the way to make way', () => {
+    const field = createField(grid(['#####', '.....', '##.##']), 1);
+    const parked = addTank(field, { x: 2, y: 1 });
+    const mover = addTank(field, { x: 0, y: 1 }, { facing: 16384 });
+    orderMove(field, mover, { x: 4, y: 1 });
+    run(field);
+    expect(key(mover)).toBe('4,1');
+    expect(key(parked)).toBe('2,2');
+  });
 });

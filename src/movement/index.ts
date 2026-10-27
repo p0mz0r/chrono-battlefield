@@ -100,6 +100,38 @@ function holder(field: Field, spot: Spot, self: Tank): Tank | undefined {
   return field.tanks.find((t) => t !== self && (same(t.cell, spot) || t.ahead.some((a) => same(a, spot))));
 }
 
+/** The next `n` spots on a tank's path. */
+function upcoming(grid: CellGrid, tank: Tank, n: number): Spot[] {
+  const out: Spot[] = [];
+  let at: Spot | undefined = tank.cell;
+  for (const face of tank.path.slice(0, n)) {
+    at = at && stepTo(grid, at, face);
+    if (at) out.push(at);
+  }
+  return out;
+}
+
+/**
+ * RA1 `Incoming`: a stationary tank asked by `asker` steps to a free neighbouring spot, preferring
+ * one off the asker's next steps, then picks its own route up again. A tank on a track can't be asked.
+ */
+function makeWay(field: Field, tank: Tank, asker: Tank): void {
+  if (tank.track !== -1) return;
+  const { grid } = field;
+  const avoid = upcoming(grid, asker, 3);
+  let fallback: number | undefined;
+  for (let face = 0; face < 8; face++) {
+    const to = stepTo(grid, tank.cell, face);
+    if (!to || holder(field, to, tank)) continue;
+    if (!avoid.some((a) => same(a, to))) {
+      tank.path = [face];
+      return;
+    }
+    fallback ??= face;
+  }
+  if (fallback !== undefined) tank.path = [fallback];
+}
+
 /** Advances every tank one frame. */
 export function tick(field: Field): void {
   for (const tank of field.tanks) tickTank(field, tank);
@@ -123,6 +155,9 @@ function tickTank(field: Field, tank: Tank): void {
 /** RA1 `Start_Of_Move`: turn in place toward the next step, then pick its track. True once on a track. */
 function startTrack(field: Field, tank: Tank): boolean {
   const { grid } = field;
+  if (!tank.path.length && tank.goal && !(tank.cell.x === tank.goal.x && tank.cell.y === tank.goal.y)) {
+    tank.path = findRoute(grid, tank.cell, tank.goal) ?? []; // after making way, or a stale route
+  }
   const face = tank.path[0];
   if (face === undefined) return false;
   const diff = wrap(face * 8192 - tank.facing + 32768) - 32768;
@@ -135,7 +170,11 @@ function startTrack(field: Field, tank: Tank): boolean {
     tank.path = [];
     return false;
   }
-  if (holder(field, dest, tank)) return false;
+  const blocker = holder(field, dest, tank);
+  if (blocker) {
+    makeWay(field, blocker, tank);
+    return false;
+  }
   let next = tank.path[1] ?? face;
   // RA1 has no track for turns over 90°: drive straight in, then turn in place there.
   if (!TRACK_CONTROL[face * 8 + next]![0]) next = face;
