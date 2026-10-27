@@ -29,6 +29,8 @@ export interface Tank {
   speedFactor: number;
   /** The spot the tank stands in. */
   cell: Spot;
+  /** Ghosting: drives through other tanks until it stands on a free cell. */
+  ghost: boolean;
   /** Where the tank was ordered to, until it gets there. */
   goal: Cell | undefined;
   /** Facings (0-7) of the steps still to drive. */
@@ -66,7 +68,7 @@ export function addTank(field: Field, cell: Cell, opts: { facing?: number; speed
   const spot = { x: cell.x, y: cell.y, deck: false };
   const tank: Tank = {
     id: field.tanks.length, x: centre(cell.x), y: centre(cell.y), facing: opts.facing ?? 0,
-    speedFactor: opts.speedFactor ?? 1, cell: spot, goal: undefined,
+    speedFactor: opts.speedFactor ?? 1, cell: spot, ghost: false, goal: undefined,
     path: [], track: -1, trackIndex: 0, headTo: { ...spot }, ahead: [], speed: 0, accum: 0,
   };
   field.tanks.push(tank);
@@ -88,6 +90,14 @@ export function orderMove(field: Field, tank: Tank, to: Cell): boolean {
   tank.goal = { x: to.x, y: to.y };
   tank.path = route;
   return true;
+}
+
+const same = (a: Spot, b: Spot) => a.x === b.x && a.y === b.y && a.deck === b.deck;
+
+/** The other tank standing in or reserving `spot`. */
+// ponytail: linear scan over ≤ 10 tanks × 3 spots; an occupancy array if fields grow.
+function holder(field: Field, spot: Spot, self: Tank): Tank | undefined {
+  return field.tanks.find((t) => t !== self && (same(t.cell, spot) || t.ahead.some((a) => same(a, spot))));
 }
 
 /** Advances every tank one frame. */
@@ -125,11 +135,13 @@ function startTrack(field: Field, tank: Tank): boolean {
     tank.path = [];
     return false;
   }
+  if (holder(field, dest, tank)) return false;
   let next = tank.path[1] ?? face;
   // RA1 has no track for turns over 90°: drive straight in, then turn in place there.
   if (!TRACK_CONTROL[face * 8 + next]![0]) next = face;
   let two = (TRACK_CONTROL[face * 8 + next]![2] & F_D) !== 0;
-  const far = two ? stepTo(grid, dest, next) : undefined;
+  let far = two ? stepTo(grid, dest, next) : undefined;
+  if (far && holder(field, far, tank)) far = undefined;
   if (!far) {
     next = face;
     two = false;
@@ -174,7 +186,7 @@ function followTrack(field: Field, tank: Tank): boolean {
     const jumpTo = endFacing * 8 + nextFace;
     const target = TRACK_CONTROL[jumpTo]![0];
     const c = stepTo(grid, tank.headTo, nextFace);
-    if (target && RAW_TRACKS[target - 1]!.entry && c) {
+    if (target && RAW_TRACKS[target - 1]!.entry && c && !holder(field, c, tank)) {
       tank.track = jumpTo;
       tank.trackIndex = RAW_TRACKS[target - 1]!.entry;
       tank.headTo = c;

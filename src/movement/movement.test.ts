@@ -22,12 +22,26 @@ function grid(rows: string[], levels?: string[], ramps?: string[]): CellGrid {
 
 const key = (t: Tank) => { const c = tankCell(t); return `${c.x},${c.y}`; };
 
-/** Ticks until no tank drives, returning every cell each tank stood in. */
+/** Spots a tank holds: the one it stands in plus those its track reserves. */
+const held = (t: Tank) => [t.cell, ...t.ahead].map((c) => `${c.x},${c.y},${c.deck}`);
+
+/** Fails if two tanks hold the same spot, unless one of them is ghosting. */
+function expectNoOverlap(field: Field) {
+  const owner = new Map<string, Tank>();
+  for (const t of field.tanks) for (const s of held(t)) {
+    const other = owner.get(s);
+    if (other && !t.ghost && !other.ghost) expect.fail(`tanks ${other.id} and ${t.id} both hold ${s} at frame ${field.frame}`);
+    owner.set(s, t);
+  }
+}
+
+/** Ticks until no tank drives, returning every cell each tank stood in. Checks occupancy every tick. */
 function run(field: Field, maxTicks = 3000) {
   const cells = field.tanks.map((t) => [key(t)]);
   let ticks = 0;
   while (field.tanks.some(isDriving) && ticks < maxTicks) {
     tick(field);
+    expectNoOverlap(field);
     ticks++;
     field.tanks.forEach((t, i) => { if (cells[i]!.at(-1) !== key(t)) cells[i]!.push(key(t)); });
   }
@@ -121,5 +135,29 @@ describe('movement', () => {
     expect(key(crosser)).toBe('4,1');
     expect(sawDeck).toBe(true);
     expect(tankCell(parked)).toEqual({ x: 2, y: 1, deck: false });
+  });
+
+  it('cuts a corner between two blockers (#18)', () => {
+    const field = createField(grid([
+      '...#.',
+      '..#..',
+      '.#...',
+      '#....',
+      '.....',
+    ]), 1);
+    const tank = addTank(field, { x: 1, y: 1 }); // through the diagonal gap between (2,1) and (1,2)
+    orderMove(field, tank, { x: 3, y: 3 });
+    const { cells: [cells] } = run(field);
+    expect(cells).toEqual(['1,1', '2,2', '3,3']);
+  });
+
+  it('lets two crossing tanks through without ever sharing a cell', () => {
+    const field = createField(grid(['.....', '.....', '.....', '.....', '.....']), 1);
+    const a = addTank(field, { x: 0, y: 2 }, { facing: 16384 });
+    const b = addTank(field, { x: 2, y: 0 }, { facing: 32768 });
+    orderMove(field, a, { x: 4, y: 2 });
+    orderMove(field, b, { x: 2, y: 4 });
+    run(field);
+    expect([key(a), key(b)]).toEqual(['4,2', '2,4']);
   });
 });
