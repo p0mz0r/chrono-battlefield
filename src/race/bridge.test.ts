@@ -58,6 +58,12 @@ describe('bridges in play', () => {
     expect(destroyBridge(g, field, 0, [racer(tank, [{ x: 4, y: 1 }, { x: 0, y: 3 }])])).toBe(false);
   });
 
+  it('accepts any reachable cell of the finish area', () => {
+    const g = grid(['~~~~~', '.===.', '~~~~~'], 'high'), field = createField(g, 1);
+    const tank = addTank(field, { x: 0, y: 1 });
+    expect(destroyBridge(g, field, 0, [{ tank, goals: [], finishes: [{ x: 4, y: 1 }, { x: 0, y: 1 }] }])).toBe(true);
+  });
+
   it('spends viewer cooldown only on a successful toggle and locks bridge changes for 10 s', () => {
     const g = grid(['............', '.....==.....', '............', '............'], 'low');
     const map = new TextEncoder().encode('bridge test');

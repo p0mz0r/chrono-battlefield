@@ -4,18 +4,18 @@ import type { ChatResult, Race } from './race.js';
 
 export type BridgeGrid = Pick<CellGrid, 'width' | 'height' | 'speed' | 'level' | 'ramp' | 'blocked' | 'deck' | 'bridge' | 'bridges'>;
 
-type Traveller = { tank: Tank; goals: Cell[] };
+type Traveller = { tank: Tank; goals: Cell[]; finishes?: Cell[] };
 
 const index = (grid: BridgeGrid, spot: Cell) => spot.y * grid.width + spot.x;
 const same = (a: Spot, b: Spot) => a.x === b.x && a.y === b.y && a.deck === b.deck;
 
-function reaches(grid: BridgeGrid, from: Spot, goals: Cell[]): boolean {
+function reaches(grid: BridgeGrid, from: Spot, goals: Cell[], finishes?: Cell[]): boolean {
   for (const goal of goals) {
     const route = findRoute(grid, from, goal);
     if (!route) return false;
     for (const face of route) from = stepTo(grid, from, face)!;
   }
-  return true;
+  return !finishes || finishes.some((finish) => findRoute(grid, from, finish) !== undefined);
 }
 
 /** Commit a whole-bridge collapse only if all unfinished tanks can still complete their remaining legs. */
@@ -29,23 +29,23 @@ export function destroyBridge(grid: BridgeGrid, field: Field, id: number, travel
   }
 
   const displaced = new Map<Tank, Spot>();
-  const occupied = field.tanks.flatMap((t) => [t.cell, ...t.ahead]);
+  const occupied = field.tanks.flatMap((tank) => [tank.cell, ...tank.ahead].map((spot) => ({ tank, spot })));
   const landings = Array.from({ length: grid.width * grid.height }, (_, i) => ({ x: i % grid.width, y: Math.floor(i / grid.width), deck: false }));
   let safe = true;
-  for (const { tank, goals } of travellers) {
+  for (const { tank, goals, finishes } of travellers) {
     const onBridge = grid.bridge[index(grid, tank.cell)] === id;
     let from = tank.cell;
     if (onBridge) {
       const landing = landings
-        .filter((s) => grid.bridge[index(grid, s)] === -1 && drivable(grid, s.x, s.y) && !occupied.some((held) => same(held, s)))
+        .filter((s) => grid.bridge[index(grid, s)] === -1 && drivable(grid, s.x, s.y) && !occupied.some((held) => held.tank !== tank && same(held.spot, s)))
         .sort((a, b) => Math.hypot(a.x - tank.cell.x, a.y - tank.cell.y) - Math.hypot(b.x - tank.cell.x, b.y - tank.cell.y))
-        .find((s) => reaches(grid, s, goals));
+        .find((s) => reaches(grid, s, goals, finishes));
       if (!landing) { safe = false; break; }
       displaced.set(tank, landing);
-      occupied.push(landing);
+      occupied.push({ tank, spot: landing });
       from = landing;
     }
-    if (!reaches(grid, from, goals)) { safe = false; break; }
+    if (!reaches(grid, from, goals, finishes)) { safe = false; break; }
   }
   if (!safe) {
     bridge.cells.forEach((i, n) => { [grid.speed[i], grid.deck[i]] = original[n]!; });
@@ -98,8 +98,11 @@ export function toggleBridge(race: Race, label: string | undefined): ChatResult 
     for (const tank of race.field.tanks) { tank.path = []; tank.goal = undefined; }
   }
   else {
+    const finishArea = [...(race.course.finishArea.has(index(grid, race.course.finish)) ? [race.course.finish] : []), ...[...race.course.finishArea]
+      .filter((i) => i !== index(grid, race.course.finish))
+      .map((i) => ({ x: i % grid.width, y: Math.floor(i / grid.width) }))];
     const travellers = race.racers.filter((r) => r.finishedAt === undefined && r.tank)
-      .map((r) => ({ tank: r.tank!, goals: [...race.course.waypoints.slice(r.next), race.course.finish] }));
+      .map((r) => ({ tank: r.tank!, goals: race.course.waypoints.slice(r.next), finishes: finishArea }));
     if (!destroyBridge(grid, race.field, id, travellers)) return { ok: false, reason: `bridge ${label!.toUpperCase()} refused: route to finish lost` };
   }
   bridge.changedAt = race.frame;
