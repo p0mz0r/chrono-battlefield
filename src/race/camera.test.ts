@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TICK_HZ, type CellGrid } from '../movement/index.js';
-import { currentLap, directorShot, type Shot } from './camera.js';
+import { currentLap, directorShot, lapOf, type Shot } from './camera.js';
 import { loadCourse, mapHash, type CourseFile } from './course.js';
 import { chat, createRace, openJoinWindow, standings, tickRace, type Race } from './race.js';
 
@@ -105,6 +105,17 @@ describe('standings header lap', () => {
       if (seen.at(-1) !== String(lap.lap)) seen.push(String(lap.lap));
     });
     expect(seen).toEqual(['1', '2']);
+  });
+
+  it('follows the leader into a later lap section', () => {
+    // Waypoints 0..9: ring 1..3 ×2, ring 6..7 ×3. Unrolled: 0 1 2 3 [1 2 3] 4 5 6 7 [6 7 6 7] 8 9.
+    const laps = [{ from: 6, to: 7, count: 3 }, { from: 1, to: 3, count: 2 }];
+    expect(lapOf(laps, 0)).toEqual({ lap: 1, count: 2 });
+    expect(lapOf(laps, 5)).toEqual({ lap: 2, count: 2 }); // passed waypoint 1 a second time
+    expect(lapOf(laps, 10)).toEqual({ lap: 1, count: 3 }); // passed waypoint 6 (unrolled 9) once
+    expect(lapOf(laps, 12)).toEqual({ lap: 2, count: 3 });
+    expect(lapOf(laps, 14)).toEqual({ lap: 3, count: 3 });
+    expect(lapOf(laps, 16)).toEqual({ lap: 3, count: 3 });
   });
 
   it('has no lap for a course without a lap section', () => {

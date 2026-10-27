@@ -20,7 +20,7 @@ SET UP IN OBS
 3. The page looks for the install by itself. If it shows the install setup
    screen instead, right-click the source > Interact, and enter the install
    folder (the one with ra2.mix and ra2md.mix) or upload the files it names.
-   F2 in Interact opens that screen again later.
+   F2 in Interact opens that screen again later, between races.
 4. Add the hotkey script: Tools > Scripts > + > chrono-battlefield.lua (in
    this folder). Pick the "Rhino Race" source in the script settings.
 5. In Settings > Hotkeys, bind the five "Rhino Race" actions: Start race,
@@ -53,7 +53,7 @@ Keys inside Interact:
   E E     end or cancel the race
   C       camera: Overview / Director
   M       mute (remembered)
-  F2      install setup
+  F2      install setup (between races)
 
 
 LICENCE

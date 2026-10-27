@@ -15,7 +15,7 @@ import { mountOperator, readChoices } from './race/operator.js';
 // The race page: a bundled course over its battlefield, the race as the stream sees it (camera modes in race/camera.ts,
 // overlay in race/view.ts; the dev panel's button switches Overview / Director).
 // `?course=<file name without .json>`, `?seed=N` (race seed), `?zoom=N` (fixed zoom, following the leading tank), `?cell=x,y` (centre
-// there), `?grid=1` (passability, ideal line, waypoints). Dev only: `?fast=N` runs N× game speed, and the
+// there). Dev only: `?grid=1` or `G` (passability, ideal line, waypoints), `?fast=N` runs N× game speed, and the
 // test-chat panel's URL shortcuts (race/devPanel.ts).
 const status = document.getElementById('status')!;
 const hud = document.getElementById('hud')!;
@@ -82,7 +82,8 @@ async function main() {
     const next = sessionStorage.getItem('courseEditorNextMap');
     if (next) { sessionStorage.removeItem('courseEditorNextMap'); location.href = next; return; }
   }
-  bindSetupKey();
+  let live: Race | undefined; // install setup stays off stream while a race runs
+  bindSetupKey(() => !live || ['idle', 'results', 'cancelled'].includes(live.phase));
   const problems = await openInstall();
   if (problems.length) {
     status.textContent = 'RA2 + YR install not found';
@@ -118,6 +119,7 @@ async function main() {
   const { terrain, images, objects, grid } = battlefield;
   const level = (x: number, y: number) => grid.level[y * grid.width + x] ?? 0;
   const race = createRace(course, grid, Number(params.get('seed') ?? Date.now() % 1e9));
+  live = race;
   const sounds = await loadSounds(read);
 
   const { originX: minX, originY: minY } = terrain;
@@ -207,14 +209,16 @@ async function main() {
     }
     missiles.stroke({ color, width: 2, alpha: 0.9 });
   };
-  const overlay = passability(grid, terrain.originX, terrain.originY);
-  const linePoint = (p: { x: number; y: number }) => toScreen(p.x, p.y, level(Math.floor(p.x), Math.floor(p.y)));
-  course.line.forEach((p, i) => (i ? overlay.lineTo(linePoint(p).x, linePoint(p).y) : overlay.moveTo(linePoint(p).x, linePoint(p).y)));
-  overlay.stroke({ color: 0xffffff, width: 2, alpha: 0.7 });
-  for (const [x, y] of course.file.waypoints) overlay.poly(diamond(x, y)).fill({ color: 0xff00ff, alpha: 0.7 });
-  overlay.visible = params.get('grid') === '1';
-  world.addChild(overlay);
-  addEventListener('keydown', (e) => { if (e.key === 'g' || e.key === 'G') overlay.visible = !overlay.visible; });
+  if (import.meta.env.DEV) { // the stream never shows the course line or waypoints
+    const overlay = passability(grid, terrain.originX, terrain.originY);
+    const linePoint = (p: { x: number; y: number }) => toScreen(p.x, p.y, level(Math.floor(p.x), Math.floor(p.y)));
+    course.line.forEach((p, i) => (i ? overlay.lineTo(linePoint(p).x, linePoint(p).y) : overlay.moveTo(linePoint(p).x, linePoint(p).y)));
+    overlay.stroke({ color: 0xffffff, width: 2, alpha: 0.7 });
+    for (const [x, y] of course.file.waypoints) overlay.poly(diamond(x, y)).fill({ color: 0xff00ff, alpha: 0.7 });
+    overlay.visible = params.get('grid') === '1';
+    world.addChild(overlay);
+    addEventListener('keydown', (e) => { if (e.key === 'g' || e.key === 'G') overlay.visible = !overlay.visible; });
+  }
 
   // The Rhinos: one view per racer once its tank is on the start grid, labelled with its name.
   const bodyTex = await frameTextures(rhino.body), turretTex = await frameTextures(rhino.turret);

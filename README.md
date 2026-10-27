@@ -13,7 +13,7 @@ Needs Node 24 and an RA2 + YR install. Set `RA2_DIR` to the install folder.
 
 ## Operator keys
 
-`S` opens race setup; choose a course and options through Interact. `Enter` opens the join window. `P` pauses or resumes. Press `E` twice within three seconds to end or cancel the race. `C` switches Overview and Director; `M` saves the mute choice. `F2` opens install setup. The setup screen lists these keys too.
+`S` opens race setup; choose a course and options through Interact. `Enter` opens the join window. `P` pauses or resumes. Press `E` twice within three seconds to end or cancel the race. `C` switches Overview and Director; `M` saves the mute choice. `F2` opens install setup between races. The setup screen lists these keys too.
 
 For controls without Interact focus, add [`chrono-battlefield.lua`](public/chrono-battlefield.lua) in OBS **Tools > Scripts**. Select the Rhino Race browser source in the script settings. In **Settings > Hotkeys**, bind the five **Rhino Race** actions: Start race, Pause / resume, End race, Camera mode, and Mute. Press End race twice within three seconds. Start race uses the last saved race setup, or opens race setup if none has been saved. The OBS hotkeys also work from a Stream Deck **System > Hotkey** button while OBS is unfocused. Choose combinations that other apps leave unbound, and avoid the page's `Enter`, `P`, `E`, `C`, and `M` keys for OBS hotkeys; typing those in Interact also runs the page keys. Keep the browser source visible and disable **Shut down source when not visible** so it can receive controls.
 

@@ -61,9 +61,9 @@ export function showSetup(problems: string[] = []) {
   if (!dialog.open) dialog.showModal();
 }
 
-/** `F2` reopens setup. */
-export function bindSetupKey() {
+/** `F2` reopens setup, while `allowed()` (not during a race). */
+export function bindSetupKey(allowed: () => boolean) {
   addEventListener('keydown', (e) => {
-    if (e.key === 'F2') showSetup();
+    if (e.key === 'F2' && allowed()) showSetup();
   });
 }

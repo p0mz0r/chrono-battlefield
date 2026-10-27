@@ -1,15 +1,27 @@
 import { TICK_HZ } from '../movement/index.js';
+import type { CourseFile } from './course.js';
 import { standings, type Race, type Racer } from './race.js';
 
 /** The leader's lap of the course's lap section, for the standings header; undefined without a lap section. */
 export function currentLap(race: Race): { lap: number; count: number } | undefined {
-  const section = race.course.file.laps[0];
-  if (!section) return undefined;
   const lead = race.racers.find((r) => r.name === standings(race)[0]?.name);
-  // Lap k starts once the leader has passed the section's first waypoint for the k-th time (unrolled index from + (k-1)·len).
-  const passed = lead ? lead.next - section.from : 0;
-  const lap = Math.ceil(passed / (section.to - section.from + 1));
-  return { lap: Math.min(section.count, Math.max(1, lap)), count: section.count };
+  return lapOf(race.course.file.laps, lead?.next ?? 0);
+}
+
+/**
+ * The lap of the latest lap section reached at unrolled waypoint index `next` (the first section before any).
+ * Lap k of a section starts once its first waypoint is passed for the k-th time; earlier sections' repeats shift
+ * where a later section starts in the unrolled line.
+ */
+export function lapOf(laps: CourseFile['laps'], next: number): { lap: number; count: number } | undefined {
+  let shift = 0, result: { lap: number; count: number } | undefined;
+  for (const section of [...laps].sort((a, b) => a.from - b.from)) {
+    const start = section.from + shift, len = section.to - section.from + 1;
+    if (result && next <= start) break;
+    result = { lap: Math.min(section.count, Math.max(1, Math.ceil((next - start) / len))), count: section.count };
+    shift += (section.count - 1) * len;
+  }
+  return result;
 }
 
 /** What the director camera is on: the tank, why (the lower third's caption) and when it cut there. */
