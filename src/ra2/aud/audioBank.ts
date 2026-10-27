@@ -1,4 +1,5 @@
-﻿// Ported from the XCC library by Olaf van der Spek (GPLv3) — the IDX/BAG audio-bank
+﻿// From openra2 packages/formats/src/aud/audioBank.ts @ 8ba59f0 (GPL-3.0-or-later); openra2's notice follows, changes since are ours.
+// Ported from the XCC library by Olaf van der Spek (GPLv3) — the IDX/BAG audio-bank
 // structures (XCC `sound_bag` / idx file). The RA2/YR sound effects and unit voices
 // live in an `audio.idx` + `audio.bag` pair (and an `audiomd.*` variant for Yuri's
 // Revenge, which stores most YR sounds):

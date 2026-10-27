@@ -1,3 +1,4 @@
+// From openra2 apps/client/dev/voxelRender.ts @ 8ba59f0 (GPL-3.0-or-later); openra2's notice follows, changes since are ours.
 // Software VXL voxel prerenderer for the dev asset server (pure, deterministic).
 //
 // Turns a parsed VxlFile + HvaFile + the theater unit palette into a 32-facing

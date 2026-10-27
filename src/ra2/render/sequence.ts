@@ -1,3 +1,4 @@
+// From openra2 apps/client/dev/sequence.ts @ 8ba59f0 (GPL-3.0-or-later); openra2's notice follows, changes since are ours.
 // Infantry [Sequence] parsing for the dev asset server (pure logic).
 //
 // RA2/YR infantry SHPs (e.g. cons.shp for the Conscript) pack EVERY animation

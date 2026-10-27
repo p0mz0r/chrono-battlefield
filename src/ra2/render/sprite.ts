@@ -1,3 +1,4 @@
+// From openra2 apps/client/dev/sprite.ts @ 8ba59f0 (GPL-3.0-or-later); openra2's notice follows, changes since are ours.
 // SHP -> SpriteAtlas conversion for the dev asset server (pure logic).
 //
 // Takes a parsed ShpFile and a Palette and produces:

@@ -1,3 +1,4 @@
+// From openra2 packages/formats/src/mix/vfs.ts @ 8ba59f0 (GPL-3.0-or-later); openra2's notice follows, changes since are ours.
 // Virtual filesystem over a stack of mounted MIX archives, with RA2/YR mount
 // precedence. This is original Vanguard code; it composes the MixFile loader
 // (which ports XCC) but implements no XCC logic itself.

@@ -1,3 +1,4 @@
+// From openra2 packages/formats/src/vxl/vxlNormals.ts @ 8ba59f0 (GPL-3.0-or-later); openra2's notice follows, changes since are ours.
 // RA2 / Tiberian Sun voxel surface-normal tables.
 //
 // A voxel stores a `normal` byte that indexes into a fixed table of unit

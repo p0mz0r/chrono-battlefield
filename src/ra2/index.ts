@@ -1,5 +1,5 @@
-// @vanguard/formats — Westwood RA2/YR file-format loaders.
-// Trimmed from openra2 packages/formats/src/index.ts @ 8ba59f0: aud, csf, rules and ai left out.
+// Westwood RA2/YR file-format readers.
+// Trimmed from openra2 packages/formats/src/index.ts @ 8ba59f0: csf, rules and ai left out; of aud, only the IDX/BAG bank and its IMA-ADPCM decoder.
 
 export * from './mix/crc.js';
 export * from './mix/blowfish.js';

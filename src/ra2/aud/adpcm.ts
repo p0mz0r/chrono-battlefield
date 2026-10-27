@@ -1,3 +1,4 @@
+// From openra2 packages/formats/src/aud/adpcm.ts @ 8ba59f0 (GPL-3.0-or-later); openra2's notice follows, changes since are ours.
 // Ported from the XCC library by Olaf van der Spek (GPLv3) — misc/aud_decode.cpp.
 //
 // IMA-ADPCM decoder for RA2/YR audio bag chunks.
