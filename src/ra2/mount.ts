@@ -14,6 +14,25 @@ export async function installIndexes(read: ReadFile): Promise<Uint8Array[]> {
   return result;
 }
 
+/** Where a file nested in MIXes sits inside the top-level archive `path` (`chain` = names, outermost first). */
+export async function locateNested(read: ReadFile, path: string, chain: readonly string[]): Promise<{ offset: number; size: number }> {
+  let offset = 0, size = 0;
+  for (const name of chain) {
+    const index = MixFile.parseIndex(await read(path, offset, MixFile.indexSize(await read(path, offset, 92))));
+    const entry = index.getEntry(name);
+    if (!entry) throw new Error(`Missing install file: ${[path, ...chain].join(' > ')}`);
+    offset += entry.offset;
+    size = entry.size;
+  }
+  return { offset, size };
+}
+
+/** One file nested in MIXes, reading only the indexes on the way and its own bytes. */
+export async function readNested(read: ReadFile, path: string, chain: readonly string[]): Promise<Uint8Array> {
+  const { offset, size } = await locateNested(read, path, chain);
+  return read(path, offset, size);
+}
+
 // Never cncnet.mix or ra2mode.mix: CnCNet's client files change the stock rules.
 const TOP_MIXES = ['ra2.mix', 'ra2md.mix', 'expandmd01.mix'] as const;
 
