@@ -1,0 +1,60 @@
+RHINO RACE
+==========
+
+A chat-driven race of RA2 Rhino tanks over a real Red Alert 2 / Yuri's Revenge
+battlefield, shown as an OBS browser source. It reads the art, maps and sounds
+from your own RA2 + Yuri's Revenge install; no EA file is in this download.
+
+Needs OBS Studio 30 or later and an RA2 + Yuri's Revenge install.
+
+
+SET UP IN OBS
+-------------
+
+1. Unzip this folder somewhere it can stay, e.g. Documents\rhino-race.
+2. In OBS, add a source: Sources > + > Browser. Name it "Rhino Race".
+   - Tick "Local file" and browse to index.html in this folder.
+   - Width 1920, height 1080.
+   - Tick "Control audio via OBS" (the game gets its own mixer channel).
+   - Untick "Shutdown source when not visible".
+3. The page looks for the install by itself. If it shows the install setup
+   screen instead, right-click the source > Interact, and enter the install
+   folder (the one with ra2.mix and ra2md.mix) or upload the files it names.
+   F2 in Interact opens that screen again later.
+4. Add the hotkey script: Tools > Scripts > + > chrono-battlefield.lua (in
+   this folder). Pick the "Rhino Race" source in the script settings.
+5. In Settings > Hotkeys, bind the five "Rhino Race" actions: Start race,
+   Pause / resume, End race, Camera mode, Mute. They work while OBS is
+   unfocused and from a Stream Deck System > Hotkey button. Choose key
+   combinations no other app uses, and don't bind the plain Enter, P, E, C or
+   M keys (those are the page keys below).
+
+
+RUNNING A RACE
+--------------
+
+Start race opens the join window with the last race setup, or opens race
+setup the first time. Viewers join with !rhino in chat; empty places are
+filled with bots. Press End race twice within three seconds to end or cancel
+a race.
+
+This version has no connection to Twitch, YouTube or other chat yet. A later
+chat adapter delivers chat lines to the game; until then a join window with
+no viewers closes and the game goes back to waiting.
+
+Keys inside Interact:
+  S       race setup (course, join window, finish timer, audience interactions)
+  Enter   start: open the join window
+  P       pause / resume
+  E E     end or cancel the race
+  C       camera: Overview / Director
+  M       mute (remembered)
+  F2      install setup
+
+
+LICENCE
+-------
+
+GPL-3.0-or-later, see LICENSE. Source: https://github.com/p0mz0r/chrono-battlefield
+Red Alert 2 and Yuri's Revenge are trademarks of Electronic Arts. This project
+is not affiliated with EA.
