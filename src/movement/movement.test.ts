@@ -81,6 +81,20 @@ describe('movement', () => {
     expect(12 + ticks).toBeLessThanOrEqual(125);
   });
 
+  it('scales speed by the speed multiplier, never the turn rate', () => {
+    const timing = (speedFactor: number) => {
+      const field = createField(grid(['...........']), 1);
+      const tank = addTank(field, { x: 0, y: 0 }, { facing: 0, speedFactor });
+      orderMove(field, tank, { x: 10, y: 0 });
+      let turned = 0;
+      while (tank.x === 128) { tick(field); turned++; }
+      return { turned, total: turned + run(field).ticks };
+    };
+    const normal = timing(1), boosted = timing(2);
+    expect(boosted.turned).toBe(normal.turned);
+    expect(boosted.total - boosted.turned).toBeCloseTo((normal.total - normal.turned) / 2, -1);
+  });
+
   it('follows curved tracks without jumping on a winding route', () => {
     const g = grid([
       '..........',

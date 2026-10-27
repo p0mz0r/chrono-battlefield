@@ -31,7 +31,7 @@ export interface Tank {
   y: number;
   /** Body facing in 1/65536 turn, 0 = north (-y), clockwise. */
   facing: number;
-  /** Speed multiplier (boost, handicap): scales speed, never `ROT`. */
+  /** Speed multiplier (boost, handicap): scales speed, never `ROT`. Takes effect the next frame. */
   speedFactor: number;
   /** The spot the tank stands in. */
   cell: Spot;
@@ -48,7 +48,7 @@ export interface Tank {
   headTo: Spot;
   /** Track spots not yet entered (a two-cell track's middle, then headTo): reserved, as RA1 `Mark_Track`. */
   ahead: Spot[];
-  /** Leptons per tick on the current track. */
+  /** Leptons per tick on the current track, before `speedFactor`. */
   speed: number;
   /** Leptons moved but not yet spent on a track step. */
   accum: number;
@@ -196,7 +196,7 @@ function tickTank(field: Field, tank: Tank): void {
     else makeWay(field, other, tank);
   }
   if (tank.track === -1 && !startTrack(field, tank)) return;
-  tank.accum += tank.speed;
+  tank.accum += tank.speed * tank.speedFactor;
   while (tank.accum >= STEP_LEPTONS) {
     tank.accum -= STEP_LEPTONS;
     if (followTrack(field, tank)) continue;
@@ -212,7 +212,9 @@ function tickTank(field: Field, tank: Tank): void {
 function startTrack(field: Field, tank: Tank): boolean {
   const { grid } = field;
   if (!tank.path.length && tank.goal && !(tank.cell.x === tank.goal.x && tank.cell.y === tank.goal.y)) {
-    tank.path = findRoute(grid, tank.cell, tank.goal, pricing(field, tank)) ?? []; // after making way, or a stale route
+    const route = findRoute(grid, tank.cell, tank.goal, pricing(field, tank)); // after making way, or a stale route
+    if (route) tank.path = route;
+    else tank.goal = undefined; // the grid changed under it (a bridge went): nothing to drive to
   }
   const face = tank.path[0];
   if (face === undefined) return false;
@@ -254,7 +256,7 @@ function startTrack(field: Field, tank: Tank): boolean {
   tank.headTo = far ?? dest;
   tank.ahead = far ? [dest, far] : [dest];
   tank.path.splice(0, far ? 2 : 1);
-  tank.speed = TOP_SPEED * tank.speedFactor * spotSpeed(grid, dest);
+  tank.speed = TOP_SPEED * spotSpeed(grid, dest);
   return true;
 }
 
@@ -299,7 +301,7 @@ function followTrack(field: Field, tank: Tank): boolean {
       tank.headTo = c;
       tank.ahead.push(c);
       tank.path.shift();
-      tank.speed = TOP_SPEED * tank.speedFactor * spotSpeed(grid, c);
+      tank.speed = TOP_SPEED * spotSpeed(grid, c);
       return true;
     }
   }
