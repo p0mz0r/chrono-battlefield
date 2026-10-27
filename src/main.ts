@@ -7,7 +7,7 @@ import { loadCourse as loadCourseArt, type Sprite as CachedSprite } from './load
 import { loadSounds } from './audio.js';
 import { facingAngle, projectModelPoint } from './ra2/render/voxelRender.js';
 import { loadCourse, mapHash, type CourseFile } from './race/course.js';
-import { commandList, createRace, secondsLeft, standings, tickRace, type Race, type Racer } from './race/race.js';
+import { chat, commandList, createRace, secondsLeft, standings, tickRace, type Race, type Racer } from './race/race.js';
 import { directorShot, type Shot } from './race/camera.js';
 import { mountStreamView, type CameraMode } from './race/view.js';
 import { mountOperator, readChoices } from './race/operator.js';
@@ -396,6 +396,11 @@ async function main() {
   if (edit) (await import('./race/editor.js')).mountEditor(app, world, grid, mapBytes, file!, toScreen, params.has('map'));
   else {
     mountOperator(race, COURSES, Object.entries(COURSES).find(([, candidate]) => candidate === file)?.[0] ?? '', (mode) => { cameraMode = mode; }, sounds.mute);
+    // Chat from outside the page (e.g. Streamer.bot via obs-websocket obs-browser emit_event): `chronoChat` with { viewerId, name, text }.
+    addEventListener('chronoChat', (event) => {
+      const { viewerId, name, text } = (event as CustomEvent).detail ?? {};
+      if ([viewerId, name, text].every((v) => typeof v === 'string' && v.length <= 500)) chat(race, { viewerId, name, text });
+    });
     if (import.meta.env.DEV) (await import('./race/devPanel.js')).mountDevPanel(race, params);
   }
   document.body.dataset.ready = String(terrain.missing === 0);

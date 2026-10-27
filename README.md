@@ -17,7 +17,7 @@ Needs Node 24 and an RA2 + YR install. Set `RA2_DIR` to the install folder.
 
 For controls without Interact focus, add [`chrono-battlefield.lua`](public/chrono-battlefield.lua) in OBS **Tools > Scripts**. Select the Rhino Race browser source in the script settings. In **Settings > Hotkeys**, bind the five **Rhino Race** actions: Start race, Pause / resume, End race, Camera mode, and Mute. Press End race twice within three seconds. Start race uses the last saved race setup, or opens race setup if none has been saved. The OBS hotkeys also work from a Stream Deck **System > Hotkey** button while OBS is unfocused. Choose combinations that other apps leave unbound, and avoid the page's `Enter`, `P`, `E`, `C`, and `M` keys for OBS hotkeys; typing those in Interact also runs the page keys. Keep the browser source visible and disable **Shut down source when not visible** so it can receive controls.
 
-An obs-websocket client can send the same page event through `CallVendorRequest` to vendor `obs-browser`, request `emit_event`, with `{"event_name":"chronoOperator","event_data":{"action":"start"}}`. Other actions are `pause`, `end`, `camera`, and `mute`.
+An obs-websocket client can send the same page event through `CallVendorRequest` to vendor `obs-browser`, request `emit_event`, with `{"event_name":"chronoOperator","event_data":{"action":"start"}}`. Other actions are `pause`, `end`, `camera`, and `mute`. Chat lines arrive the same way as event `chronoChat` with `{"viewerId","name","text"}` (all strings), into `chat()`; there's no reply channel, so `{ ok, reason }` is dropped.
 ## Layout
 
 | Path | What |

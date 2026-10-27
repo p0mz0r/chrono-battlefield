@@ -38,9 +38,13 @@ setup the first time. Viewers join with !rhino in chat; empty places are
 filled with bots. Press End race twice within three seconds to end or cancel
 a race.
 
-This version has no connection to Twitch, YouTube or other chat yet. A later
-chat adapter delivers chat lines to the game; until then a join window with
-no viewers closes and the game goes back to waiting.
+The game doesn't connect to Twitch, YouTube or other chat itself. A chat
+tool such as Streamer.bot passes chat lines in through obs-websocket: request
+CallVendorRequest, vendor "obs-browser", request "emit_event", data
+  {"event_name": "chronoChat",
+   "event_data": {"viewerId": "twitch:123", "name": "Viewer", "text": "!rhino"}}
+viewerId must be unique per viewer (e.g. platform + user id). Without chat
+lines, a join window with no viewers closes and the game goes back to waiting.
 
 Keys inside Interact:
   S       race setup (course, join window, finish timer, audience interactions)
