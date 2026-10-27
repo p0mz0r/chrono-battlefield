@@ -191,7 +191,7 @@ export function chat(race: Race, line: ChatLine): ChatResult {
     target.tank!.speedFactor = 1.5;
   } else if (verb === 'shield') target.shieldUntil = race.frame + 6 * TICK_HZ;
   else if (verb === 'v3') {
-    const back = words[1] === 'back' || (!words[1] && standings(race)[0]?.name === target.name);
+    const back = words[1] === 'back' || (!words[1] && standings(race).find((s) => s.finishTime === undefined)?.name === target.name);
     launchV3(race, target, back);
   } else if (verb === 'tesla') race.teslas.push({ x: target.tank!.x / 256, y: target.tank!.y / 256, namedTarget: named ? target : undefined, arrives: race.frame + 2 * TICK_HZ });
   else race.missiles.push({ target, named, launched: race.frame, arrives: race.frame + Math.round(1.5 * TICK_HZ), x: target.tank!.x / 256 - 6, y: target.tank!.y / 256 - 6 });

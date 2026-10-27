@@ -90,7 +90,9 @@ describe('audience interactions', () => {
     leader.progress = race.course.length;
     leader.tank!.facing = 0;
     expect(say(race, 'a', '!v3').ok).toBe(true);
+    console.log(JSON.stringify(race.v3s), standings(race).map(s=>s.name+':'+s.finishTime+':'+s.progress));
     ticks(race, 2 * TICK_HZ);
+    console.log(race.racers.map(r=>r.name+':'+r.stunUntil+':'+r.tank!.x/256+','+r.tank!.y/256));
     expect(behind.stunUntil).toBeGreaterThan(race.frame);
 
     ticks(race, 3 * TICK_HZ);
@@ -108,6 +110,24 @@ describe('audience interactions', () => {
     expect(behind.stunUntil).toBeLessThanOrEqual(race.frame); // shield
     expect(other.stunUntil).toBeGreaterThan(race.frame);
     expect(out.stunUntil).toBeLessThanOrEqual(race.frame);
+  });
+
+  it('counts the leading tank among unfinished tanks only for the V3 default', () => {
+    const race = racing();
+    const firer = race.racers[0]!, ahead = race.racers[1]!, behind = race.racers[2]!, done = race.racers[3]!;
+    for (const r of race.racers) { r.botNext = Infinity; r.tank!.stunnedUntil = 1000; }
+    for (const [r, x, y] of [[firer, 10, 10], [ahead, 10, 7], [behind, 10, 13]] as const) {
+      r.tank!.x = (x + 0.5) * 256; r.tank!.y = (y + 0.5) * 256;
+      r.tank!.cell = { x, y, deck: false };
+    }
+    firer.tank!.facing = 0;
+    for (const r of race.racers) r.progress = 0;
+    firer.progress = 50;
+    done.progress = 99; done.finishedAt = race.frame; race.timer = race.finishFrames;
+    expect(say(race, 'a', '!v3').ok).toBe(true);
+    ticks(race, 2 * TICK_HZ);
+    expect(behind.stunUntil).toBeGreaterThan(race.frame);
+    expect(ahead.stunUntil).toBe(0);
   });
 
   it('runs bot shields and V3s on a repeatable seeded schedule', () => {
