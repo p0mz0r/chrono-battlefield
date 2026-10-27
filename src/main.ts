@@ -4,6 +4,7 @@ import { openInstall, readInstall } from './install/read.js';
 import { bindSetupKey, showSetup } from './install/setup.js';
 import { LEPTONS_PER_CELL, spotLevel, tankCell, TICK_HZ, type Cell } from './movement/index.js';
 import { loadCourse as loadCourseArt, type Sprite as CachedSprite } from './load.js';
+import { loadSounds } from './audio.js';
 import { facingAngle, projectModelPoint } from './ra2/render/voxelRender.js';
 import { loadCourse, mapHash, type CourseFile } from './race/course.js';
 import { commandList, createRace, secondsLeft, standings, tickRace, type Race, type Racer } from './race/race.js';
@@ -117,6 +118,7 @@ async function main() {
   const { terrain, images, objects, grid } = battlefield;
   const level = (x: number, y: number) => grid.level[y * grid.width + x] ?? 0;
   const race = createRace(course, grid, Number(params.get('seed') ?? Date.now() % 1e9));
+  const sounds = await loadSounds(read);
 
   const { originX: minX, originY: minY } = terrain;
   /** Battlefield px of a point in cell units (cell centre = x + 0.5). */
@@ -261,6 +263,7 @@ async function main() {
       for (const [r, v] of views) v.prev = { x: r.tank!.x, y: r.tank!.y };
       tickRace(race);
     }
+    for (const cue of race.sounds.splice(0)) sounds.play(cue);
     for (const [r, v] of views) if (!race.racers.includes(r)) { // a new race
       v.view.destroy({ children: true });
       v.tag.destroy({ children: true });
@@ -392,7 +395,7 @@ async function main() {
   status.textContent = `${course.file.name} on ${mapPath} (${map.theater}, ${cached ? 'from cache' : 'imported'} in ${loadMs} ms), ideal line ${course.length.toFixed(0)} cells. G: passability and ideal line.`;
   if (edit) (await import('./race/editor.js')).mountEditor(app, world, grid, mapBytes, file!, toScreen, params.has('map'));
   else {
-    mountOperator(race, COURSES, Object.entries(COURSES).find(([, candidate]) => candidate === file)?.[0] ?? '', (mode) => { cameraMode = mode; });
+    mountOperator(race, COURSES, Object.entries(COURSES).find(([, candidate]) => candidate === file)?.[0] ?? '', (mode) => { cameraMode = mode; }, sounds.mute);
     if (import.meta.env.DEV) (await import('./race/devPanel.js')).mountDevPanel(race, params);
   }
   document.body.dataset.ready = String(terrain.missing === 0);

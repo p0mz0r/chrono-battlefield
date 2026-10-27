@@ -10,7 +10,6 @@ export interface OperatorChoices {
   finishSeconds: number;
   enabled: string[];
   camera: CameraMode;
-  muted: boolean;
 }
 
 export function readChoices(): OperatorChoices {
@@ -22,7 +21,6 @@ export function readChoices(): OperatorChoices {
     finishSeconds: Number.isInteger(saved.finishSeconds) && saved.finishSeconds! > 0 ? saved.finishSeconds! : 60,
     enabled: Array.isArray(saved.enabled) ? saved.enabled.filter((v): v is string => typeof v === 'string' && VERBS.includes(v as typeof VERBS[number])) : [...VERBS],
     camera: saved.camera === 'director' ? 'director' : 'overview',
-    muted: saved.muted === true,
   };
 }
 
@@ -39,7 +37,7 @@ function estimatedSeconds(file: CourseFile): number {
 }
 
 /** In-page operator controls. Selection reloads only when the chosen course needs another battlefield. */
-export function mountOperator(race: Race, courses: Record<string, CourseFile>, current: string, switchCamera: (mode: CameraMode) => void): void {
+export function mountOperator(race: Race, courses: Record<string, CourseFile>, current: string, switchCamera: (mode: CameraMode) => void, toggleMute: () => void): void {
   const choices = readChoices();
   const save = () => localStorage.setItem(KEY, JSON.stringify(choices));
   switchCamera(choices.camera);
@@ -100,7 +98,7 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, c
       if (performance.now() < endPromptUntil) { endRace(race); endPromptUntil = 0; prompt.textContent = ''; }
       else { endPromptUntil = performance.now() + 3000; prompt.textContent = 'Press E again to end race'; setTimeout(() => { if (performance.now() >= endPromptUntil) prompt.textContent = ''; }, 3000); }
     } else if (key === 'c') { choices.camera = choices.camera === 'overview' ? 'director' : 'overview'; switchCamera(choices.camera); save(); }
-    else if (key === 'm') { choices.muted = !choices.muted; save(); }
+    else if (key === 'm') toggleMute();
   });
   if (new URL(location.href).searchParams.has('start')) {
     const url = new URL(location.href); url.searchParams.delete('start'); history.replaceState(null, '', url);

@@ -54,6 +54,17 @@ const racing = (seed = 1) => {
 };
 
 describe('audience interactions', () => {
+  it('emits sounds for a join and accepted effects', () => {
+    const race = createRace(course(), ARENA, 1);
+    openJoinWindow(race, { joinSeconds: 1 });
+    say(race, 'a', '!rhino', 'Kane');
+    expect(race.sounds).toEqual(['ready']);
+    ticks(race, 4 * TICK_HZ);
+    race.sounds.length = 0;
+    expect(say(race, 'viewer', '!boost Kane').ok).toBe(true);
+    expect(say(race, 'a', '!v3').ok).toBe(true);
+    expect(race.sounds).toEqual(['boost', 'cannon', 'v3Launch']);
+  });
   it('fires V3 past the firer into the first tank, and misses one that dodges', () => {
     const race = racing();
     const firer = race.racers[0]!, near = race.racers[1]!, far = race.racers[2]!;
