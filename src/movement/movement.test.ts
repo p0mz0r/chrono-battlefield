@@ -161,13 +161,40 @@ describe('movement', () => {
     expect([key(a), key(b)]).toEqual(['4,2', '2,4']);
   });
 
-  it('asks a stationary tank in the way to make way', () => {
-    const field = createField(grid(['#####', '.....', '##.##']), 1);
-    const parked = addTank(field, { x: 2, y: 1 });
+  it('asks a stationary tank on its goal to make way, never stopping short', () => {
+    const field = createField(grid(['#####', '.....', '####.']), 1);
+    const parked = addTank(field, { x: 4, y: 1 });
     const mover = addTank(field, { x: 0, y: 1 }, { facing: 16384 });
     orderMove(field, mover, { x: 4, y: 1 });
     run(field);
     expect(key(mover)).toBe('4,1');
-    expect(key(parked)).toBe('2,2');
+    expect(key(parked)).toBe('4,2');
+  });
+
+  it('waits behind a moving tank, then detours after BlockagePathDelay', () => {
+    const field = createField(grid([
+      '..........',
+      '.########.',
+      '.########.',
+      '.########.',
+      '..........',
+    ]), 1);
+    const slow = addTank(field, { x: 2, y: 0 }, { facing: 16384, speedFactor: 0.05 });
+    const fast = addTank(field, { x: 0, y: 0 }, { facing: 16384 });
+    orderMove(field, slow, { x: 8, y: 0 });
+    orderMove(field, fast, { x: 9, y: 0 });
+    let stay = 0, longestStay = 0, detoured = false;
+    while (isDriving(fast) && field.frame < 3000) {
+      const before = key(fast);
+      tick(field);
+      expectNoOverlap(field);
+      stay = key(fast) === before ? stay + 1 : 0;
+      longestStay = Math.max(longestStay, stay);
+      if (tankCell(fast).y === 4) detoured = true;
+    }
+    expect(key(fast)).toBe('9,0');
+    expect(detoured).toBe(true);
+    expect(longestStay).toBeGreaterThanOrEqual(60);
+    expect(tankCell(slow).x).toBeLessThan(8); // passed it while it was still driving
   });
 });

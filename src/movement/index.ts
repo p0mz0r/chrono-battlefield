@@ -1,4 +1,4 @@
-import { findRoute, stepTo, spotSpeed, type Cell, type CellGrid, type Spot } from './route.js';
+import { findRoute, spotIndex, stepTo, spotSpeed, type Cell, type CellGrid, type Spot } from './route.js';
 import { F_D, F_T, F_X, F_Y, RAW_TRACKS, TRACKS, TRACK_CONTROL } from './tracks.js';
 
 export { drivable, findRoute, spotLevel, type Cell, type CellGrid, type Spot } from './route.js';
@@ -17,6 +17,10 @@ const TOP_SPEED = Math.floor((RHINO.speed * 256) / 100) * 1.6;
 const ROT_PER_TICK = RHINO.rot * 256;
 /** Leptons a track step costs: RA1 has 24 steps per cell. */
 const STEP_LEPTONS = LEPTONS_PER_CELL / 24;
+/** rulesmd `BlockagePathDelay=60`: frames a blocked tank prices moving tanks at 4× before 1000×. */
+const BLOCKAGE_PATH_DELAY = 60;
+/** rulesmd `PathDelay=.01` minutes ≈ 9 frames between route searches while blocked. */
+const PATH_DELAY = 9;
 
 export interface Tank {
   readonly id: number;
@@ -46,6 +50,10 @@ export interface Tank {
   speed: number;
   /** Leptons moved but not yet spent on a track step. */
   accum: number;
+  /** Frame the tank was first blocked since its last step, or -1. */
+  blockedSince: number;
+  /** Frame of the next route search while blocked. */
+  nextSearch: number;
 }
 
 /** All tanks on one battlefield, stepped together. */
@@ -69,7 +77,7 @@ export function addTank(field: Field, cell: Cell, opts: { facing?: number; speed
   const tank: Tank = {
     id: field.tanks.length, x: centre(cell.x), y: centre(cell.y), facing: opts.facing ?? 0,
     speedFactor: opts.speedFactor ?? 1, cell: spot, ghost: false, goal: undefined,
-    path: [], track: -1, trackIndex: 0, headTo: { ...spot }, ahead: [], speed: 0, accum: 0,
+    path: [], track: -1, trackIndex: 0, headTo: { ...spot }, ahead: [], speed: 0, accum: 0, blockedSince: -1, nextSearch: 0,
   };
   field.tanks.push(tank);
   return tank;
@@ -85,7 +93,7 @@ export function isDriving(tank: Tank): boolean {
 
 /** Routes the tank to `to` from where its current track ends. False if `to` can't be reached. */
 export function orderMove(field: Field, tank: Tank, to: Cell): boolean {
-  const route = findRoute(field.grid, tank.track === -1 ? tank.cell : tank.headTo, to);
+  const route = findRoute(field.grid, tank.track === -1 ? tank.cell : tank.headTo, to, pricing(field, tank));
   if (!route) return false;
   tank.goal = { x: to.x, y: to.y };
   tank.path = route;
@@ -98,6 +106,22 @@ const same = (a: Spot, b: Spot) => a.x === b.x && a.y === b.y && a.deck === b.de
 // ponytail: linear scan over ≤ 10 tanks × 3 spots; an occupancy array if fields grow.
 function holder(field: Field, spot: Spot, self: Tank): Tank | undefined {
   return field.tanks.find((t) => t !== self && (same(t.cell, spot) || t.ahead.some((a) => same(a, spot))));
+}
+
+/**
+ * RA2 occupancy pricing for `tank`'s route search, as a factor on the step cost into a spot other tanks
+ * hold: a standing tank 8×, a moving one 1×, or once `tank` is blocked 4× and after
+ * `BlockagePathDelay` 1000×. Never infinite: a tank never gives up.
+ */
+function pricing(field: Field, tank: Tank): (spot: number) => number {
+  const blocked = tank.blockedSince < 0 ? -1 : field.frame - tank.blockedSince;
+  const moving = blocked < 0 ? 1 : blocked < BLOCKAGE_PATH_DELAY ? 4 : 1000;
+  const factor = new Map<number, number>();
+  for (const t of field.tanks) {
+    if (t === tank) continue;
+    for (const s of [t.cell, ...t.ahead]) factor.set(spotIndex(field.grid, s), isDriving(t) ? moving : 8);
+  }
+  return (spot) => factor.get(spot) ?? 1;
 }
 
 /** The next `n` spots on a tank's path. */
@@ -156,7 +180,7 @@ function tickTank(field: Field, tank: Tank): void {
 function startTrack(field: Field, tank: Tank): boolean {
   const { grid } = field;
   if (!tank.path.length && tank.goal && !(tank.cell.x === tank.goal.x && tank.cell.y === tank.goal.y)) {
-    tank.path = findRoute(grid, tank.cell, tank.goal) ?? []; // after making way, or a stale route
+    tank.path = findRoute(grid, tank.cell, tank.goal, pricing(field, tank)) ?? []; // after making way, or a stale route
   }
   const face = tank.path[0];
   if (face === undefined) return false;
@@ -173,8 +197,16 @@ function startTrack(field: Field, tank: Tank): boolean {
   const blocker = holder(field, dest, tank);
   if (blocker) {
     makeWay(field, blocker, tank);
+    if (tank.blockedSince < 0) {
+      tank.blockedSince = field.frame;
+      tank.nextSearch = field.frame + PATH_DELAY;
+    } else if (field.frame >= tank.nextSearch && tank.goal) {
+      tank.nextSearch = field.frame + PATH_DELAY;
+      tank.path = findRoute(grid, tank.cell, tank.goal, pricing(field, tank)) ?? tank.path;
+    }
     return false;
   }
+  tank.blockedSince = -1;
   let next = tank.path[1] ?? face;
   // RA1 has no track for turns over 90°: drive straight in, then turn in place there.
   if (!TRACK_CONTROL[face * 8 + next]![0]) next = face;
