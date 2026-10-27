@@ -32,7 +32,7 @@ Read from the openra2 reader at `8ba59f0` (`packages/formats/src/mix/mixFile.ts`
 - **So `fetch(url, {headers: {Range: ...}})` gets 200 with the whole file.** Byte-range reads are not possible over `http://absolute/`. Early stop is possible in principle: cancel the reader after N bytes, since `Cancel()` is a no-op and reads just stop (**UNVERIFIED**, test T2). A prefix read works only from the start of a file, so you can't jump to an offset without streaming past everything before it. **[I]**
 - OBS maintainers, commit `6b6d45629207b6b01def7ef0c72e9d64a07c163b` (2026-10-05, "Additional restrictions on custom scheme handler"): "we should consider removing the http://absolute handler entirely in a future update". **[V]** This confirms the risk in #4 and #11.
 - #5 comment (OBS 32.2.1): `fetch('http://absolute/D:/...ra2.mix')` of the three full archives worked; mounted in 1.0 s. **Reported by the author, not re-run here.** The transport works; the cost is memory.
-- Version caveat: checked master of obs-browser and CEF master. T1 confirms Range is ignored on OBS 32.2.1 (section 7); OBS 33 RC is still **UNVERIFIED**.
+- Version caveat: checked master of obs-browser and CEF master. T1 confirms Range is ignored on OBS 32.2.1 and on stable OBS 33.0.0 (section 7).
 
 ## 4. Browser storage in the OBS Local-file page (non-secure context)
 
@@ -86,7 +86,7 @@ Secure-context rule: a page is a secure context when its origin is potentially t
 
 ## 7. Test results (OBS 32.2.1, 2026-10-23)
 
-Run in OBS 32.2.1 (obs-browser 2.26.9, CEF 127.0.6533.120, obs-websocket 5.7.4) on the owner's machine. The test page and driver lived outside the repo. Each run used a temporary scene with a Local-file browser source; the input and scene were removed and the original scene restored afterwards. OBS was started for the tests and closed after. **OBS 33 RC was not tested.**
+Run in OBS 32.2.1 (obs-browser 2.26.9, CEF 127.0.6533.120, obs-websocket 5.7.4) on the owner's machine. The test page and driver lived outside the repo. Each run used a temporary scene with a Local-file browser source; the input and scene were removed and the original scene restored afterwards. OBS was started for the tests and closed after. OBS 33 results are in section 8.
 
 - **T1 (Range) [V]:** `fetch(..., {headers: {Range: 'bytes=0-15'}})` on `expandmd01.mix` returned status 200, no `content-range`, and a 4,813,968 B body (the full file). Ranges are ignored, as section 3 says. **Anomaly:** the response's `content-length` header reads `16`, which doesn't match the body. Don't size reads from Content-Length over `http://absolute`.
 - **T2 (early stop) [dropped]:** not a gate. The design streams the whole pass anyway, and index reads are a few hundred bytes. The first 64 KB of `ra2md.mix` arrived in 1–2 ms; whether cancel stops the transfer is unknown and doesn't matter for the design.
@@ -96,7 +96,15 @@ Run in OBS 32.2.1 (obs-browser 2.26.9, CEF 127.0.6533.120, obs-websocket 5.7.4) 
 - **T6 (streaming cost) [V, plain stream reader, not the prototype]:** streaming `ra2.mix` (281.9 MB) took 529–563 ms, `ra2md.mix` (204.5 MB) 385–396 ms, and `expandmd01.mix` 8–14 ms, over two runs. Heap rose 24–27 MB above the start and fell to 5–21 MB after GC. Discarding bytes as they stream is cheap, so the pass in section 6 is viable. The prototype-level cost is still unmeasured. Heap figures come from `performance.memory`, which is Chromium-only.
 - **T7 (heap source) [V, Edge 155 over CDP]:** the prototype (`prototype/battlefield-and-rhino`, served by its own `server.mjs`) ran in Edge with remote debugging. `Runtime.getHeapUsage` polled through the load: the V8 JS heap stays at about 6 MB, and after GC 5 MB. `backingStorageSize` (ArrayBuffer memory) sits at 567 MB from the first sample, which is the ~610 MB figure's source. That is the 468 MiB of top-level MIX buffers plus about 96 MiB of terrain chunk pixels (six 16 MiB buffers), and it's flat once loaded. The load log: terrain in 2.2 s, Rhino prerendered in 169 ms, ready at 2.4 s. A Node stage run gave the same split (469 MiB after mount, +94 MiB after terrain). No DevTools heap snapshot was taken; the numbers come from `getHeapUsage`.
 - **T8 (sprite and chunk sizes) [V, PNG only]:** a 4920×3450 px map (`4_strip_mine`, desert) has six drawn chunks. PNG (zlib level 9, RGBA): first chunk 2.2 MB, average 1.6 MB, 9.6 MB total for 96 MiB raw. Rhino body atlas 256×256, 45 KB PNG, 32 facings averaging 1.7 KB each. Turret atlas 22 KB, 0.9 KB per facing. **WebP [V, sharp 0.35.5, same pixels]:** chunk: PNG 2.22 MB, lossless WebP 474 KB, WebP q90 1.77 MB, WebP q80 1.18 MB. Rhino body facings total 54 KB as PNG, 38 KB as lossless WebP, 24 KB at q80. Turret total 28 KB PNG, 21 KB lossless, 13 KB at q80. Lossless WebP is the smallest exact option. Lossy is only smaller at q80 and changes the pixels. One chunk was sampled, so the average chunk size is an estimate.
-- **T9 (CEF) [partial]:** the OBS 32.2.1 log gives obs-browser 2.26.9 and CEF 127.0.6533.120, which matches the page's user agent. The #4 claim about OBS 31/32 wasn't checked, and OBS 33 RC wasn't checked.
+- **T9 (CEF) [V]:** the OBS 32.2.1 log gives obs-browser 2.26.9 and CEF 127.0.6533.120, which matches the page's user agent. The OBS 33.0.0 log gives obs-browser 2.27.4, CEF 150.0.7871.252 and obs-websocket 5.7.6; the page's user agent reads `Chrome/150.0.7871.252 OBS/33.0.0`. The #4 claim about OBS 31/32 wasn't checked.
+
+## 8. Test results (OBS 33.0.0, 2026-10-27)
+
+Re-run for [#29](https://github.com/p0mz0r/chrono-battlefield/issues/29) in a portable copy of the owner's OBS 33.0.0 (obs-browser 2.27.4, CEF 150.0.7871.252) with a fresh profile and one Local-file browser source. The test page lived outside the repo. Nothing changes for the design in section 6.
+
+- **T1 (Range) [V]:** same as 32.2.1. `Range: bytes=0-15` on `expandmd01.mix` returned status 200, no `content-range`, and the full 4,813,968 B body; a plain fetch returned the same. The `content-length: 16` anomaly is still there.
+- **T3 (storage, quick) [V]:** localStorage and IndexedDB open and write, including a 50 MB Blob. After a clean OBS exit and restart, both markers were read back. The quota probe was not repeated.
+- **T4 (secure context) [V]:** `isSecureContext` false; `caches`, `navigator.storage.getDirectory` and `crypto.subtle` undefined, as on 32.2.1.
 
 ## Sources
 
