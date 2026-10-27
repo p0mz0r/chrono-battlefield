@@ -1,0 +1,50 @@
+import { TICK_HZ } from '../movement/index.js';
+import { standings, type Race, type Racer } from './race.js';
+
+/** The leader's lap of the course's lap section, for the standings header; undefined without a lap section. */
+export function currentLap(race: Race): { lap: number; count: number } | undefined {
+  const section = race.course.file.laps[0];
+  if (!section) return undefined;
+  const lead = race.racers.find((r) => r.name === standings(race)[0]?.name);
+  // Lap k starts once the leader has passed the section's first waypoint for the k-th time (unrolled index from + (k-1)·len).
+  const passed = lead ? lead.next - section.from : 0;
+  const lap = Math.ceil(passed / (section.to - section.from + 1));
+  return { lap: Math.min(section.count, Math.max(1, lap)), count: section.count };
+}
+
+/** What the director camera is on: the tank, why (the lower third's caption) and when it cut there. */
+export interface Shot {
+  racer: Racer;
+  reason: string;
+  cutAt: number;
+  /** `race.lastHitFrame` already cut to (or skipped). */
+  hitSeen: number;
+}
+
+const HOLD = 7 * TICK_HZ, HIT_GAP = 2.5 * TICK_HZ;
+
+/**
+ * The director's next shot (the same object while it holds): a new hit cuts to the tank hit, once at least 2.5 s
+ * have passed since the last cut; otherwise each shot holds 7 s (less if its tank finishes), alternating the leader
+ * with the chaser in the closest fight for a place. Only unfinished tanks are shown.
+ */
+export function directorShot(race: Race, prev: Shot | undefined): Shot {
+  const hit = race.lastHit;
+  const since = prev ? race.frame - prev.cutAt : Infinity;
+  const hitSeen = prev?.hitSeen ?? -1;
+  if (hit && race.lastHitFrame > hitSeen && hit.finishedAt === undefined && since >= HIT_GAP) {
+    return { racer: hit, reason: 'Just hit', cutAt: race.frame, hitSeen: race.lastHitFrame };
+  }
+  if (prev && prev.racer.finishedAt === undefined && since < HOLD) return prev;
+  const order = standings(race);
+  const live = order.filter((s) => s.finishTime === undefined).map((s) => race.racers.find((r) => r.name === s.name)!);
+  if (!live.length) return prev ?? { racer: race.racers[0]!, reason: 'Leader', cutAt: race.frame, hitSeen };
+  if (prev?.reason === 'Leader' && live.length > 1) {
+    let closest = 1;
+    for (let i = 2; i < live.length; i++) if (live[i - 1]!.progress - live[i]!.progress < live[closest - 1]!.progress - live[closest]!.progress) closest = i;
+    const chaser = live[closest]!;
+    const place = order.findIndex((s) => s.name === chaser.name) + 1;
+    return { racer: chaser, reason: `Battle for P${place - 1}`, cutAt: race.frame, hitSeen };
+  }
+  return { racer: live[0]!, reason: 'Leader', cutAt: race.frame, hitSeen };
+}
