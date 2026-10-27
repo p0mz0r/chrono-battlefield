@@ -145,9 +145,9 @@ function drive(race: Race) {
   for (const r of race.racers) {
     const tank = r.tank!;
     if (r.finishedAt !== undefined) continue;
-    r.progress = courseProgress(course, tank.x / 256, tank.y / 256, r.progress);
     // Waypoints count only when reached; a move (#43) sets `next` to the first waypoint ahead of where it lands.
     while (r.next < course.waypoints.length && near(tank, course.waypoints[r.next]!)) r.next++;
+    r.progress = courseProgress(course, tank.x / 256, tank.y / 256, r.next);
     if (r.next === course.waypoints.length && !tank.cell.deck && course.finishArea.has(tank.cell.y * field.grid.width + tank.cell.x)) {
       r.finishedAt = race.frame;
       r.progress = course.length;

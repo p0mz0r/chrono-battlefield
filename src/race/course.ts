@@ -47,8 +47,6 @@ export interface Course {
 
 /** Finish area radius in cells (3 tanks wide). */
 export const FINISH_RADIUS = 1.5;
-/** Course progress is searched this many cells either side of the last progress, so self-crossing courses don't jump. */
-const SEARCH_WINDOW = 6;
 
 /** CRC-32 of the map file (the OBS page isn't a secure context, so no `crypto.subtle`). */
 export const mapHash = (bytes: Uint8Array) => `crc32:${crc32(bytes).toString(16).padStart(8, '0')}`;
@@ -96,19 +94,20 @@ export function loadCourse(file: CourseFile, mapBytes: Uint8Array, grid: CellGri
 }
 
 /**
- * Course progress (cells along the ideal line) of a point (cell units): the nearest point on the line within
- * `SEARCH_WINDOW` cells of `last`, so a tank on a self-crossing course stays on its own pass.
+ * Course progress (cells along the ideal line) of a point (cell units) heading for waypoint `next`: the nearest
+ * point on the ideal line's leg into that waypoint, so a tank on a self-crossing course stays on its own pass and
+ * one that drove off the line picks up where it rejoins.
  */
-export function courseProgress(course: Course, x: number, y: number, last: number): number {
+export function courseProgress(course: Course, x: number, y: number, next: number): number {
   const { line, along } = course;
-  let best = last, bestD = Infinity;
+  const from = course.waypointAlong[next - 1] ?? 0, to = course.waypointAlong[next] ?? course.length;
+  let best = from, bestD = Infinity;
   for (let i = 1; i < line.length; i++) {
-    if (along[i]! < last - SEARCH_WINDOW || along[i - 1]! > last + SEARCH_WINDOW) continue;
+    if (along[i]! <= from || along[i - 1]! >= to) continue;
     const a = line[i - 1]!, b = line[i]!, dx = b.x - a.x, dy = b.y - a.y;
     const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy)));
     const d = Math.hypot(a.x + dx * t - x, a.y + dy * t - y);
-    const p = along[i - 1]! + (along[i]! - along[i - 1]!) * t;
-    if (d < bestD && Math.abs(p - last) <= SEARCH_WINDOW) [best, bestD] = [p, d];
+    if (d < bestD) [best, bestD] = [along[i - 1]! + (along[i]! - along[i - 1]!) * t, d];
   }
   return best;
 }

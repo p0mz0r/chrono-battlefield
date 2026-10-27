@@ -172,6 +172,8 @@ describe('course progress', () => {
     // A Rhino covers ~0.1 cell a frame; cutting a corner inside the 2.25-cell reach gains up to ~6 at once.
     // Snapping to the other pass through the middle would jump ~40.
     expect(biggest).toBeLessThan(10);
+    // ...and it keeps up: every tank was near the end of the line before it finished.
+    expect(Math.min(...last.values())).toBeGreaterThan(race.course.length - 4);
   });
 
   it('replays the same race from the same seed', () => {
