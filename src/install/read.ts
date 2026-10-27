@@ -1,8 +1,8 @@
 export interface ByteRange { offset: number; length: number }
 type Read = (path: string, offset?: number, length?: number) => Promise<Uint8Array>;
 
-/** Copies requested ranges while discarding the rest of an OBS response. */
-export async function selectRanges(response: Response, ranges: readonly ByteRange[], complete = false): Promise<Uint8Array[]> {
+/** Copies the requested ranges out of one streaming pass over an OBS response, discarding the rest; stops after the last. */
+export async function selectRanges(response: Response, ranges: readonly ByteRange[]): Promise<Uint8Array[]> {
   if (!response.body) throw new Error('Install response has no body');
   for (const r of ranges) if (!Number.isSafeInteger(r.offset) || !Number.isSafeInteger(r.length) || r.offset < 0 || r.length < 0) throw new Error('Invalid install byte range');
   const output = ranges.map(r => new Uint8Array(r.length));
@@ -10,7 +10,7 @@ export async function selectRanges(response: Response, ranges: readonly ByteRang
   const reader = response.body.getReader();
   let position = 0;
   try {
-    while (complete || position < end) {
+    while (position < end) {
       const { done, value } = await reader.read();
       if (done) break;
       ranges.forEach((r, i) => {
@@ -57,10 +57,10 @@ function readFolder(root: string): Read {
   };
 }
 
-// Uploaded files, stored as-is in IndexedDB, keyed by lower-case file name.
-function uploads<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+/** One request on the single object store `files` of an IndexedDB database. */
+export function idb<T>(name: string, mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
-    const open = indexedDB.open('rhino-race-uploads', 1);
+    const open = indexedDB.open(name, 1);
     open.onupgradeneeded = () => open.result.createObjectStore('files');
     open.onerror = () => reject(open.error);
     open.onsuccess = () => {
@@ -72,6 +72,9 @@ function uploads<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => ID
     };
   });
 }
+
+// Uploaded files, stored as-is in IndexedDB, keyed by lower-case file name.
+const uploads = <T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest<T>) => idb('rhino-race-uploads', mode, run);
 
 const readUploads: Read = async (path, offset, length) => {
   const file = await uploads<Blob | undefined>('readonly', (s) => s.get(path.slice(path.lastIndexOf('/') + 1).toLowerCase()));
@@ -105,7 +108,7 @@ export const readInstall = Object.assign(
     if (folderRoot) {
       const response = await fetch(absoluteUrl(`${folderRoot}/${path}`));
       if (!response.ok) throw missingFile(path);
-      return selectRanges(response, ranges, true);
+      return selectRanges(response, ranges);
     }
     const result: Uint8Array[] = [];
     for (const r of ranges) result.push(await backend(path, r.offset, r.length));

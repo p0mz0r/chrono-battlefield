@@ -1,3 +1,4 @@
+import type { Vfs } from '../ra2/index.js';
 import { loadMap, mountTheater, type ReadFile } from '../ra2/mount.js';
 import { buildGrid, type CellGrid } from './grid.js';
 import { placeObjects, type ObjectImage, type PlacedObject } from './objects.js';
@@ -31,11 +32,11 @@ const HONOURED = new Set(['terraintypes', 'buildingtypes', 'overlaytypes']);
  * Imports a map file from stock files only, applying the support rule: a known theater, and art in that theater
  * for every tile, overlay, tree and building. Throws UnsupportedMapError with the reasons otherwise.
  */
-export async function importBattlefield(read: ReadFile, path: string): Promise<Battlefield> {
+export async function importBattlefield(read: ReadFile, path: string, mounted?: Vfs): Promise<Battlefield> {
   const map = await loadMap(read, path);
   const theater = map.theater.toUpperCase();
   if (!THEATERS.includes(theater)) throw new UnsupportedMapError(path, [`Unknown theater: ${map.theater || '(none)'}`]);
-  const stock = new Stock(map, await mountTheater(read, theater));
+  const stock = new Stock(map, mounted ?? await mountTheater(read, theater));
 
   const terrain = bakeTerrain(stock);
   const { images, objects, missingArt, unknownTypes } = placeObjects(stock, terrain.originX, terrain.originY);
