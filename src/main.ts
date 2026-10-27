@@ -4,6 +4,7 @@ import { openInstall, readInstall } from './install/read.js';
 import { bindSetupKey, showSetup } from './install/setup.js';
 import { LEPTONS_PER_CELL, spotLevel, tankCell, TICK_HZ, type Cell } from './movement/index.js';
 import { loadCourse as loadCourseArt, type Sprite as CachedSprite } from './load.js';
+import { loadSounds } from './audio.js';
 import { facingAngle, projectModelPoint } from './ra2/render/voxelRender.js';
 import { loadCourse, mapHash, type CourseFile } from './race/course.js';
 import { commandList, createRace, secondsLeft, standings, tickRace, type Race, type Racer } from './race/race.js';
@@ -114,6 +115,8 @@ async function main() {
   const { terrain, images, objects, grid } = battlefield;
   const level = (x: number, y: number) => grid.level[y * grid.width + x] ?? 0;
   const race = createRace(course, grid, Number(params.get('seed') ?? Date.now() % 1e9));
+  const sounds = await loadSounds(read);
+  window.addEventListener('keydown', event => { if (event.key.toLowerCase() === 'm' && !event.repeat) sounds.mute(); });
 
   const { originX: minX, originY: minY } = terrain;
   /** Battlefield px of a point in cell units (cell centre = x + 0.5). */
@@ -259,6 +262,7 @@ async function main() {
       for (const [r, v] of views) v.prev = { x: r.tank!.x, y: r.tank!.y };
       tickRace(race);
     }
+    for (const cue of race.sounds.splice(0)) sounds.play(cue);
     for (const [r, v] of views) if (!race.racers.includes(r)) { // a new race
       v.view.destroy({ children: true });
       v.tag.destroy({ children: true });

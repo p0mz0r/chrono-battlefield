@@ -2,8 +2,8 @@
 // the install itself, checked by hand with the #5 prototype (chrono-notes/env.md) and the research docs.
 import { beforeAll, expect, it } from 'vitest';
 import { describeInstall, readFromDir } from '../../test/install.js';
-import { HvaFile, IniFile, MixFile, Palette, ShpFile, TmpFile, type Vfs, VxlFile } from './index.js';
-import { loadMap, mountTheater } from './mount.js';
+import { AudioBank, HvaFile, IniFile, MixFile, Palette, ShpFile, TmpFile, type Vfs, VxlFile } from './index.js';
+import { loadMap, mountTheater, readNested } from './mount.js';
 
 describeInstall('RA2 readers', () => {
   let vfs: Vfs;
@@ -60,5 +60,37 @@ describeInstall('RA2 readers', () => {
   it('PAL: expands the temperate tile palette to 256 colours', () => {
     const pal = Palette.parse(open('isotem.pal'));
     expect(pal.length).toBe(256);
+  });
+
+  it('MIX: reads the headerless audio MIXes nested in language.mix and langmd.mix', async () => {
+    // Sizes from the #26 correction comment, in decimal bytes.
+    const ra2 = MixFile.parse(await readNested(readFromDir, 'language.mix', ['audio.mix']));
+    const yr = MixFile.parse(await readNested(readFromDir, 'langmd.mix', ['audiomd.mix']));
+    expect([ra2.count, yr.count]).toEqual([461, 740]);
+    expect(ra2.getEntry('audio.bag')!.size).toBe(17643176);
+    expect(ra2.getEntry('audio.idx')!.size).toBe(41520);
+    expect(yr.getEntry('audio.bag')!.size).toBe(37625632);
+    expect(yr.getEntry('audio.idx')!.size).toBe(82272);
+    const bank = AudioBank.parse(ra2.read('audio.idx')!, ra2.read('audio.bag')!);
+    expect(bank.count).toBe(1153);
+    const sample = bank.decode('vrhiatta')!;
+    expect(sample.sampleRate).toBe(22050);
+    expect(sample.samples.length).toBeGreaterThan(1000);
+    expect(sample.samples.some(value => Math.abs(value) > 100)).toBe(true);
+    const pcm = bank.decode('icraloop')!;
+    expect(pcm.samples.length).toBe(bank.entry('icraloop')!.size / 2);
+    expect(pcm.samples.some(value => value !== 0)).toBe(true);
+  });
+
+  it('audio: resolves the selected stock cues in the INIs and banks', async () => {
+    const base = MixFile.parse(await readNested(readFromDir, 'language.mix', ['audio.mix']));
+    const yr = MixFile.parse(await readNested(readFromDir, 'langmd.mix', ['audiomd.mix']));
+    const banks = [yr, base].map(mix => AudioBank.parse(mix.read('audio.idx')!, mix.read('audio.bag')!));
+    const inis = [IniFile.parse(await readNested(readFromDir, 'expandmd01.mix', ['soundmd.ini'])), IniFile.parse(await readNested(readFromDir, 'ra2.mix', ['local.mix', 'sound.ini']))];
+    for (const event of ['GenSovVehicleSelect', 'RhinoTankAttack', 'Explosion06', 'V3Attack', 'Explosion12', 'DreadnoughtAttack', 'TeslaCoilPowerUp', 'TeslaTankAttack', 'ChronosphereMove', 'Explosion11', 'BridgeRepaired', 'CrateSpeed', 'ForceShieldStarting']) {
+      const sample = inis.map(ini => ini.getSection(event)).find(Boolean)?.getString('Sounds').split(/\s+/)[0]?.replace(/^\$/, '');
+      expect(sample, event).toBeTruthy();
+      expect(banks.some(bank => bank.has(sample!)), event + ': ' + sample).toBe(true);
+    }
   });
 });

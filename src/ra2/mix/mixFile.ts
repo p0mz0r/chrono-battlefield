@@ -3,8 +3,9 @@
 // Parser for Westwood MIX archives as used by Red Alert 2 / Yuri's Revenge (and
 // Tiberian Sun). Supports the RA2-era format with an optional 4-byte flags
 // header (checksum / encrypted), Blowfish-encrypted header+index, and the
-// classic Tiberian Dawn headerless layout is intentionally out of scope for the
-// RA2 engine (RA2/YR always use the flagged format).
+// classic Tiberian Dawn headerless layout (RA2's audio.mix / audiomd.mix: no flags,
+// the file count first). A flagged MIX starts with a zero u16; a headerless one with
+// its non-zero file count.
 
 import { Blowfish } from './blowfish.js';
 import { idFromName } from './crc.js';
@@ -67,6 +68,8 @@ export class MixFile {
   /** Bytes needed for the header and index; the prefix must include the first encrypted block. */
   static indexSize(prefix: Uint8Array): number {
     const view = new DataView(prefix.buffer, prefix.byteOffset, prefix.byteLength);
+    const count = view.getUint16(0, true);
+    if (count) return HEADER_SIZE + count * 12;
     if (view.getUint32(0, true) & MIX_FLAG_ENCRYPTED) {
       const bf = new Blowfish(getBlowfishKey(prefix.subarray(4, 84)));
       const first = bf.decipher(prefix.subarray(84, 92), 8);
@@ -82,10 +85,10 @@ export class MixFile {
       throw new Error('MIX too small to contain a flags header');
     }
     const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    if (view.getUint16(0, true)) return new MixFile(data, MixFile.parsePlain(data, view, false, totalSize, 0), false, false);
     const flags = view.getUint32(0, true);
 
-    // RA2/YR always use the flagged format. Reject stray high bits so we do not
-    // misparse a headerless (Tiberian Dawn) MIX as a flagged one.
+    // Reject stray high bits before parsing the flagged layout.
     if (flags & ~(MIX_FLAG_CHECKSUM | MIX_FLAG_ENCRYPTED)) {
       throw new Error(`Unsupported MIX flags 0x${flags.toString(16)}`);
     }
@@ -94,23 +97,23 @@ export class MixFile {
 
     const entries = encrypted
       ? MixFile.parseEncrypted(data, view, checksum, totalSize)
-      : MixFile.parsePlain(data, view, checksum, totalSize);
+      : MixFile.parsePlain(data, view, checksum, totalSize, 4);
 
     return new MixFile(data, entries, encrypted, checksum);
   }
 
-  private static parsePlain(data: Uint8Array, view: DataView, checksum: boolean, totalSize?: number): MixEntry[] {
-    // Layout: [flags:4][c_files:2][size:4][index...][body...][checksum?]
-    const cFiles = view.getUint16(4, true);
+  private static parsePlain(data: Uint8Array, view: DataView, checksum: boolean, totalSize: number | undefined, start: number): MixEntry[] {
+    // Layout: [flags:4 unless headerless][c_files:2][size:4][index...][body...][checksum?]
+    const cFiles = view.getUint16(start, true);
     const cbIndex = cFiles * INDEX_ENTRY_SIZE;
-    const bodySize = view.getInt32(4 + 2, true);
-    const dataBase = 4 + HEADER_SIZE + cbIndex;
+    const bodySize = view.getInt32(start + 2, true);
+    const dataBase = start + HEADER_SIZE + cbIndex;
     const expected = dataBase + bodySize + (checksum ? CHECKSUM_SIZE : 0);
     if (bodySize < 0 || data.length < dataBase || (totalSize !== undefined && totalSize !== expected)) {
       throw new Error(`MIX size mismatch: expected ${expected}, got ${data.length}`);
     }
     const entries: MixEntry[] = [];
-    let p = 4 + HEADER_SIZE;
+    let p = start + HEADER_SIZE;
     for (let i = 0; i < cFiles; i++) {
       const id = view.getUint32(p, true) >>> 0;
       const offset = view.getInt32(p + 4, true) + dataBase;
