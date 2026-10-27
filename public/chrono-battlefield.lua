@@ -1,8 +1,8 @@
 obs = obslua
 source_name = ""
 hotkeys = {}
-actions = { "start", "pause", "end", "camera", "mute" }
-labels = { "Start race", "Pause / resume", "End race (press twice)", "Camera mode", "Mute" }
+actions = { "start", "setup", "pause", "end", "camera", "mute" }
+labels = { "Start race", "Race setup", "Pause / resume", "End race (press twice)", "Camera mode", "Mute" }
 
 function send(action)
   local source = obs.obs_get_source_by_name(source_name)

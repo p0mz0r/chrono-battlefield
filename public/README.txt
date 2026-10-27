@@ -23,8 +23,8 @@ SET UP IN OBS
    F2 in Interact opens that screen again later, between races.
 4. Add the hotkey script: Tools > Scripts > + > chrono-battlefield.lua (in
    this folder). Pick the "Rhino Race" source in the script settings.
-5. In Settings > Hotkeys, bind the five "Rhino Race" actions: Start race,
-   Pause / resume, End race, Camera mode, Mute. They work while OBS is
+5. In Settings > Hotkeys, bind the six "Rhino Race" actions: Start race,
+   Race setup, Pause / resume, End race, Camera mode, Mute. They work while OBS is
    unfocused and from a Stream Deck System > Hotkey button. Choose key
    combinations no other app uses, and don't bind the plain Enter, P, E, C or
    M keys (those are the page keys below).
@@ -34,7 +34,8 @@ RUNNING A RACE
 --------------
 
 Start race opens the join window with the last race setup, or opens race
-setup the first time. Viewers join with !rhino in chat; empty places are
+setup the first time; Race setup opens it between races. The results screen
+shows both keys (Enter next race, S race setup). Viewers join with !rhino in chat; empty places are
 filled with bots. Press End race twice within three seconds to end or cancel
 a race.
 
