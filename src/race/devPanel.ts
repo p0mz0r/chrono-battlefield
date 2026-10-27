@@ -1,6 +1,6 @@
-import { chat, endRace, openJoinWindow, type Race } from './race.js';
+import { chat, openJoinWindow, type Race } from './race.js';
 
-// Dev only (`npm run dev`): the test-chat panel (#8) and the operator's actions as buttons until #46.
+// Dev only (`npm run dev`): the test-chat panel (#8).
 // main.ts imports it behind `import.meta.env.DEV`, so production builds leave it out.
 
 const FAKE_NAMES = ['Tanya', 'Boris', 'Yuri', 'Kane', 'Volkov', 'Zofia', 'Carville', 'Romanov', 'Einstein', 'Dasha', 'Sputnik', 'Lt_Eva', 'bot2', 'tanya'];
@@ -17,15 +17,12 @@ function rng(seed: number) {
   };
 }
 
-export function mountDevPanel(race: Race, params: URLSearchParams, switchCamera: () => void = () => {}): void {
+export function mountDevPanel(race: Race, params: URLSearchParams): void {
   const panel = document.createElement('div');
   panel.id = 'dev-panel';
   panel.style.cssText = 'position:fixed;right:8px;bottom:8px;width:330px;padding:8px;background:#000d;color:#ccc;font:12px/1.5 monospace;border:1px solid #444';
   panel.innerHTML = `
-<b>Operator (dev)</b><br>
-join <input name="join" size="3" value="${params.get('join') ?? 90}"> s, finish timer <input name="finish" size="3" value="${params.get('finish') ?? 60}"> s<br>
-<button name="open">Open join window</button> <button name="end">End race</button> <button name="camera">Switch camera</button>
-<hr><b>Test chat</b><br>
+<b>Test chat</b><br>
 <input name="name" size="10" value="p0mz0r"> <input name="text" size="20" placeholder="!rhino"> <button name="say">Say</button><br>
 <button name="fake">Add</button> <input name="n" size="2" value="${params.get('fake') ?? 5}"> fake viewers<br>
 <label><input type="checkbox" name="chaos"> chaos</label> <input name="rate" size="3" value="${params.get('chaos') ?? 3}"> msg/s, seed <input name="seed" size="4" value="${params.get('chatSeed') ?? 1}">
@@ -45,9 +42,6 @@ join <input name="join" size="3" value="${params.get('join') ?? 90}"> s, finish 
   };
   const viewers: { id: string; name: string }[] = [];
 
-  $('open').onclick = () => openJoinWindow(race, { joinSeconds: Number($('join').value), finishSeconds: Number($('finish').value) });
-  $('end').onclick = () => endRace(race);
-  $('camera').onclick = switchCamera;
   $('say').onclick = () => say(`test:${$('name').value}`, $('name').value, $('text').value);
   $('text').onkeydown = (e) => { if (e.key === 'Enter') $('say').click(); };
   $('fake').onclick = () => {
@@ -71,7 +65,7 @@ join <input name="join" size="3" value="${params.get('join') ?? 90}"> s, finish 
 
   // URL shortcuts for headless runs: `?autoopen=1&fake=N&chaos=R` opens the window, adds N fake viewers, starts chaos.
   if (params.get('autoopen')) {
-    $('open').click();
+    openJoinWindow(race, { joinSeconds: Number(params.get('join') ?? 90), finishSeconds: Number(params.get('finish') ?? 60) });
     if (params.get('fake')) $('fake').click();
     if (params.get('chaos')) {
       $('chaos').checked = true;

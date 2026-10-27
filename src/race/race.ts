@@ -22,7 +22,7 @@ const COMMANDS = {
 type Interaction = Exclude<keyof typeof COMMANDS, 'rhino'>;
 const interactions = Object.keys(COMMANDS).filter((verb): verb is Interaction => verb !== 'rhino');
 
-export type Phase = 'idle' | 'join' | 'countdown' | 'racing' | 'results';
+export type Phase = 'idle' | 'join' | 'countdown' | 'racing' | 'results' | 'cancelled';
 
 /** One raw chat line from any source (test-chat panel now, platform adapters later). */
 export interface ChatLine {
@@ -67,6 +67,7 @@ export interface Race {
   readonly course: Course;
   readonly field: Field;
   phase: Phase;
+  paused: boolean;
   racers: Racer[];
   /** Frames left in the current timed phase (join window, countdown, finish timer once running). */
   timer: number;
@@ -101,10 +102,11 @@ export interface Standing {
 
 export function createRace(course: Course, grid: CellGrid, seed: number): Race {
   const bridgeGrid = 'bridge' in grid && 'bridges' in grid ? grid as BridgeGrid : undefined;
-  return { course, field: createField(grid, seed), phase: 'idle', racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions.filter((verb) => verb !== 'bridge' || (bridgeGrid && course.file.bridges.length))), cooldowns: new Map(), feed: [], feedUntil: new Map(), missiles: [], v3s: [], teslas: [], lastHit: undefined, lastHitFrame: -1, bridgeGrid };
+  return { course, field: createField(grid, seed), phase: 'idle', paused: false, racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions.filter((verb) => verb !== 'bridge' || (bridgeGrid && course.file.bridges.length))), cooldowns: new Map(), feed: [], feedUntil: new Map(), missiles: [], v3s: [], teslas: [], lastHit: undefined, lastHitFrame: -1, bridgeGrid };
 }
 
 export function commandList(race: Race): string[] {
+  if (race.paused) return [];
   if (race.phase === 'join') return [`!rhino${COMMANDS.rhino.hint}`];
   if (race.phase !== 'racing') return [];
   return interactions.filter((verb) => race.enabled.has(verb))
@@ -113,8 +115,8 @@ export function commandList(race: Race): string[] {
 
 /** Operator: opens the join window (default 90 s); the finish timer (default 60 s) starts at the first finish. */
 export function openJoinWindow(race: Race, { joinSeconds = 90, finishSeconds = 60 } = {}): void {
-  if (race.phase !== 'idle' && race.phase !== 'results') return;
-  Object.assign(race, { phase: 'join', racers: [], timer: joinSeconds * TICK_HZ, frame: 0, finishFrames: finishSeconds * TICK_HZ, results: [] });
+  if (race.phase !== 'idle' && race.phase !== 'results' && race.phase !== 'cancelled') return;
+  Object.assign(race, { phase: 'join', paused: false, racers: [], timer: joinSeconds * TICK_HZ, frame: 0, finishFrames: finishSeconds * TICK_HZ, results: [] });
   race.field.tanks.length = 0;
   race.cooldowns.clear();
   race.feed.length = 0;
@@ -134,6 +136,7 @@ const IGNORED: ChatResult = { ok: false, reason: 'ignored' };
 
 /** The chat-command contract: every line from every source comes through here. */
 export function chat(race: Race, line: ChatLine): ChatResult {
+  if (race.paused) return IGNORED;
   const words = line.text.trim().toLowerCase().split(/\s+/);
   if (words.length > 2) return IGNORED;
   const word = words[0] ?? '';
@@ -285,16 +288,18 @@ function closeJoinWindow(race: Race) {
 /** Seconds left on the start countdown (3, 2, 1), the join window or the finish timer. */
 export const secondsLeft = (race: Race) => Math.ceil(race.timer / TICK_HZ);
 
-/** Operator: ends the race now with results. */
-// ponytail: always results; #46 adds the cancel below 50 % course progress.
+/** Operator: cancels a young race, or builds the same results as an expired finish timer. */
 export function endRace(race: Race): void {
-  if (race.phase !== 'countdown' && race.phase !== 'racing') return;
-  race.phase = 'results';
-  race.results = standings(race);
+  if (!['join', 'countdown', 'racing'].includes(race.phase)) return;
+  const progress = race.racers.length ? race.racers.reduce((sum, r) => sum + (r.finishedAt === undefined ? r.progress / race.course.length : 1), 0) / race.racers.length : 0;
+  race.phase = race.phase === 'racing' && progress >= 0.5 ? 'results' : 'cancelled';
+  race.paused = false;
+  race.results = race.phase === 'results' ? standings(race) : [];
 }
 
 /** One frame (1 / TICK_HZ s). */
 export function tickRace(race: Race): void {
+  if (race.paused) return;
   if (race.phase === 'join' && --race.timer <= 0) closeJoinWindow(race);
   else if (race.phase === 'countdown' && --race.timer <= 0) race.phase = 'racing';
   else if (race.phase === 'racing') drive(race);
