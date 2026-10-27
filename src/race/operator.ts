@@ -24,6 +24,7 @@ export function readChoices(): OperatorChoices {
   };
 }
 
+// shortcut: waypoint distance ignores terrain and turns; use imported ideal lines if setup needs precise estimates.
 function estimatedSeconds(file: CourseFile): number {
   const points: [number, number][] = [file.startGrid[0]!];
   for (let i = 0; i < file.waypoints.length; i++) {
