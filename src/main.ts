@@ -5,7 +5,7 @@ import type { CellGrid } from './battlefield/grid.js';
 import { CHUNK } from './battlefield/terrain.js';
 import { openInstall, readInstall } from './install/read.js';
 import { bindSetupKey, showSetup } from './install/setup.js';
-import { createTank, isDriving, LEPTONS_PER_CELL, orderMove, tankCell, tick, TICK_HZ, type Cell } from './movement/index.js';
+import { addTank, createField, drivable, isDriving, LEPTONS_PER_CELL, orderMove, spotLevel, tankCell, tick, TICK_HZ, type Cell } from './movement/index.js';
 import { loadMap, mountTheater } from './ra2/mount.js';
 import { facingAngle, projectModelPoint } from './ra2/render/voxelRender.js';
 import type { ConvertedSprite } from './ra2/render/sprite.js';
@@ -66,12 +66,8 @@ async function main() {
   const vfs = await mountTheater(readInstall, map.theater);
   const battlefield = await importBattlefield(readInstall, mapPath);
   const { terrain, images, objects } = battlefield;
-  const cells = battlefield.grid;
-  const grid = {
-    width: cells.width, height: cells.height,
-    speed: (x: number, y: number) => x < 0 || y < 0 || x >= cells.width || y >= cells.height ? 0 : cells.blocked[y * cells.width + x] ? 0 : cells.speed[y * cells.width + x] ?? 0,
-    level: (x: number, y: number) => cells.level[y * cells.width + x] ?? 0,
-  };
+  const grid = battlefield.grid;
+  const level = (x: number, y: number) => grid.level[y * grid.width + x] ?? 0;
   const rhino = prerenderRhino(vfs, map.theater);
 
   const { originX: minX, originY: minY } = terrain;
@@ -79,7 +75,7 @@ async function main() {
   const toScreen = (fx: number, fy: number, z: number) => ({ x: (fx - fy) * 30 + 30 - minX, y: (fx + fy - z) * 15 - minY });
   const toCell = (sx: number, sy: number): Cell => {
     let c = { x: 0, y: 0 };
-    for (let i = 0, z = 0; i < 3; i++, z = grid.level(c.x, c.y)) {
+    for (let i = 0, z = 0; i < 3; i++, z = level(c.x, c.y)) {
       const a = (sx + minX - 30) / 30, b = (sy + minY) / 15 + z;
       c = { x: Math.floor((a + b) / 2), y: Math.floor((b - a) / 2) };
     }
@@ -108,7 +104,7 @@ async function main() {
     things.addChild(sprite);
   }
   world.addChild(things);
-  const overlay = passability(cells, terrain.originX, terrain.originY);
+  const overlay = passability(grid, terrain.originX, terrain.originY);
   overlay.visible = params.get('grid') === '1';
   world.addChild(overlay);
   addEventListener('keydown', (e) => { if (e.key === 'g' || e.key === 'G') overlay.visible = !overlay.visible; });
@@ -127,18 +123,19 @@ async function main() {
 
   const waypoint = map.waypoints.find((w) => w.number === 0);
   let start = cellParam('start') ?? (waypoint && { x: waypoint.x, y: waypoint.y }) ?? { x: grid.width >> 1, y: grid.height >> 1 };
-  if (!grid.speed(start.x, start.y)) {
+  if (!drivable(grid, start.x, start.y)) {
     let best = Infinity;
     const want = start;
     for (let y = 0; y < grid.height; y++) for (let x = 0; x < grid.width; x++) {
       const d = Math.hypot(x - want.x, y - want.y);
-      if (grid.speed(x, y) && d < best) [best, start] = [d, { x, y }];
+      if (drivable(grid, x, y) && d < best) [best, start] = [d, { x, y }];
     }
   }
-  const tank = createTank(start);
+  const field = createField(grid, 1);
+  const tank = addTank(field, start);
   let prev = { x: tank.x, y: tank.y };
   const order = (to: Cell) => {
-    const ok = orderMove(tank, grid, to);
+    const ok = orderMove(field, tank, to);
     status.textContent = `${mapPath}: Rhino ${ok ? 'driving' : 'cannot reach'} ${to.x},${to.y}`;
   };
 
@@ -160,7 +157,7 @@ async function main() {
     acc += t.deltaMS / 1000;
     for (let n = 0; acc >= 1 / TICK_HZ && n < 10; n++, acc -= 1 / TICK_HZ) {
       prev = { x: tank.x, y: tank.y };
-      tick(tank, grid);
+      tick(field);
     }
     const a = Math.min(acc * TICK_HZ, 1);
     const fx = (prev.x + (tank.x - prev.x) * a) / LEPTONS_PER_CELL, fy = (prev.y + (tank.y - prev.y) * a) / LEPTONS_PER_CELL;
@@ -171,11 +168,11 @@ async function main() {
     const ang = facingAngle(f), [px, py, pz] = rhino.turret.pivot;
     const tp = projectModelPoint(px * Math.cos(ang) - py * Math.sin(ang), px * Math.sin(ang) + py * Math.cos(ang), pz);
     turret.position.set(tp.sx, tp.sy);
-    const p = toScreen(fx, fy, grid.level(Math.floor(fx), Math.floor(fy)));
+    const p = toScreen(fx, fy, spotLevel(grid, tank.cell));
     tankView.position.set(p.x, p.y);
     tankView.zIndex = (fx + fy + 1) * 15;
     if (params.get('grid') && isDriving(tank)) trail.circle(p.x, p.y, 1.5).fill(0x00ffff);
-    const center = focus ? toScreen(focus.x, focus.y, grid.level(focus.x, focus.y)) : p;
+    const center = focus ? toScreen(focus.x, focus.y, level(focus.x, focus.y)) : p;
     if (zoom) world.position.set(app.screen.width / 2 - center.x * zoom, app.screen.height / 2 - center.y * zoom);
     const c = tankCell(tank);
     document.body.dataset.tank = `${c.x},${c.y},${isDriving(tank) ? "driving" : "stopped"}`;
