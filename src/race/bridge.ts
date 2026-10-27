@@ -1,5 +1,5 @@
 import type { Bridge, CellGrid } from '../battlefield/grid.js';
-import { drivable, findRoute, stepTo, TICK_HZ, type Cell, type Field, type Spot, type Tank } from '../movement/index.js';
+import { findLanding, findRoute, moveTank, stepTo, TICK_HZ, type Cell, type Field, type Spot, type Tank } from '../movement/index.js';
 import type { ChatResult, Race } from './race.js';
 
 export type BridgeGrid = Pick<CellGrid, 'width' | 'height' | 'speed' | 'level' | 'ramp' | 'blocked' | 'deck' | 'bridge' | 'bridges'>;
@@ -29,20 +29,15 @@ export function destroyBridge(grid: BridgeGrid, field: Field, id: number, travel
   }
 
   const displaced = new Map<Tank, Spot>();
-  const occupied = field.tanks.flatMap((tank) => [tank.cell, ...tank.ahead].map((spot) => ({ tank, spot })));
-  const landings = Array.from({ length: grid.width * grid.height }, (_, i) => ({ x: i % grid.width, y: Math.floor(i / grid.width), deck: false }));
   let safe = true;
   for (const { tank, goals, finishes } of travellers) {
     const onBridge = grid.bridge[index(grid, tank.cell)] === id;
     let from = tank.cell;
     if (onBridge) {
-      const landing = landings
-        .filter((s) => grid.bridge[index(grid, s)] === -1 && drivable(grid, s.x, s.y) && !occupied.some((held) => held.tank !== tank && same(held.spot, s)))
-        .sort((a, b) => Math.hypot(a.x - tank.cell.x, a.y - tank.cell.y) - Math.hypot(b.x - tank.cell.x, b.y - tank.cell.y))
-        .find((s) => reaches(grid, s, goals, finishes));
+      const taken = [...displaced.values()];
+      const landing = findLanding(field, tank, tank.cell, (s) => !taken.some((t) => same(t, s)) && reaches(grid, s, goals, finishes));
       if (!landing) { safe = false; break; }
       displaced.set(tank, landing);
-      occupied.push({ tank, spot: landing });
       from = landing;
     }
     if (!reaches(grid, from, goals, finishes)) { safe = false; break; }
@@ -59,14 +54,7 @@ export function destroyBridge(grid: BridgeGrid, field: Field, id: number, travel
     tank.path = [];
     tank.goal = undefined;
     if (!landing && !tank.ahead.some((s) => grid.bridge[index(grid, s)] === id)) continue;
-    tank.cell = landing ?? tank.cell;
-    tank.x = tank.cell.x * 256 + 128;
-    tank.y = tank.cell.y * 256 + 128;
-    tank.track = -1;
-    tank.ahead = [];
-    tank.headTo = { ...tank.cell };
-    tank.accum = 0;
-    tank.lastNewCell = field.frame;
+    moveTank(field, tank, landing ?? tank.cell);
   }
   return true;
 }

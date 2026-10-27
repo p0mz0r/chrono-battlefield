@@ -34,32 +34,36 @@ function runToResults(r: Race, each: () => void) {
 }
 
 describe('director camera', () => {
-  it('opens on the leader, holds each shot 7 s, then alternates with the closest fight for a place', () => {
+  it('opens on the leader, holds each shot 7 s, alternating with the closest fight for a place', () => {
     const r = race(3, ['Kane', 'Kara', 'Yuri', 'Tanya', 'Boris']);
+    r.enabled.delete('v3'); // no bot V3s, so no hits interrupt the alternation
     let shot: Shot | undefined;
-    const cuts: { frame: number; reason: string; name: string; expected: string; leftFinished: boolean }[] = [];
+    const reasons = new Set<string>();
     runToResults(r, () => {
       if (r.phase !== 'racing') return;
       const before = shot;
       shot = directorShot(r, shot);
       expect(shot.racer.finishedAt).toBeUndefined();
       if (shot === before) return;
-      const live = standings(r).filter((s) => s.finishTime === undefined);
-      let expected = live[0]!.name;
-      if (shot.reason.startsWith('Battle')) {
-        // The chaser of the unfinished pair with the smallest progress gap.
-        const gaps = live.slice(1).map((s, i) => live[i]!.progress - s.progress);
-        expected = live[gaps.indexOf(Math.min(...gaps)) + 1]!.name;
-        const place = standings(r).findIndex((s) => s.name === expected) + 1;
-        expect(shot.reason).toBe(`Battle for P${place - 1}`);
+      reasons.add(shot.reason.split(' ')[0]!);
+      if (!before) return expect(shot).toMatchObject({ cutAt: 0, reason: 'Leader' });
+      const held = r.frame - before.cutAt;
+      if (shot.reason === 'Just hit') {
+        expect(shot.racer).toBe(r.lastHit);
+        expect(held).toBeGreaterThanOrEqual(2.5 * TICK_HZ);
+        return;
       }
-      cuts.push({ frame: r.frame, reason: shot.reason, name: shot.racer.name, expected, leftFinished: before?.racer.finishedAt !== undefined });
+      if (before.racer.finishedAt === undefined) expect(held).toBe(7 * TICK_HZ); // held unless its tank finished
+      const live = standings(r).filter((x) => x.finishTime === undefined);
+      if (before.reason === 'Leader' && live.length > 1) {
+        // The chaser of the unfinished pair with the smallest progress gap.
+        const gaps = live.slice(1).map((x, i) => live[i]!.progress - x.progress);
+        const chaser = live[gaps.indexOf(Math.min(...gaps)) + 1]!.name;
+        expect(shot.racer.name).toBe(chaser);
+        expect(shot.reason).toBe(`Battle for P${standings(r).findIndex((x) => x.name === chaser)}`);
+      } else expect(shot).toMatchObject({ reason: 'Leader', racer: { name: live[0]!.name } });
     });
-    expect(cuts[0]).toMatchObject({ frame: 0, reason: 'Leader' });
-    for (const c of cuts) expect(c.name).toBe(c.expected);
-    expect(cuts.slice(0, 4).map((c) => c.reason.split(' ')[0])).toEqual(['Leader', 'Battle', 'Leader', 'Battle']);
-    // A shot is held 7 s unless its tank finishes.
-    for (let i = 1; i < cuts.length; i++) if (!cuts[i]!.leftFinished) expect(cuts[i]!.frame - cuts[i - 1]!.frame).toBe(7 * TICK_HZ);
+    expect([...reasons].sort()).toEqual(['Battle', 'Leader']);
   });
 
   it('cuts to the tank last hit, once per hit, but not within 2.5 s of the previous cut', () => {
@@ -78,8 +82,12 @@ describe('director camera', () => {
     for (let i = 0; i < TICK_HZ; i++) step();
     expect(shot).toMatchObject({ reason: 'Just hit', cutAt: opened + 2.5 * TICK_HZ });
     expect(shot!.racer.name).toBe(target);
-    for (let i = 0; i < 7 * TICK_HZ; i++) step();
-    expect(shot!.reason).not.toBe('Just hit'); // the same hit doesn't hold or re-cut the camera
+    const hitShot = shot;
+    for (let i = 0; i < 7 * TICK_HZ; i++) {
+      step();
+      if (shot !== hitShot) expect(shot!.hitSeen === hitShot!.hitSeen && shot!.reason === 'Just hit').toBe(false); // never the same hit twice
+    }
+    expect(shot).not.toBe(hitShot); // a hit shot is held 7 s like any other
   });
 });
 

@@ -43,6 +43,8 @@ export interface Course {
   waypointAlong: number[];
   /** Length of the ideal line in cells. */
   length: number;
+  /** Length of the course as drawn (each lap section driven once): chronosphere bands are a share of it. */
+  drawnLength: number;
 }
 
 /** Finish area radius in cells (3 tanks wide). */
@@ -69,28 +71,33 @@ export function loadCourse(file: CourseFile, mapBytes: Uint8Array, grid: CellGri
   const hash = mapHash(mapBytes);
   if (hash !== file.mapHash) throw new Error(`Course "${file.name}" is for another version of ${file.map}: map hash ${hash}, course expects ${file.mapHash}`);
   const waypoints = unroll(file), finish = cell(file.finish), startGrid = file.startGrid.map(cell);
-
-  const line = [{ x: startGrid[0]!.x + 0.5, y: startGrid[0]!.y + 0.5 }], along = [0], waypointAlong: number[] = [];
-  let at: Spot = { ...startGrid[0]!, deck: false };
-  for (const to of [...waypoints, finish]) {
-    const route = findRoute(grid, at, to);
-    if (!route) throw new Error(`Course "${file.name}": ${to.x},${to.y} can't be reached from ${at.x},${at.y}`);
-    for (const face of route) {
-      at = stepTo(grid, at, face)!;
-      const p = { x: at.x + 0.5, y: at.y + 0.5 }, q = line[line.length - 1]!;
-      line.push(p);
-      along.push(along[along.length - 1]! + Math.hypot(p.x - q.x, p.y - q.y));
+  // The ideal line through `points`, start grid cell 0 to the finish cell.
+  const trace = (points: Cell[]) => {
+    const line = [{ x: startGrid[0]!.x + 0.5, y: startGrid[0]!.y + 0.5 }], along = [0], waypointAlong: number[] = [];
+    let at: Spot = { ...startGrid[0]!, deck: false };
+    for (const to of [...points, finish]) {
+      const route = findRoute(grid, at, to);
+      if (!route) throw new Error(`Course "${file.name}": ${to.x},${to.y} can't be reached from ${at.x},${at.y}`);
+      for (const face of route) {
+        at = stepTo(grid, at, face)!;
+        const p = { x: at.x + 0.5, y: at.y + 0.5 }, q = line[line.length - 1]!;
+        line.push(p);
+        along.push(along[along.length - 1]! + Math.hypot(p.x - q.x, p.y - q.y));
+      }
+      waypointAlong.push(along[along.length - 1]!);
     }
-    waypointAlong.push(along[along.length - 1]!);
-  }
-  waypointAlong.pop(); // the finish cell
+    waypointAlong.pop(); // the finish cell
+    return { line, along, waypointAlong, length: along[along.length - 1]! };
+  };
+  const traced = trace(waypoints);
+  const drawnLength = file.laps.length ? trace(file.waypoints.map(cell)).length : traced.length;
 
   const finishArea = new Set<number>();
   const r = Math.ceil(FINISH_RADIUS);
   for (let y = finish.y - r; y <= finish.y + r; y++) for (let x = finish.x - r; x <= finish.x + r; x++) {
     if (Math.hypot(x - finish.x, y - finish.y) <= FINISH_RADIUS && drivable(grid, x, y) && grid.deck[y * grid.width + x]! < 0) finishArea.add(y * grid.width + x);
   }
-  return { file, startGrid, waypoints, finish, finishArea, line, along, waypointAlong, length: along[along.length - 1]! };
+  return { file, startGrid, waypoints, finish, finishArea, ...traced, drawnLength };
 }
 
 /**

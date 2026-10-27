@@ -12,7 +12,7 @@ import { mountStreamView, type CameraMode } from './race/view.js';
 
 // The race page: a bundled course over its battlefield, the race as the stream sees it (camera modes in race/camera.ts,
 // overlay in race/view.ts; the dev panel's button switches Overview / Director).
-// `?course=<file name without .json>`, `?seed=N` (race seed), `?zoom=N` (fixed zoom), `?cell=x,y` (centre
+// `?course=<file name without .json>`, `?seed=N` (race seed), `?zoom=N` (fixed zoom, following the leading tank), `?cell=x,y` (centre
 // there), `?grid=1` (passability, ideal line, waypoints). Dev only: `?fast=N` runs N× game speed, and the
 // test-chat panel's URL shortcuts (race/devPanel.ts).
 const status = document.getElementById('status')!;
@@ -102,7 +102,7 @@ async function main() {
     return offset === undefined ? bytes : bytes.subarray(offset, offset + length!);
   } : readInstall;
   const started = performance.now();
-  const { map, mapBytes, art: { battlefield, rhino }, cached } = await loadCourseArt(read, mapPath);
+  const { map, mapBytes, art: { battlefield, rhino, tesla, v3, missile }, cached } = await loadCourseArt(read, mapPath);
   if (edit && params.get('map')) {
     const first = battlefield.grid.speed.findIndex((speed, i) => speed > 0 && !battlefield.grid.blocked[i] && battlefield.grid.deck[i]! < 0);
     if (first < 0) throw new Error('Map has no drivable ground cells');
@@ -168,8 +168,40 @@ async function main() {
     world.addChild(flash);
     return { id, flash, destroyed: !!bridge.destroyed, changedAt: -Infinity };
   });
-  const missiles = new Graphics();
-  world.addChild(missiles);
+  // Interaction art over the battlefield: rockets, Tesla tanks, their effects.
+  // ponytail: drawn above every object, not depth-sorted; #45 does proper sorting.
+  const missiles = new Graphics(), fx = new Container();
+  world.addChild(missiles, fx);
+  const [v3Tex, missileTex, teslaBody, teslaTurret] = await Promise.all([frameTextures(v3), frameTextures(missile), frameTextures(tesla.body), frameTextures(tesla.turret)]);
+  /** Prerender frame for a heading in cells (see the Rhino's `+ 8` below). */
+  const frameOf = (dx: number, dy: number) => (Math.round((Math.atan2(dx, -dy) / (2 * Math.PI)) * 32) + 40) % 32;
+  let fxUsed = 0;
+  const put = (tex: Texture, x: number, y: number) => {
+    const sprite = (fx.children[fxUsed++] as Sprite | undefined) ?? fx.addChild(new Sprite());
+    sprite.anchor.set(0.5);
+    Object.assign(sprite, { texture: tex, visible: true, alpha: 1, tint: 0xffffff });
+    sprite.position.set(x, y);
+    return sprite;
+  };
+  /** Tesla strikes that went off (for the discharge and chronoshift out). */
+  const zaps: { x: number; y: number; at: number }[] = [];
+  let charging = new Set<Race['teslas'][number]>();
+  const ring = (x: number, y: number, z: number, cells: number) => {
+    const p = toScreen(x, y, z);
+    return missiles.ellipse(p.x, p.y, cells * 30 * Math.SQRT2, cells * 15 * Math.SQRT2);
+  };
+  const arcs = (x: number, y: number, reach: number, n: number, color: number) => {
+    for (let i = 0; i < n; i++) {
+      let a = Math.random() * 2 * Math.PI, px = x, py = y;
+      missiles.moveTo(px, py);
+      for (let k = 0; k < 4; k++) {
+        a += (Math.random() - 0.5) * 1.2;
+        px += Math.cos(a) * reach / 4; py += Math.sin(a) * reach / 8;
+        missiles.lineTo(px, py);
+      }
+    }
+    missiles.stroke({ color, width: 2, alpha: 0.9 });
+  };
   const overlay = passability(grid, terrain.originX, terrain.originY);
   const linePoint = (p: { x: number; y: number }) => toScreen(p.x, p.y, level(Math.floor(p.x), Math.floor(p.y)));
   course.line.forEach((p, i) => (i ? overlay.lineTo(linePoint(p).x, linePoint(p).y) : overlay.moveTo(linePoint(p).x, linePoint(p).y)));
@@ -235,7 +267,9 @@ async function main() {
     if (!edit) { // the camera, before anything is placed: labels counter-scale against it
     shot = cameraMode === 'director' && race.phase === 'racing' ? directorShot(race, shot) : undefined;
     const scale = zoom || (cameraMode === 'director' && race.phase === 'racing' ? Math.max(1.8, overviewScale() * 2.5) : overviewScale());
-    const target = focus ? toScreen(focus.x, focus.y, level(focus.x, focus.y)) : shot?.racer.tank ? toScreen(shot.racer.tank.x / LEPTONS_PER_CELL, shot.racer.tank.y / LEPTONS_PER_CELL, spotLevel(grid, shot.racer.tank.cell)) : { x: (minCourseX + maxCourseX) / 2, y: (minCourseY + maxCourseY) / 2 };
+    // `?zoom` without `?cell` follows the leading unfinished tank.
+    const followed = shot?.racer.tank ?? (zoom ? race.racers.find((r) => r.name === standings(race).find((s) => s.finishTime === undefined)?.name)?.tank : undefined);
+    const target = focus ? toScreen(focus.x, focus.y, level(focus.x, focus.y)) : followed ? toScreen(followed.x / LEPTONS_PER_CELL, followed.y / LEPTONS_PER_CELL, spotLevel(grid, followed.cell)) : { x: (minCourseX + maxCourseX) / 2, y: (minCourseY + maxCourseY) / 2 };
     world.scale.set(scale);
     world.position.set((app.screen.width + (cameraMode === 'overview' ? 360 : 0)) / 2 - target.x * scale, app.screen.height / 2 - target.y * scale);
     }
@@ -285,19 +319,65 @@ async function main() {
       if (effect.flash.visible) effect.flash.alpha = 0.7 * (1 - age / TICK_HZ);
     }
     missiles.clear();
+    fxUsed = 0;
     for (const m of race.missiles) {
-      const t = m.target.tank!;
+      const t = m.target.tank!, tx = t.x / LEPTONS_PER_CELL, ty = t.y / LEPTONS_PER_CELL;
       const flight = Math.min((race.frame + a - m.launched) / (m.arrives - m.launched), 1);
-      const x = m.x + (t.x / LEPTONS_PER_CELL - m.x) * flight;
-      const y = m.y + (t.y / LEPTONS_PER_CELL - m.y) * flight;
+      const x = m.x + (tx - m.x) * flight;
+      const y = m.y + (ty - m.y) * flight;
       const p = toScreen(x, y, spotLevel(grid, t.cell));
-      missiles.circle(p.x, p.y - 20 * Math.sin(flight * Math.PI), 5).fill(0xffdd50);
+      put(missileTex[frameOf(tx - m.x, ty - m.y)]!, p.x, p.y - 20 * Math.sin(flight * Math.PI));
     }
+    const V3_STEP = 12 / (1.5 * TICK_HZ);
+    for (const r of race.v3s) {
+      const x = r.x + r.dx * V3_STEP * a, y = r.y + r.dy * V3_STEP * a;
+      const lx = Math.min(Math.max(Math.floor(x), 0), grid.width - 1), ly = Math.min(Math.max(Math.floor(y), 0), grid.height - 1);
+      const p = toScreen(x, y, level(lx, ly));
+      put(v3Tex[frameOf(r.dx, r.dy)]!, p.x, p.y - 12);
+    }
+    for (const strike of charging) if (!race.teslas.includes(strike)) zaps.push({ x: strike.x, y: strike.y, at: race.frame });
+    charging = new Set(race.teslas);
+    const teslaAt = (x: number, y: number, alpha: number, tint: number) => {
+      const z = level(Math.floor(x), Math.floor(y)), p = toScreen(x, y, z);
+      // Beside the target: it takes no cell, so it is drawn half a cell off.
+      const sx = p.x - 22, sy = p.y + 6;
+      for (const tex of [teslaBody[8]!, teslaTurret[8]!]) {
+        const sprite = put(tex, sx, sy);
+        sprite.alpha = alpha;
+        sprite.tint = tint;
+      }
+      const ang = facingAngle(8), [px, py, pz] = tesla.pivot;
+      const tp = projectModelPoint(px * Math.cos(ang) - py * Math.sin(ang), px * Math.sin(ang) + py * Math.cos(ang), pz);
+      fx.children[fxUsed - 1]!.position.set(sx + tp.sx, sy + tp.sy);
+      return { x: sx + tp.sx, y: sy + tp.sy - 8, z };
+    };
+    for (const strike of race.teslas) {
+      // Beside its target, interpolated like the target's own view.
+      const v = views.get(strike.target), tk = strike.target.tank!;
+      const follow = v && strike.target.finishedAt === undefined;
+      const x = follow ? (v.prev.x + (tk.x - v.prev.x) * a) / LEPTONS_PER_CELL : strike.x, y = follow ? (v.prev.y + (tk.y - v.prev.y) * a) / LEPTONS_PER_CELL : strike.y;
+      const left = (strike.arrives - race.frame - a) / (2 * TICK_HZ), charge = 1 - left;
+      const shiftIn = Math.min(charge / 0.15, 1);
+      const pulse = 0.5 + 0.5 * Math.sin(race.frame * 1.3);
+      const top = teslaAt(x, y, shiftIn, shiftIn < 1 ? 0x80c0ff : 0xffffff);
+      if (shiftIn < 1) ring(x, y, top.z, 1 - shiftIn).fill({ color: 0x80c0ff, alpha: 0.6 * (1 - shiftIn) });
+      ring(x, y, top.z, 3).stroke({ color: 0x60b0ff, width: 1 + 2 * charge, alpha: 0.25 + 0.5 * charge * pulse });
+      arcs(top.x, top.y, 10 + 40 * charge, 1 + Math.floor(charge * 4), 0xc8e8ff);
+    }
+    for (let i = zaps.length - 1; i >= 0; i--) {
+      const zap = zaps[i]!, age = (race.frame + a - zap.at) / (0.6 * TICK_HZ);
+      if (age >= 1) { zaps.splice(i, 1); continue; }
+      const top = teslaAt(zap.x, zap.y, 1 - age, 0x80c0ff);
+      ring(zap.x, zap.y, top.z, 3).fill({ color: 0x9fd8ff, alpha: 0.45 * (1 - age) }).stroke({ color: 0xffffff, width: 3, alpha: 1 - age });
+      arcs(top.x, top.y, 3 * 30 * Math.SQRT2, 8, 0xffffff);
+    }
+    for (let i = fxUsed; i < fx.children.length; i++) fx.children[i]!.visible = false;
     drawOverlay?.(race, shot);
     hud.textContent = hudText(race);
     // For headless checks.
     Object.assign(document.body.dataset, {
       phase: race.phase, frame: String(race.frame),
+      effects: `v3:${race.v3s.length} tesla:${race.teslas.length} zap:${zaps.length} sprites:${fxUsed}`,
       tanks: race.racers.filter((r) => r.tank && r.finishedAt === undefined).map((r) => {
         const c = tankCell(r.tank!);
         return `${r.name}@${c.x},${c.y}${c.deck ? 'd' : ''}${r.tank!.ghost ? 'g' : ''}:wp${r.next}`;
