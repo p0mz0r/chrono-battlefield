@@ -1,14 +1,10 @@
 import { Application, Container, Graphics, Rectangle, Sprite, Texture } from 'pixi.js';
-import { prerenderRhino } from './assets/rhino.js';
-import { importBattlefield } from './battlefield/import.js';
 import type { CellGrid } from './battlefield/grid.js';
-import { CHUNK } from './battlefield/terrain.js';
 import { openInstall, readInstall } from './install/read.js';
 import { bindSetupKey, showSetup } from './install/setup.js';
 import { createTank, isDriving, LEPTONS_PER_CELL, orderMove, tankCell, tick, TICK_HZ, type Cell } from './movement/index.js';
-import { loadMap, mountTheater } from './ra2/mount.js';
+import { loadCourse, type Sprite as CachedSprite } from './load.js';
 import { facingAngle, projectModelPoint } from './ra2/render/voxelRender.js';
-import type { ConvertedSprite } from './ra2/render/sprite.js';
 
 // Dev page: one battlefield's terrain and one Rhino that drives to a clicked cell.
 // `?map=<path inside the install>`, `?start=x,y`, `?to=x,y` (order on load), `?zoom=N` (follow the tank), `?grid=1` (show passability).
@@ -19,22 +15,13 @@ const cellParam = (name: string): Cell | undefined => {
   return Number.isInteger(x) && Number.isInteger(y) ? { x: x!, y: y! } : undefined;
 };
 
-function frameTextures(s: ConvertedSprite): Texture[] {
-  const canvas = document.createElement('canvas');
-  canvas.width = s.atlasWidth;
-  canvas.height = s.atlasHeight;
-  canvas.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(s.colorRgba), s.atlasWidth, s.atlasHeight), 0, 0);
-  const source = Texture.from(canvas).source;
+/** A cached WebP decoded straight into a texture; its pixels never sit in a JS buffer. */
+const blobTexture = async (image: Blob) => Texture.from(await createImageBitmap(image));
+
+async function frameTextures(s: CachedSprite): Promise<Texture[]> {
+  const { source } = await blobTexture(s.image);
   return s.frames.map((f) => new Texture({ source, frame: new Rectangle(f.x, f.y, f.w, f.h) }));
 }
-
-const canvasTexture = (rgba: Uint8ClampedArray<ArrayBuffer>, width: number, height: number) => {
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  canvas.getContext('2d')!.putImageData(new ImageData(rgba, width, height), 0, 0);
-  return Texture.from(canvas);
-};
 
 /** Passability as movement sees it: red impassable or blocked, yellow slow, blue ramp, cyan high-bridge deck. */
 function passability(grid: CellGrid, originX: number, originY: number): Graphics {
@@ -62,9 +49,9 @@ async function main() {
     return;
   }
   const mapPath = params.get('map') ?? 'Hills.mmx';
-  const map = await loadMap(readInstall, mapPath);
-  const vfs = await mountTheater(readInstall, map.theater);
-  const battlefield = await importBattlefield(readInstall, mapPath);
+  const started = performance.now();
+  const { map, art, cached } = await loadCourse(readInstall, mapPath);
+  const { battlefield, rhino } = art;
   const { terrain, images, objects } = battlefield;
   const cells = battlefield.grid;
   const grid = {
@@ -72,7 +59,6 @@ async function main() {
     speed: (x: number, y: number) => x < 0 || y < 0 || x >= cells.width || y >= cells.height ? 0 : cells.blocked[y * cells.width + x] ? 0 : cells.speed[y * cells.width + x] ?? 0,
     level: (x: number, y: number) => cells.level[y * cells.width + x] ?? 0,
   };
-  const rhino = prerenderRhino(vfs, map.theater);
 
   const { originX: minX, originY: minY } = terrain;
   /** Battlefield px of a point in cell units (cell centre = x + 0.5). */
@@ -92,14 +78,11 @@ async function main() {
   const world = new Container();
   app.stage.addChild(world);
   for (const chunk of terrain.chunks) {
-    const canvas = document.createElement('canvas');
-    canvas.width = canvas.height = CHUNK;
-    canvas.getContext('2d')!.putImageData(new ImageData(chunk.rgba, CHUNK, CHUNK), 0, 0);
-    const sprite = new Sprite(Texture.from(canvas));
+    const sprite = new Sprite(await blobTexture(chunk.image));
     sprite.position.set(chunk.x, chunk.y);
     world.addChild(sprite);
   }
-  const textures = images.map((img) => canvasTexture(img.rgba, img.width, img.height));
+  const textures = await Promise.all(images.map((img) => blobTexture(img.image)));
   const things = new Container({ sortableChildren: true });
   for (const obj of objects) {
     const sprite = new Sprite(textures[obj.image]);
@@ -117,7 +100,7 @@ async function main() {
   world.addChild(trail);
 
   // The Rhino.
-  const bodyTex = frameTextures(rhino.body), turretTex = frameTextures(rhino.turret.sprite);
+  const bodyTex = await frameTextures(rhino.body), turretTex = await frameTextures(rhino.turret);
   const body = new Sprite(bodyTex[0]), turret = new Sprite(turretTex[0]);
   body.anchor.set(0.5);
   turret.anchor.set(0.5);
@@ -168,7 +151,7 @@ async function main() {
     const f = (Math.round(tank.facing / 2048) + 8) % 32;
     body.texture = bodyTex[f]!;
     turret.texture = turretTex[f]!;
-    const ang = facingAngle(f), [px, py, pz] = rhino.turret.pivot;
+    const ang = facingAngle(f), [px, py, pz] = rhino.pivot;
     const tp = projectModelPoint(px * Math.cos(ang) - py * Math.sin(ang), px * Math.sin(ang) + py * Math.cos(ang), pz);
     turret.position.set(tp.sx, tp.sy);
     const p = toScreen(fx, fy, grid.level(Math.floor(fx), Math.floor(fy)));
@@ -182,7 +165,9 @@ async function main() {
     document.body.dataset.pose = `${tank.x},${tank.y},${tank.facing}`;
   });
 
-  status.textContent = `${mapPath}: ${map.theater}, ${terrain.missing} missing tiles. Rhino at ${start.x},${start.y}; click a cell to drive. G: passability. ${battlefield.warnings.join('; ')}`;
+  const loadMs = Math.round(performance.now() - started);
+  document.body.dataset.load = `${loadMs},${cached ? 'cached' : 'imported'}`;
+  status.textContent = `${mapPath}: ${map.theater}, ${cached ? 'from cache' : 'imported'} in ${loadMs} ms, ${terrain.missing} missing tiles. Rhino at ${start.x},${start.y}; click a cell to drive. G: passability. ${battlefield.warnings.join('; ')}`;
   const to = cellParam('to');
   if (to) order(to);
   document.body.dataset.ready = String(terrain.missing === 0);
