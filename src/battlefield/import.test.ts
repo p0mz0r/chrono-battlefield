@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { describeInstall, readFromDir } from '../../test/install.js';
 import { MixFile } from '../ra2/index.js';
 import { importBattlefield } from './import.js';
+import { findRoute, stepTo } from '../movement/index.js';
 
 describeInstall('importBattlefield on the install', () => {
   it.each([['amazon.mmx', 'TEMPERATE'], ['Arena.mmx', 'URBAN'], ['Break.mmx', 'SNOW'], ['HighExpR.yro', 'DESERT'], ['IrvineCa.yro', 'NEWURBAN'], ['MoonPatr.yro', 'LUNAR']])('imports every art layer of %s', async (path, theater) => {
@@ -20,6 +21,23 @@ describeInstall('importBattlefield on the install', () => {
     expect(grid.deck[deck]).toBe(grid.level[deck]! + 4);
     expect(grid.blocked.some(Boolean)).toBe(true);
     expect(battlefield.objects.length).toBeGreaterThan(0);
+
+    // Hills' long east-west bridge has a deck at level 6 and drivable ground at level 2 underneath.
+    let over = { x: 75, y: 75, deck: false };
+    const overRoute = findRoute(grid, over, { x: 98, y: 75 })!;
+    expect(overRoute).toHaveLength(23);
+    for (const face of overRoute) {
+      over = stepTo(grid, over, face)!;
+      if (over.x >= 76 && over.x <= 97) expect(over.deck).toBe(true);
+    }
+    let under = { x: 85, y: 74, deck: false };
+    const underRoute = findRoute(grid, under, { x: 85, y: 76 })!;
+    expect(underRoute).toHaveLength(2);
+    for (const face of underRoute) {
+      under = stepTo(grid, under, face)!;
+      expect(under.deck).toBe(false);
+    }
+    expect(under).toEqual({ x: 85, y: 76, deck: false });
   }, 30_000);
   it('refuses an invalid tile index instead of silently drawing clear ground', async () => {
     // One LZO literal cell at (1,1), tile 999999, sub-tile 0, height 0.

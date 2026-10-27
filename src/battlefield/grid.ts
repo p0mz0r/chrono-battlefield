@@ -12,6 +12,9 @@ export interface Bridge {
   kind: 'high' | 'low';
   /** Cell indices (`y * width + x`). */
   cells: number[];
+  /** Runtime state while this bridge is in play. */
+  destroyed?: boolean;
+  intactSpeed?: number[];
 }
 
 /**
