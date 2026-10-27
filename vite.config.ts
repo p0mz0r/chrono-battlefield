@@ -1,6 +1,10 @@
-import { createReadStream, statSync } from 'node:fs';
+import { createReadStream, mkdirSync, statSync, writeFileSync } from 'node:fs';
+import { open, readFile } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 import { defineConfig, type Plugin } from 'vite';
+import { importBattlefield } from './src/battlefield/import.js';
+import { inspectCourse } from './src/race/editorModel.js';
+import type { CourseFile } from './src/race/course.js';
 
 /** Dev only: serves the install in RA2_DIR under /ra2/ for readInstall (ADR 0004). */
 function serveInstall(): Plugin {
@@ -42,5 +46,65 @@ function serveInstall(): Plugin {
   };
 }
 
+/** The only write surface: a bounded JSON course or credited custom map inside courses/. Dev server only. */
+function saveCourse(): Plugin {
+  return {
+    name: 'save-course',
+    configureServer(server) {
+      server.middlewares.use('/__course', (req, res) => {
+        const url = new URL(req.url!, 'http://dev');
+        const mapName = url.pathname.startsWith('/map/') ? decodeURIComponent(url.pathname.slice(5)) : '';
+        if (!((req.method === 'POST' && url.pathname === '/save') || (req.method === 'PUT' && mapName))) { res.statusCode = 404; res.end(); return; }
+        const chunks: Buffer[] = []; let length = 0;
+        req.on('data', (part: Buffer) => {
+          length += part.length;
+          if (length > 10 * 1024 * 1024) req.destroy(); else chunks.push(part);
+        });
+        req.on('end', async () => {
+          try {
+            if (mapName) {
+              if (!/^[\w.-]+\.(map|yrm|mpr)$/i.test(mapName) || mapName.includes('..')) throw new Error('Invalid map name');
+              const path = resolve('courses/maps', mapName);
+              mkdirSync(resolve('courses/maps'), { recursive: true });
+              writeFileSync(path, Buffer.concat(chunks), { flag: 'wx' });
+              res.end(mapName);
+              return;
+            }
+            const file = JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>;
+            if (typeof file.name !== 'string' || !file.name.trim() || typeof file.map !== 'string' ||
+              typeof file.mapHash !== 'string' || !/^crc32:[0-9a-f]{8}$/.test(file.mapHash) ||
+              !['install', 'shipped'].includes(String(file.source)) || typeof file.author !== 'string' || typeof file.link !== 'string' ||
+              !Array.isArray(file.startGrid) || file.startGrid.length !== 10 || !Array.isArray(file.waypoints) ||
+              !Array.isArray(file.laps) || !Array.isArray(file.finish) || !Array.isArray(file.bridges) ||
+              ![...file.startGrid, ...file.waypoints, file.finish, ...file.bridges].every((p) => Array.isArray(p) && p.length === 2 && p.every((n) => Number.isInteger(n) && n >= 0)) ||
+              !file.laps.every((lap) => lap && typeof lap === 'object' && ['from', 'to', 'count'].every((key) => Number.isInteger(lap[key])))) throw new Error('Invalid course file');
+            const slug = file.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+            if (!slug) throw new Error('Name must contain a letter or number');
+            if (!/^[\w .\-\\/]+\.(mmx|yro|map|yrm|mpr)$/i.test(file.map) || file.map.includes('..')) throw new Error('Invalid map path');
+            if (file.source === 'shipped' && (!/^[\w.-]+\.(map|yrm|mpr)$/i.test(file.map) || file.map.includes('..') || !statSync(resolve('courses/maps', file.map), { throwIfNoEntry: false })?.isFile() || !file.author.trim() || !file.link.trim())) throw new Error('Custom map needs a saved map, author and source link');
+            if (file.source === 'install' && !process.env.RA2_DIR) throw new Error('RA2_DIR is not set');
+            const read = async (name: string, offset?: number, size?: number): Promise<Uint8Array> => {
+              const path = resolve(name === file.map && file.source === 'shipped' ? resolve('courses/maps') : resolve(process.env.RA2_DIR!), name);
+              const base = name === file.map && file.source === 'shipped' ? resolve('courses/maps') : resolve(process.env.RA2_DIR!);
+              if (!path.startsWith(base + sep)) throw new Error('Invalid read path');
+              if (offset === undefined) return new Uint8Array(await readFile(path));
+              const handle = await open(path, 'r');
+              try { const buffer = new Uint8Array(size!); const { bytesRead } = await handle.read(buffer, 0, size!, offset); return buffer.subarray(0, bytesRead); }
+              finally { await handle.close(); }
+            };
+            const bytes = await read(file.map);
+            const battlefield = await importBattlefield(read, file.map);
+            const result = inspectCourse(file as unknown as CourseFile, bytes, battlefield.grid);
+            if (result.errors.length) throw new Error(result.errors.join(' '));
+            const path = resolve('courses', `${slug}.json`);
+            writeFileSync(path, JSON.stringify(file, null, 2) + '\n');
+            res.end(`courses/${slug}.json`);
+          } catch (error) { res.statusCode = 400; res.end(String(error)); }
+        });
+      });
+    },
+  };
+}
+
 // Relative asset URLs: OBS loads dist/index.html from http://absolute/<path>/.
-export default defineConfig({ base: './', plugins: [serveInstall()] });
+export default defineConfig({ base: './', plugins: [serveInstall(), saveCourse()] });
