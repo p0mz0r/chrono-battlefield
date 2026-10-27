@@ -6,7 +6,7 @@ A chat-driven race of RA2 Rhino tanks over a real Red Alert 2 / Yuri's Revenge b
 
 Needs Node 24 and an RA2 + YR install. Set `RA2_DIR` to the install folder.
 
-- `npm run dev` serves the page and the install (under `/ra2/`). It imports and draws one battlefield: `?map=<path inside the install>`, e.g. `?map=SinkSwim.yro` or `?map=Maps/Yuri's Revenge/2_lanaeris.map` (default `Hills.mmx`). An unsupported map shows why it was refused. `G` (or `?grid=1`) overlays the cell grid's passability: red impassable or blocked, yellow slow, blue ramp, cyan high-bridge deck. `?cell=x,y&zoom=1` centres on a cell. Click to drive the Rhino; `?start=x,y` sets its start, `?to=x,y` orders it on load and `?zoom=N` follows it.
+- `npm run dev` serves the page and the install (under `/ra2/`). It imports and draws one battlefield: `?map=<path inside the install>`, e.g. `?map=SinkSwim.yro` or `?map=Maps/Yuri's Revenge/2_lanaeris.map` (default `Hills.mmx`). An unsupported map shows why it was refused. `G` (or `?grid=1`) overlays the cell grid's passability: red impassable or blocked, yellow slow, blue ramp, cyan high-bridge deck. `?cell=x,y&zoom=1` centres on a cell. Ten Rhinos (`?tanks=N`) stand around `?start=x,y`; click to send each to its own cell near the clicked one, or `?to=x,y` to order them on load (e.g. `?start=70,75&to=103,75&cell=86,75&zoom=1` sends them single file over Hills' bridge). `?seed=N` sets the resolve order, `?zoom=N` follows the first tank, and ghosting tanks draw at half alpha.
 - `npm test` runs the tests. Tests that read the install skip when `RA2_DIR` is unset.
 - `npm run typecheck`, `npm run build` (to `dist/`).
 
