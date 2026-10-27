@@ -77,6 +77,16 @@ describeInstall('RA2 readers', () => {
     expect(sample.sampleRate).toBe(22050);
     expect(sample.samples.length).toBeGreaterThan(1000);
     expect(sample.samples.some(value => Math.abs(value) > 100)).toBe(true);
+    // The join voice line: block boundaries must be no rougher than the signal (a zeroed
+    // block state clicked there at ~9× the average step, heard as crackle).
+    const yrBank = AudioBank.parse(yr.read('audio.idx')!, yr.read('audio.bag')!), entry = yrBank.entry('vgrssea')!;
+    const voice = yrBank.decode('vgrssea')!.samples, body = yr.read('audio.bag')!.subarray(entry.offset, entry.offset + entry.size);
+    const perBlock = (512 - 4) * 2 + 1;
+    for (let k = 0; k * 512 < body.length; k++) expect(voice[k * perBlock]).toBe((body[k * 512]! | body[k * 512 + 1]! << 8) << 16 >> 16);
+    let boundary = 0, blocks = 0, step = 0;
+    for (let i = perBlock; i < voice.length; i += perBlock) { boundary += Math.abs(voice[i]! - voice[i - 1]!); blocks++; }
+    for (let i = 1; i < voice.length; i++) step += Math.abs(voice[i]! - voice[i - 1]!);
+    expect(boundary / blocks).toBeLessThan(3 * step / voice.length);
     const pcm = bank.decode('icraloop')!;
     expect(pcm.samples.length).toBe(bank.entry('icraloop')!.size / 2);
     expect(pcm.samples.some(value => value !== 0)).toBe(true);

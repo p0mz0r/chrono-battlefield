@@ -23,12 +23,14 @@
 // resulting entry self-validates (ascending offsets inside the bag, printable names,
 // sane sample rates), so a bad count never yields bad data.
 //
-// Bag samples are IMA-ADPCM packed in `chunkSize`-byte blocks with the predictor/index
-// reset at each block boundary (verified against the real install: continuous decode
-// clips, per-block reset yields clean speech/SFX levels). The shared IMA nibble decoder
-// (aud/adpcm.ts) does the work.
+// Bag samples are Microsoft (WAV) IMA-ADPCM in `chunkSize`-byte blocks. Each block opens
+// with a 4-byte header: int16 first sample (the predictor), uint8 step index, uint8 zero;
+// the nibbles follow, low nibble first. Verified against the real install: every block
+// of the stock cues has a valid header, and seeding from it removes the click at each
+// block boundary that a zeroed state gave. The shared IMA nibble decoder (aud/adpcm.ts)
+// does the work.
 
-import { decodeImaBlock, newImaState } from './adpcm.js';
+import { decodeImaBlock } from './adpcm.js';
 export interface DecodedAudio { samples: Int16Array; sampleRate: number; channels: number }
 
 /** Size in bytes of each IDX entry. */
@@ -142,8 +144,8 @@ export class AudioBank {
 
   /**
    * Decode a bank sample to interleaved signed-16-bit PCM, or undefined if the name
-   * is absent. Compressed (IMA-ADPCM) bodies are decoded in `chunkSize`-byte blocks
-   * with per-block state reset; an uncompressed body is read as raw signed 16-bit.
+   * is absent. Compressed (IMA-ADPCM) bodies are decoded in `chunkSize`-byte blocks,
+   * each seeded from its 4-byte header; an uncompressed body is read as raw signed 16-bit.
    */
   decode(name: string, sample?: Uint8Array): DecodedAudio | undefined {
     const e = this.entries.get(name.toLowerCase());
@@ -159,14 +161,16 @@ export class AudioBank {
       for (let i = 0; i < n; i++) out[i] = view.getInt16(i * 2, true);
       return { samples: out, sampleRate: e.sampleRate, channels };
     }
-    // IMA-ADPCM in chunkSize-byte blocks; 2 samples per byte.
+    // IMA-ADPCM in chunkSize-byte blocks: a 4-byte header sample, then 2 samples per byte.
     const out = new Int16Array(body.length * 2);
     const chunk = e.chunkSize > 0 ? e.chunkSize : body.length;
+    const view = new DataView(body.buffer, body.byteOffset, body.byteLength);
     let outPos = 0;
-    for (let base = 0; base < body.length; base += chunk) {
+    for (let base = 0; base + 4 <= body.length; base += chunk) {
       const len = Math.min(chunk, body.length - base);
-      const state = newImaState();
-      outPos += decodeImaBlock(body, base, len, state, out, outPos);
+      const state = { predictor: view.getInt16(base, true), index: Math.min(body[base + 2]!, 88) };
+      out[outPos++] = state.predictor;
+      outPos += decodeImaBlock(body, base + 4, len - 4, state, out, outPos);
     }
     const samples = outPos === out.length ? out : out.subarray(0, outPos);
     return { samples, sampleRate: e.sampleRate, channels };
