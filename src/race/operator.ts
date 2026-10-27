@@ -90,7 +90,7 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, c
   addEventListener('keydown', (event) => {
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
     const target = event.target as HTMLElement;
-    if (target.closest('input, select, textarea') && event.key !== 'Enter') return;
+    if (target.closest('input, select, textarea') && (event.key !== 'Enter' || !root.contains(target))) return;
     const key = event.key.toLowerCase();
     if (key === 's' && ['idle', 'results', 'cancelled'].includes(race.phase)) { root.hidden = false; prompt.textContent = ''; }
     else if (event.key === 'Enter') start();
