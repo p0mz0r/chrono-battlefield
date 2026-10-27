@@ -1,14 +1,10 @@
 import { Application, Container, Graphics, Rectangle, Sprite, Text, Texture } from 'pixi.js';
-import { prerenderRhino } from './assets/rhino.js';
-import { importBattlefield } from './battlefield/import.js';
 import type { CellGrid } from './battlefield/grid.js';
-import { CHUNK } from './battlefield/terrain.js';
 import { openInstall, readInstall } from './install/read.js';
 import { bindSetupKey, showSetup } from './install/setup.js';
 import { LEPTONS_PER_CELL, spotLevel, tankCell, TICK_HZ, type Cell } from './movement/index.js';
-import { mountTheater } from './ra2/mount.js';
+import { loadCourse as loadCourseArt, type Sprite as CachedSprite } from './load.js';
 import { facingAngle, projectModelPoint } from './ra2/render/voxelRender.js';
-import type { ConvertedSprite } from './ra2/render/sprite.js';
 import { loadCourse, type CourseFile } from './race/course.js';
 import { createRace, secondsLeft, standings, tickRace, type Race, type Racer } from './race/race.js';
 
@@ -27,22 +23,13 @@ const cellParam = (name: string): Cell | undefined => {
 /** Courses bundled at build from `courses/*.json`. */
 const COURSES = import.meta.glob<CourseFile>('../courses/*.json', { eager: true, import: 'default' });
 
-function frameTextures(s: ConvertedSprite): Texture[] {
-  const canvas = document.createElement('canvas');
-  canvas.width = s.atlasWidth;
-  canvas.height = s.atlasHeight;
-  canvas.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(s.colorRgba), s.atlasWidth, s.atlasHeight), 0, 0);
-  const source = Texture.from(canvas).source;
+/** A cached WebP decoded straight into a texture; its pixels never sit in a JS buffer. */
+const blobTexture = async (image: Blob) => Texture.from(await createImageBitmap(image));
+
+async function frameTextures(s: CachedSprite): Promise<Texture[]> {
+  const { source } = await blobTexture(s.image);
   return s.frames.map((f) => new Texture({ source, frame: new Rectangle(f.x, f.y, f.w, f.h) }));
 }
-
-const canvasTexture = (rgba: Uint8ClampedArray<ArrayBuffer>, width: number, height: number) => {
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  canvas.getContext('2d')!.putImageData(new ImageData(rgba, width, height), 0, 0);
-  return Texture.from(canvas);
-};
 
 /** Passability as movement sees it: red impassable or blocked, yellow slow, blue ramp, cyan high-bridge deck. */
 function passability(grid: CellGrid, originX: number, originY: number): Graphics {
@@ -91,11 +78,11 @@ async function main() {
   // ponytail: shipped custom maps (courses/maps/, ADR 0006) arrive with the first course over one.
   if (file.source !== 'install') throw new Error(`Course "${file.name}": shipped maps aren't supported yet`);
   const mapPath = file.map;
-  const battlefield = await importBattlefield(readInstall, mapPath);
-  const course = loadCourse(file, await readInstall(mapPath), battlefield.grid);
+  const started = performance.now();
+  const { map, mapBytes, art: { battlefield, rhino }, cached } = await loadCourseArt(readInstall, mapPath);
+  const course = loadCourse(file, mapBytes, battlefield.grid);
   const { terrain, images, objects, grid } = battlefield;
   const level = (x: number, y: number) => grid.level[y * grid.width + x] ?? 0;
-  const rhino = prerenderRhino(await mountTheater(readInstall, battlefield.theater), battlefield.theater);
   const race = createRace(course, grid, Number(params.get('seed') ?? Date.now() % 1e9));
 
   const { originX: minX, originY: minY } = terrain;
@@ -112,10 +99,7 @@ async function main() {
   const world = new Container();
   app.stage.addChild(world);
   for (const chunk of terrain.chunks) {
-    const canvas = document.createElement('canvas');
-    canvas.width = canvas.height = CHUNK;
-    canvas.getContext('2d')!.putImageData(new ImageData(chunk.rgba, CHUNK, CHUNK), 0, 0);
-    const sprite = new Sprite(Texture.from(canvas));
+    const sprite = new Sprite(await blobTexture(chunk.image));
     sprite.position.set(chunk.x, chunk.y);
     world.addChild(sprite);
   }
@@ -126,7 +110,7 @@ async function main() {
     finish.poly(diamond(x, y)).fill({ color: (x + y) % 2 ? 0xffffff : 0x111111, alpha: 0.6 });
   }
   world.addChild(finish);
-  const textures = images.map((img) => canvasTexture(img.rgba, img.width, img.height));
+  const textures = await Promise.all(images.map((img) => blobTexture(img.image)));
   const things = new Container({ sortableChildren: true });
   for (const obj of objects) {
     const sprite = new Sprite(textures[obj.image]);
@@ -145,7 +129,7 @@ async function main() {
   addEventListener('keydown', (e) => { if (e.key === 'g' || e.key === 'G') overlay.visible = !overlay.visible; });
 
   // The Rhinos: one view per racer once its tank is on the start grid, labelled with its name.
-  const bodyTex = frameTextures(rhino.body), turretTex = frameTextures(rhino.turret.sprite);
+  const bodyTex = await frameTextures(rhino.body), turretTex = await frameTextures(rhino.turret);
   const views = new Map<Racer, { view: Container; body: Sprite; turret: Sprite; prev: { x: number; y: number } }>();
   const viewOf = (r: Racer) => {
     let v = views.get(r);
@@ -194,7 +178,7 @@ async function main() {
       const f = (Math.round(tank.facing / 2048) + 8) % 32;
       body.texture = bodyTex[f]!;
       turret.texture = turretTex[f]!;
-      const ang = facingAngle(f), [px, py, pz] = rhino.turret.pivot;
+      const ang = facingAngle(f), [px, py, pz] = rhino.pivot;
       const tp = projectModelPoint(px * Math.cos(ang) - py * Math.sin(ang), px * Math.sin(ang) + py * Math.cos(ang), pz);
       turret.position.set(tp.sx, tp.sy);
       const p = toScreen(fx, fy, spotLevel(grid, tank.cell));
@@ -218,7 +202,9 @@ async function main() {
     });
   });
 
-  status.textContent = `${course.file.name} on ${mapPath} (${battlefield.theater}), ideal line ${course.length.toFixed(0)} cells. G: passability and ideal line.`;
+  const loadMs = Math.round(performance.now() - started);
+  document.body.dataset.load = `${loadMs},${cached ? 'cached' : 'imported'}`;
+  status.textContent = `${course.file.name} on ${mapPath} (${map.theater}, ${cached ? 'from cache' : 'imported'} in ${loadMs} ms), ideal line ${course.length.toFixed(0)} cells. G: passability and ideal line.`;
   if (import.meta.env.DEV) (await import('./race/devPanel.js')).mountDevPanel(race, params);
   document.body.dataset.ready = String(terrain.missing === 0);
 }

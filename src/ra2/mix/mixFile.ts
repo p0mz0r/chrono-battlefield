@@ -61,6 +61,23 @@ export class MixFile {
 
   /** Parse a MIX archive from a byte buffer. Throws if the layout is invalid. */
   static parse(data: Uint8Array): MixFile {
+    return MixFile.parseIndex(data, data.length);
+  }
+
+  /** Bytes needed for the header and index; the prefix must include the first encrypted block. */
+  static indexSize(prefix: Uint8Array): number {
+    const view = new DataView(prefix.buffer, prefix.byteOffset, prefix.byteLength);
+    if (view.getUint32(0, true) & MIX_FLAG_ENCRYPTED) {
+      const bf = new Blowfish(getBlowfishKey(prefix.subarray(4, 84)));
+      const first = bf.decipher(prefix.subarray(84, 92), 8);
+      const count = new DataView(first.buffer, first.byteOffset).getUint16(0, true);
+      return 92 + ((count * 12 + 5) & ~7);
+    }
+    return 10 + view.getUint16(4, true) * 12;
+  }
+
+  /** Parses metadata alone; totalSize, when supplied, checks the complete archive length. */
+  static parseIndex(data: Uint8Array, totalSize?: number): MixFile {
     if (data.length < 4) {
       throw new Error('MIX too small to contain a flags header');
     }
@@ -76,20 +93,20 @@ export class MixFile {
     const encrypted = (flags & MIX_FLAG_ENCRYPTED) !== 0;
 
     const entries = encrypted
-      ? MixFile.parseEncrypted(data, view, checksum)
-      : MixFile.parsePlain(data, view, checksum);
+      ? MixFile.parseEncrypted(data, view, checksum, totalSize)
+      : MixFile.parsePlain(data, view, checksum, totalSize);
 
     return new MixFile(data, entries, encrypted, checksum);
   }
 
-  private static parsePlain(data: Uint8Array, view: DataView, checksum: boolean): MixEntry[] {
+  private static parsePlain(data: Uint8Array, view: DataView, checksum: boolean, totalSize?: number): MixEntry[] {
     // Layout: [flags:4][c_files:2][size:4][index...][body...][checksum?]
     const cFiles = view.getUint16(4, true);
     const cbIndex = cFiles * INDEX_ENTRY_SIZE;
     const bodySize = view.getInt32(4 + 2, true);
     const dataBase = 4 + HEADER_SIZE + cbIndex;
     const expected = dataBase + bodySize + (checksum ? CHECKSUM_SIZE : 0);
-    if (data.length !== expected) {
+    if (bodySize < 0 || data.length < dataBase || (totalSize !== undefined && totalSize !== expected)) {
       throw new Error(`MIX size mismatch: expected ${expected}, got ${data.length}`);
     }
     const entries: MixEntry[] = [];
@@ -98,13 +115,14 @@ export class MixFile {
       const id = view.getUint32(p, true) >>> 0;
       const offset = view.getInt32(p + 4, true) + dataBase;
       const size = view.getInt32(p + 8, true);
+      if (size < 0 || offset < dataBase || offset + size > dataBase + bodySize) throw new Error('MIX entry outside archive body');
       entries.push({ id, offset, size });
       p += INDEX_ENTRY_SIZE;
     }
     return entries;
   }
 
-  private static parseEncrypted(data: Uint8Array, view: DataView, checksum: boolean): MixEntry[] {
+  private static parseEncrypted(data: Uint8Array, view: DataView, checksum: boolean, totalSize?: number): MixEntry[] {
     // Layout: [flags:4][keySource:80][enc(header+index)...][body...][checksum?]
     if (data.length < 4 + KEY_SOURCE_SIZE + 8) {
       throw new Error('Encrypted MIX too small');
@@ -128,7 +146,7 @@ export class MixFile {
     const cbF = (cbIndex + 5) & ~7;
     const dataBase = encStart + 8 + cbF;
     const expected = dataBase + bodySize + (checksum ? CHECKSUM_SIZE : 0);
-    if (data.length !== expected) {
+    if (bodySize < 0 || data.length < dataBase || (totalSize !== undefined && totalSize !== expected)) {
       throw new Error(`Encrypted MIX size mismatch: expected ${expected}, got ${data.length}`);
     }
 
@@ -149,6 +167,7 @@ export class MixFile {
       const id = idxView.getUint32(p, true) >>> 0;
       const offset = idxView.getInt32(p + 4, true) + dataBase;
       const size = idxView.getInt32(p + 8, true);
+      if (size < 0 || offset < dataBase || offset + size > dataBase + bodySize) throw new Error('MIX entry outside archive body');
       entries.push({ id, offset, size });
       p += INDEX_ENTRY_SIZE;
     }
@@ -184,6 +203,7 @@ export class MixFile {
   readById(id: number): Uint8Array | undefined {
     const e = this.byId.get(id >>> 0);
     if (!e) return undefined;
+    if (e.offset + e.size > this.data.length) throw new Error('MIX entry body is not loaded');
     return this.data.subarray(e.offset, e.offset + e.size);
   }
 

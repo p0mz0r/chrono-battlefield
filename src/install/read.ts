@@ -1,10 +1,34 @@
-type Read = (path: string) => Promise<Uint8Array>;
+export interface ByteRange { offset: number; length: number }
+type Read = (path: string, offset?: number, length?: number) => Promise<Uint8Array>;
+
+/** Copies the requested ranges out of one streaming pass over an OBS response, discarding the rest; stops after the last. */
+export async function selectRanges(response: Response, ranges: readonly ByteRange[]): Promise<Uint8Array[]> {
+  if (!response.body) throw new Error('Install response has no body');
+  for (const r of ranges) if (!Number.isSafeInteger(r.offset) || !Number.isSafeInteger(r.length) || r.offset < 0 || r.length < 0) throw new Error('Invalid install byte range');
+  const output = ranges.map(r => new Uint8Array(r.length));
+  const end = Math.max(0, ...ranges.map(r => r.offset + r.length));
+  const reader = response.body.getReader();
+  let position = 0;
+  try {
+    while (position < end) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      ranges.forEach((r, i) => {
+        const from = Math.max(position, r.offset), to = Math.min(position + value.length, r.offset + r.length);
+        if (to > from) output[i]!.set(value.subarray(from - position, to - position), from - r.offset);
+      });
+      position += value.length;
+    }
+    if (position < end) throw new Error('Truncated install file');
+    return output;
+  } finally { await reader.cancel(); }
+}
 
 const missingFile = (path: string) => new Error(`Missing install file: ${path}`);
 
 /** Install reads in `npm run dev`: the `/ra2/` middleware serving `RA2_DIR`. */
-const readDev: Read = async (path) => {
-  const res = await fetch(`/ra2/${path.split('/').map(encodeURIComponent).join('/')}`);
+const readDev: Read = async (path, offset, length) => {
+  const res = await fetch(`/ra2/${path.split('/').map(encodeURIComponent).join('/')}`, offset === undefined ? undefined : { headers: { Range: `bytes=${offset}-${offset + length! - 1}` } });
   if (!res.ok) throw missingFile(path);
   return new Uint8Array(await res.arrayBuffer());
 };
@@ -25,18 +49,18 @@ async function existsAbsolute(path: string): Promise<boolean> {
 }
 
 function readFolder(root: string): Read {
-  return async (path) => {
-    // ponytail: whole file per read (OBS ignores Range); #50 streams only the wanted entries.
+  return async (path, offset, length) => {
     const res = await fetch(absoluteUrl(`${root}/${path}`)).catch(() => undefined);
     if (!res?.ok) throw missingFile(path);
+    if (offset !== undefined) return (await selectRanges(res, [{ offset, length: length! }]))[0]!;
     return new Uint8Array(await res.arrayBuffer());
   };
 }
 
-// Uploaded files, stored as-is in IndexedDB, keyed by lower-case file name.
-function uploads<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+/** One request on the single object store `files` of an IndexedDB database. */
+export function idb<T>(name: string, mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
-    const open = indexedDB.open('rhino-race-uploads', 1);
+    const open = indexedDB.open(name, 1);
     open.onupgradeneeded = () => open.result.createObjectStore('files');
     open.onerror = () => reject(open.error);
     open.onsuccess = () => {
@@ -49,10 +73,13 @@ function uploads<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => ID
   });
 }
 
-const readUploads: Read = async (path) => {
+// Uploaded files, stored as-is in IndexedDB, keyed by lower-case file name.
+const uploads = <T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest<T>) => idb('rhino-race-uploads', mode, run);
+
+const readUploads: Read = async (path, offset, length) => {
   const file = await uploads<Blob | undefined>('readonly', (s) => s.get(path.slice(path.lastIndexOf('/') + 1).toLowerCase()));
   if (!file) throw missingFile(path);
-  return new Uint8Array(await file.arrayBuffer());
+  return new Uint8Array(await (offset === undefined ? file : file.slice(offset, offset + length!)).arrayBuffer());
 };
 
 export const uploadedNames = async () => (await uploads('readonly', (s) => s.getAllKeys())).map(String);
@@ -75,9 +102,20 @@ let backend: Read = readDev;
  * Backends: the dev server's `/ra2/` middleware, a folder over OBS's `http://absolute/`, or uploaded files.
  * Throws `Missing install file: <path>`.
  */
-export function readInstall(path: string): Promise<Uint8Array> {
-  return backend(path);
-}
+export const readInstall = Object.assign(
+  (path: string, offset?: number, length?: number) => backend(path, offset, length),
+  { ranges: async (path: string, ranges: readonly ByteRange[]) => {
+    if (folderRoot) {
+      const response = await fetch(absoluteUrl(`${folderRoot}/${path}`));
+      if (!response.ok) throw missingFile(path);
+      return selectRanges(response, ranges);
+    }
+    const result: Uint8Array[] = [];
+    for (const r of ranges) result.push(await backend(path, r.offset, r.length));
+    return result;
+  } },
+);
+let folderRoot = '';
 
 const PATH_KEY = 'rhino-race.installPath';
 export const savedPath = () => localStorage.getItem(PATH_KEY) ?? '';
@@ -115,6 +153,7 @@ export async function openInstall(): Promise<string[]> {
   if (inObs() && !(uploaded && !saved)) {
     const found = await findInstall(saved, existsAbsolute);
     if (found.root) {
+      folderRoot = found.root;
       backend = readFolder(found.root);
       return [];
     }

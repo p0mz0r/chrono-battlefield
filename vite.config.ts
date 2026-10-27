@@ -22,8 +22,21 @@ function serveInstall(): Plugin {
           res.end();
           return;
         }
-        res.setHeader('Content-Length', stat.size);
-        createReadStream(file).pipe(res);
+        const range = req.headers.range;
+        const match = range && /^bytes=(\d+)-(\d+)$/.exec(range);
+        if (range && (!match || Number(match[1]) > Number(match[2]) || Number(match[2]) >= stat.size)) {
+          res.statusCode = 416;
+          res.setHeader('Content-Range', `bytes */${stat.size}`);
+          res.end();
+          return;
+        }
+        const start = match ? Number(match[1]) : 0, end = match ? Number(match[2]) : stat.size - 1;
+        if (match) {
+          res.statusCode = 206;
+          res.setHeader('Content-Range', `bytes ${start}-${end}/${stat.size}`);
+        }
+        res.setHeader('Content-Length', end - start + 1);
+        createReadStream(file, { start, end }).pipe(res);
       });
     },
   };
