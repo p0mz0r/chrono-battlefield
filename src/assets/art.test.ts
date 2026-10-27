@@ -17,13 +17,13 @@ describeInstall('interaction art from the install', () => {
     expect(painted(tesla.body.colorRgba)).toBe(true);
   });
 
-  it('takes the V3 rocket, falling back to the Dreadnought missile and back again', () => {
-    const hiding = (prefix: string) => ({ openFile: (n: string) => (n.startsWith(prefix) ? undefined : vfs.openFile(n)) });
-    expect(prerenderRocket(vfs, 'temperate').name).toBe('v3rocket');
-    expect(prerenderRocket(hiding('v3rocket'), 'temperate').name).toBe('dmisl');
-    expect(prerenderRocket(hiding('dmisl'), 'temperate').name).toBe('v3rocket');
-    const neither = { openFile: (n: string) => (/^(v3rocket|dmisl)/.test(n) ? undefined : vfs.openFile(n)) };
-    expect(() => prerenderRocket(neither, 'temperate')).toThrow(/Missing install file: v3rocket\.vxl/);
-    expect(painted(prerenderRocket(vfs, 'temperate').colorRgba)).toBe(true);
+  it('takes the V3 rocket for the V3 and the Dreadnought missile for the homing missile, each falling back to the other', () => {
+    const hiding = (re: RegExp) => ({ openFile: (n: string) => (re.test(n) ? undefined : vfs.openFile(n)) });
+    expect(prerenderRocket(vfs, 'temperate', 'v3rocket').name).toBe('v3rocket');
+    expect(prerenderRocket(vfs, 'temperate', 'dmisl').name).toBe('dmisl');
+    expect(prerenderRocket(hiding(/^v3rocket/), 'temperate', 'v3rocket').name).toBe('dmisl');
+    expect(prerenderRocket(hiding(/^dmisl/), 'temperate', 'dmisl').name).toBe('v3rocket');
+    expect(() => prerenderRocket(hiding(/^(v3rocket|dmisl)/), 'temperate', 'dmisl')).toThrow(/Missing install file: dmisl\.vxl/);
+    expect(painted(prerenderRocket(vfs, 'temperate', 'v3rocket').colorRgba)).toBe(true);
   });
 });

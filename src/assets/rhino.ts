@@ -44,9 +44,10 @@ export function prerenderTank(vfs: Files, theater: string, unit: string, footpri
 
 export const prerenderRhino = (vfs: Files, theater: string, footprintPx = RHINO_FOOTPRINT_PX) => prerenderTank(vfs, theater, 'htnk', footprintPx);
 
-/** 32 facings of the V3 rocket, or the Dreadnought missile when the install lacks it (each falls back to the other). */
-export function prerenderRocket(vfs: Files, theater: string, footprintPx = ROCKET_FOOTPRINT_PX): ConvertedSprite {
+/** 32 facings of the V3 rocket (`v3rocket`) or the Dreadnought missile (`dmisl`); each falls back to the other when missing. */
+export function prerenderRocket(vfs: Files, theater: string, prefer: 'v3rocket' | 'dmisl', footprintPx = ROCKET_FOOTPRINT_PX): ConvertedSprite {
   const { has, vxl, hva, pal } = reader(vfs, theater);
-  const name = ['v3rocket', 'dmisl'].find(has) ?? 'v3rocket';
+  const other = prefer === 'dmisl' ? 'v3rocket' : 'dmisl';
+  const name = has(prefer) || !has(other) ? prefer : other;
   return renderVoxelToSprite(name, vxl(name), hva(name), pal(), { footprintPx });
 }
