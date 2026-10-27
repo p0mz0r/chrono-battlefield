@@ -84,7 +84,7 @@ export function chat(race: Race, line: ChatLine): ChatResult {
   const words = line.text.trim().toLowerCase().split(/\s+/);
   if (words.length !== 1 || words[0] !== '!rhino') return IGNORED;
   if (race.phase !== 'join' || race.racers.some((r) => r.viewerId === line.viewerId)) return IGNORED;
-  const taken = (name: string) => /^bot\d+$/i.test(name) || race.racers.some((r) => r.name.toLowerCase() === name.toLowerCase());
+  const taken = (name: string) => /^bot[1-8]$/i.test(name) || race.racers.some((r) => r.name.toLowerCase() === name.toLowerCase());
   let name = line.name.trim() || line.viewerId;
   for (let n = 2, base = name; taken(name); n++) name = `${base}#${n}`;
   race.racers.push(racer(race, name, line.viewerId));

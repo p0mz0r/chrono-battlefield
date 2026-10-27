@@ -82,7 +82,8 @@ describe('joining', () => {
     expect(say(race, 'twitch:1', '!rhino', 'Bot1')).toEqual({ ok: true, reason: 'joined as Bot1#2' });
     expect(say(race, 'twitch:2', '!rhino', 'Kane')).toEqual({ ok: true, reason: 'joined as Kane' });
     expect(say(race, 'youtube:9', '!rhino', 'kane')).toEqual({ ok: true, reason: 'joined as kane#2' });
-    for (let i = 3; i <= 9; i++) say(race, `v${i}`, '!rhino');
+    expect(say(race, 'twitch:3', '!rhino', 'bot23')).toEqual({ ok: true, reason: 'joined as bot23' });
+    for (let i = 4; i <= 9; i++) say(race, `v${i}`, '!rhino');
     expect(race.phase).toBe('countdown');
     expect(standings(race)).toHaveLength(10);
     expect(say(race, 'late', '!rhino')).toEqual({ ok: false, reason: 'ignored' });
