@@ -5,7 +5,7 @@ import { bindSetupKey, showSetup } from './install/setup.js';
 import { LEPTONS_PER_CELL, spotLevel, tankCell, TICK_HZ, type Cell } from './movement/index.js';
 import { loadCourse as loadCourseArt, type Sprite as CachedSprite } from './load.js';
 import { facingAngle, projectModelPoint } from './ra2/render/voxelRender.js';
-import { loadCourse, type CourseFile } from './race/course.js';
+import { loadCourse, mapHash, type CourseFile } from './race/course.js';
 import { commandList, createRace, secondsLeft, standings, tickRace, type Race, type Racer } from './race/race.js';
 import { mountStreamView, type CameraMode } from './race/view.js';
 
@@ -23,6 +23,7 @@ const cellParam = (name: string): Cell | undefined => {
 
 /** Courses bundled at build from `courses/*.json`. */
 const COURSES = import.meta.glob<CourseFile>('../courses/*.json', { eager: true, import: 'default' });
+const COURSE_MAPS = import.meta.glob<string>('../courses/maps/*', { eager: true, query: '?url', import: 'default' });
 
 /** A cached WebP decoded straight into a texture; its pixels never sit in a JS buffer. */
 const blobTexture = async (image: Blob) => Texture.from(await createImageBitmap(image));
@@ -69,6 +70,10 @@ function hudText(race: Race): string {
 }
 
 async function main() {
+  if (import.meta.env.DEV) {
+    const next = sessionStorage.getItem('courseEditorNextMap');
+    if (next) { sessionStorage.removeItem('courseEditorNextMap'); location.href = next; return; }
+  }
   bindSetupKey();
   const problems = await openInstall();
   if (problems.length) {
@@ -77,15 +82,30 @@ async function main() {
     showSetup(problems);
     return;
   }
-  const courseName = params.get('course');
-  const file = Object.entries(COURSES).find(([path]) => !courseName || path.endsWith(`/${courseName}.json`))?.[1];
-  if (!file) throw new Error(`No course ${courseName}`);
-  // ponytail: shipped custom maps (courses/maps/, ADR 0006) arrive with the first course over one.
-  if (file.source !== 'install') throw new Error(`Course "${file.name}": shipped maps aren't supported yet`);
-  const mapPath = file.map;
+  const courseName = params.get('course'), edit = import.meta.env.DEV && params.get('edit') === '1';
+  let file = Object.entries(COURSES).find(([path]) => !courseName || path.endsWith(`/${courseName}.json`))?.[1];
+  if (!file && !edit) throw new Error(`No course ${courseName}`);
+  const mapPath = edit && params.get('map') || file!.map;
+  const source = edit && params.get('map') ? (params.get('source') === 'shipped' ? 'shipped' : 'install') : file!.source;
+  const url = source === 'shipped' ? (COURSE_MAPS[`../courses/maps/${mapPath}`] ?? (edit ? `/courses/maps/${encodeURIComponent(mapPath)}` : undefined)) : undefined;
+  if (source === 'shipped' && !url) throw new Error(`Missing shipped map ${mapPath}`);
+  const read = source === 'shipped' ? async (path: string, offset?: number, length?: number) => {
+    if (path !== mapPath) return readInstall(path, offset, length);
+    const response = await fetch(url!);
+    if (!response.ok) throw new Error(`Missing shipped map ${mapPath}`);
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    return offset === undefined ? bytes : bytes.subarray(offset, offset + length!);
+  } : readInstall;
   const started = performance.now();
-  const { map, mapBytes, art: { battlefield, rhino }, cached } = await loadCourseArt(readInstall, mapPath);
-  const course = loadCourse(file, mapBytes, battlefield.grid);
+  const { map, mapBytes, art: { battlefield, rhino }, cached } = await loadCourseArt(read, mapPath);
+  if (edit && params.get('map')) {
+    const first = battlefield.grid.speed.findIndex((speed, i) => speed > 0 && !battlefield.grid.blocked[i] && battlefield.grid.deck[i]! < 0);
+    if (first < 0) throw new Error('Map has no drivable ground cells');
+    const p: [number, number] = [first % battlefield.grid.width, Math.floor(first / battlefield.grid.width)];
+    file = { name: mapPath.replace(/\.[^.]+$/, ''), map: mapPath, mapHash: mapHash(mapBytes), source,
+      author: source === 'install' ? 'Westwood Studios' : '', link: '', startGrid: Array.from({ length: 10 }, () => [...p] as [number, number]), waypoints: [], laps: [], finish: [...p], bridges: [] };
+  }
+  const course = loadCourse(file!, mapBytes, battlefield.grid);
   const { terrain, images, objects, grid } = battlefield;
   const level = (x: number, y: number) => grid.level[y * grid.width + x] ?? 0;
   const race = createRace(course, grid, Number(params.get('seed') ?? Date.now() % 1e9));
@@ -161,7 +181,8 @@ async function main() {
   const zoom = Number(params.get('zoom')) || (focus ? 1 : 0);
   let cameraMode: CameraMode = 'overview';
   const switchCamera = () => { cameraMode = cameraMode === 'overview' ? 'director' : 'overview'; };
-  const drawOverlay = mountStreamView();
+  const drawOverlay = edit ? undefined : mountStreamView();
+  if (edit) world.scale.set(Math.min(app.screen.width / terrain.width, app.screen.height / terrain.height));
   const bounds = course.line.map((point) => toScreen(point.x, point.y, level(Math.floor(point.x), Math.floor(point.y))));
   const minCourseX = Math.min(...bounds.map((p) => p.x)), maxCourseX = Math.max(...bounds.map((p) => p.x));
   const minCourseY = Math.min(...bounds.map((p) => p.y)), maxCourseY = Math.max(...bounds.map((p) => p.y));
@@ -220,6 +241,7 @@ async function main() {
       const p = toScreen(x, y, spotLevel(grid, t.cell));
       missiles.circle(p.x, p.y - 20 * Math.sin(flight * Math.PI), 5).fill(0xffdd50);
     }
+    if (!edit) {
     const live = ordered.map((s) => race.racers.find((r) => r.name === s.name)!).filter((r) => r.finishedAt === undefined);
     if (cameraMode === 'director' && race.phase === 'racing') {
       if (race.lastHit && race.lastHitFrame > seenHit && race.frame - cutAt > 2.5 * TICK_HZ) {
@@ -244,7 +266,8 @@ async function main() {
     const target = focus ? toScreen(focus.x, focus.y, level(focus.x, focus.y)) : cameraMode === 'director' && race.phase === 'racing' && directorFocus?.tank ? toScreen(directorFocus.tank.x / LEPTONS_PER_CELL, directorFocus.tank.y / LEPTONS_PER_CELL, spotLevel(grid, directorFocus.tank.cell)) : { x: (minCourseX + maxCourseX) / 2, y: (minCourseY + maxCourseY) / 2 };
     world.scale.set(scale);
     world.position.set((app.screen.width + (cameraMode === 'overview' ? 360 : 0)) / 2 - target.x * scale, app.screen.height / 2 - target.y * scale);
-    drawOverlay(race, cameraMode, directorFocus, directorReason);
+    drawOverlay!(race, cameraMode, directorFocus, directorReason);
+    }
     hud.textContent = hudText(race);
     // For headless checks.
     Object.assign(document.body.dataset, {
@@ -259,7 +282,8 @@ async function main() {
   const loadMs = Math.round(performance.now() - started);
   document.body.dataset.load = `${loadMs},${cached ? 'cached' : 'imported'}`;
   status.textContent = `${course.file.name} on ${mapPath} (${map.theater}, ${cached ? 'from cache' : 'imported'} in ${loadMs} ms), ideal line ${course.length.toFixed(0)} cells. G: passability and ideal line.`;
-  if (import.meta.env.DEV) (await import('./race/devPanel.js')).mountDevPanel(race, params, switchCamera);
+  if (edit) (await import('./race/editor.js')).mountEditor(app, world, grid, mapBytes, file!, toScreen, params.has('map'));
+  else if (import.meta.env.DEV) (await import('./race/devPanel.js')).mountDevPanel(race, params, switchCamera);
   document.body.dataset.ready = String(terrain.missing === 0);
 }
 
