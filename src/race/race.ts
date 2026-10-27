@@ -1,5 +1,6 @@
 import { addTank, createField, isDriving, orderMove, random, tick, TICK_HZ, type Cell, type CellGrid, type Field, type Tank } from '../movement/index.js';
 import { courseProgress, type Course } from './course.js';
+import { repairBridge, toggleBridge, type BridgeGrid } from './bridge.js';
 
 // The headless race (#6 rules, #8 chat contract): plain data stepped by `tickRace`, no rendering.
 
@@ -13,6 +14,7 @@ const COMMANDS = {
   boost: { hint: ' [name]', cooldown: 20, racers: false },
   shield: { hint: '', cooldown: 30, racers: true },
   missile: { hint: ' [name]', cooldown: 30, racers: false },
+  bridge: { hint: ' B1', cooldown: 60, racers: false },
 } as const;
 type Interaction = Exclude<keyof typeof COMMANDS, 'rhino'>;
 const interactions = Object.keys(COMMANDS).filter((verb): verb is Interaction => verb !== 'rhino');
@@ -75,6 +77,7 @@ export interface Race {
   feed: string[];
   feedUntil: Map<string, number>;
   missiles: { target: Racer; named: boolean; launched: number; arrives: number; x: number; y: number }[];
+  bridgeGrid: BridgeGrid | undefined;
 }
 
 export interface Standing {
@@ -87,7 +90,8 @@ export interface Standing {
 }
 
 export function createRace(course: Course, grid: CellGrid, seed: number): Race {
-  return { course, field: createField(grid, seed), phase: 'idle', racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions), cooldowns: new Map(), feed: [], feedUntil: new Map(), missiles: [] };
+  const bridgeGrid = 'bridge' in grid && 'bridges' in grid ? grid as BridgeGrid : undefined;
+  return { course, field: createField(grid, seed), phase: 'idle', racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions.filter((verb) => verb !== 'bridge' || (bridgeGrid && course.file.bridges.length))), cooldowns: new Map(), feed: [], feedUntil: new Map(), missiles: [], bridgeGrid };
 }
 
 export function commandList(race: Race): string[] {
@@ -106,6 +110,10 @@ export function openJoinWindow(race: Race, { joinSeconds = 90, finishSeconds = 6
   race.feed.length = 0;
   race.feedUntil.clear();
   race.missiles.length = 0;
+  for (const [id, bridge] of race.bridgeGrid?.bridges.entries() ?? []) {
+    if (bridge.destroyed) repairBridge(race.bridgeGrid!, id);
+    bridge.changedAt = undefined;
+  }
 }
 
 const IGNORED: ChatResult = { ok: false, reason: 'ignored' };
@@ -129,7 +137,7 @@ export function chat(race: Race, line: ChatLine): ChatResult {
     return { ok: true, reason: `joined as ${name}` };
   }
   if (race.phase !== 'racing' || !race.enabled.has(verb)) return IGNORED;
-  if ((verb === 'shield' && words.length !== 1) || (verb !== 'shield' && words.length > 2)) return IGNORED;
+  if ((verb === 'shield' && words.length !== 1) || (verb === 'bridge' && words.length !== 2) || (verb !== 'shield' && words.length > 2)) return IGNORED;
   const reject = (reason: string): ChatResult => {
     if ((race.feedUntil.get(line.viewerId) ?? 0) <= race.frame) {
       race.feed.push(`${line.name}: ${reason}`);
@@ -140,6 +148,12 @@ export function chat(race: Race, line: ChatLine): ChatResult {
   };
   const left = (race.cooldowns.get(line.viewerId) ?? 0) - race.frame;
   if (left > 0) return reject(`cooldown ${Math.ceil(left / TICK_HZ)} s`);
+  if (verb === 'bridge') {
+    const result = toggleBridge(race, words[1]);
+    if (!result.ok) return reject(result.reason);
+    race.cooldowns.set(line.viewerId, race.frame + COMMANDS.bridge.cooldown * TICK_HZ);
+    return result;
+  }
   let target: Racer | undefined;
   let named = false;
   if (verb === 'shield') {
