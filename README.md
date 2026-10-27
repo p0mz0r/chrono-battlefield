@@ -6,7 +6,7 @@ A chat-driven race of RA2 Rhino tanks over a real Red Alert 2 / Yuri's Revenge b
 
 Needs Node 24 and an RA2 + YR install. Set `RA2_DIR` to the install folder.
 
-- `npm run dev` serves the page and the install (under `/ra2/`). It imports and draws one battlefield: `?map=<path inside the install>`, e.g. `?map=SinkSwim.yro` or `?map=Maps/Yuri's Revenge/2_lanaeris.map` (default `Hills.mmx`). An unsupported map shows why it was refused. `G` (or `?grid=1`) overlays the cell grid's passability: red impassable or blocked, yellow slow, blue ramp, cyan high-bridge deck. `?cell=x,y&zoom=1` centres on a cell. Ten Rhinos (`?tanks=N`) stand around `?start=x,y`; click to send each to its own cell near the clicked one, or `?to=x,y` to order them on load (e.g. `?start=70,75&to=103,75&cell=86,75&zoom=1` sends them single file over Hills' bridge). `?seed=N` sets the resolve order, `?zoom=N` follows the first tank, and ghosting tanks draw at half alpha.
+- `npm run dev` serves the page and the install (under `/ra2/`). It loads a bundled course (`?course=<name>`, default the first in `courses/`) over its battlefield and runs races on it. The **test-chat panel** (bottom right, dev only) has the operator's buttons (open the join window with its length and the finish timer, end race), a name and text box to chat as any viewer, "Add N fake viewers" (`!rhino` from random names) and a seeded chaos toggle at a set rate. `?autoopen=1&fake=N&chaos=R&join=S&finish=S&chatSeed=N` does the same from the URL, `?fast=N` runs at N times game speed, `?seed=N` fixes the race seed, e.g. `?seed=1&autoopen=1&fake=5&chaos=2&join=10&fast=3` runs a whole race to results in under a minute. `G` (or `?grid=1`) overlays passability (red impassable or blocked, yellow slow, blue ramp, cyan high-bridge deck), the ideal line and the waypoints. `?zoom=N` follows the leading tank, `?cell=x,y&zoom=1` centres on a cell, and ghosting tanks draw at half alpha. An unsupported map, or a course whose map hash doesn't match, shows why it was refused.
 - `npm test` runs the tests. Tests that read the install skip when `RA2_DIR` is unset.
 - `npm run typecheck`, `npm run build` (to `dist/`).
 
@@ -17,6 +17,9 @@ Needs Node 24 and an RA2 + YR install. Set `RA2_DIR` to the install folder.
 | `src/install/` | Install access. `readInstall(path)` is the one function every install read goes through (ADR 0004). |
 | `src/ra2/` | RA2 file readers copied from openra2 (MIX, INI, map, TMP, SHP, VXL/HVA, PAL) and `mount.ts`, which mounts the game MIXes for one theater and loads map files. |
 | `src/battlefield/` | Battlefield import: `importBattlefield(read, path)` turns a map plus the stock install files into terrain chunks, placed overlay/tree/building images and the cell grid, or refuses it under the support rule. `grid.ts` is the cell grid movement drives on, as plain data. |
+| `src/movement/` | RA2 cell locomotion (ADR 0005): `createField`, `addTank`, `orderMove`, `tick`. Pure, no DOM. |
+| `src/race/` | `course.ts` loads a course file over its battlefield's grid (hash check, lap unrolling, ideal line, finish area, course progress). `race.ts` is the headless race: phases, bots, finishing, placings, and `chat(race, { viewerId, name, text })` returning `{ ok, reason }`, the one entry for chat commands. `devPanel.ts` is the dev-only test-chat panel. |
+| `courses/` | Course files, bundled at build. A course names its map file with `mapHash` (`crc32:` of the file); custom maps will ship in `courses/maps/` (ADR 0006). |
 | `src/main.ts` | The page. |
 | `test/` | Test helpers (reading `RA2_DIR`). Tests sit next to the code as `*.test.ts`. |
 | `vite.config.ts` | Includes the dev middleware that serves `RA2_DIR`. |
