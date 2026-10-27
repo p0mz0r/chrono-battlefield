@@ -37,6 +37,16 @@ function estimatedSeconds(file: CourseFile): number {
   return Math.ceil(cells * 256 / (Math.floor(6 * 256 / 100) * 1.6 * 30) * 1.15);
 }
 
+/** True when the same action already arrived from the other source (page key vs OBS hotkey) within 200 ms. */
+export function duplicateFilter(): (action: string, source: string, now: number) => boolean {
+  let lastAction = '', lastSource = '', lastAt = -Infinity;
+  return (action, source, now) => {
+    const duplicate = action === lastAction && source !== lastSource && now - lastAt < 200;
+    if (!duplicate) { lastAction = action; lastSource = source; lastAt = now; }
+    return duplicate;
+  };
+}
+
 /** In-page operator controls. Selection reloads only when the chosen course needs another battlefield. */
 export function mountOperator(race: Race, courses: Record<string, CourseFile>, current: string, switchCamera: (mode: CameraMode) => void, toggleMute: () => void): void {
   const choices = readChoices();
@@ -87,19 +97,33 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, c
   };
   let endPromptUntil = 0;
   const prompt = document.createElement('div'); prompt.id = 'end-prompt'; document.body.append(prompt);
+  const duplicate = duplicateFilter();
+  const act = (action: string, source: string) => {
+    const now = performance.now();
+    if (duplicate(action, source, now)) return;
+    if (action === 'setup' && ['idle', 'results', 'cancelled'].includes(race.phase)) { root.hidden = false; prompt.textContent = ''; }
+    else if (action === 'start') {
+      if (source === 'hotkey' && !choices.course && root.hidden) root.hidden = false;
+      else start();
+    }
+    else if (action === 'pause' && ['join', 'countdown', 'racing'].includes(race.phase)) race.paused = !race.paused;
+    else if (action === 'end' && ['join', 'countdown', 'racing'].includes(race.phase)) {
+      if (now < endPromptUntil) { endRace(race); endPromptUntil = 0; prompt.textContent = ''; }
+      else { endPromptUntil = now + 3000; prompt.textContent = 'Press E again to end race'; setTimeout(() => { if (performance.now() >= endPromptUntil) prompt.textContent = ''; }, 3000); }
+    } else if (action === 'camera') { choices.camera = choices.camera === 'overview' ? 'director' : 'overview'; switchCamera(choices.camera); save(); }
+    else if (action === 'mute') toggleMute();
+  };
+  addEventListener('chronoOperator', (event) => {
+    const action = (event as CustomEvent).detail?.action;
+    if (typeof action === 'string') act(action, 'hotkey');
+  });
   addEventListener('keydown', (event) => {
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
     const target = event.target as HTMLElement;
     if (target.closest('input, select, textarea') && (event.key !== 'Enter' || !root.contains(target))) return;
     const key = event.key.toLowerCase();
-    if (key === 's' && ['idle', 'results', 'cancelled'].includes(race.phase)) { root.hidden = false; prompt.textContent = ''; }
-    else if (event.key === 'Enter') start();
-    else if (key === 'p' && ['join', 'countdown', 'racing'].includes(race.phase)) race.paused = !race.paused;
-    else if (key === 'e' && ['join', 'countdown', 'racing'].includes(race.phase)) {
-      if (performance.now() < endPromptUntil) { endRace(race); endPromptUntil = 0; prompt.textContent = ''; }
-      else { endPromptUntil = performance.now() + 3000; prompt.textContent = 'Press E again to end race'; setTimeout(() => { if (performance.now() >= endPromptUntil) prompt.textContent = ''; }, 3000); }
-    } else if (key === 'c') { choices.camera = choices.camera === 'overview' ? 'director' : 'overview'; switchCamera(choices.camera); save(); }
-    else if (key === 'm') toggleMute();
+    const action = key === 's' ? 'setup' : event.key === 'Enter' ? 'start' : key === 'p' ? 'pause' : key === 'e' ? 'end' : key === 'c' ? 'camera' : key === 'm' ? 'mute' : '';
+    if (action) act(action, 'key');
   });
   if (new URL(location.href).searchParams.has('start')) {
     const url = new URL(location.href); url.searchParams.delete('start'); history.replaceState(null, '', url);
