@@ -1,4 +1,4 @@
-import { findRoute, spotIndex, stepTo, spotSpeed, type Cell, type CellGrid, type Spot } from './route.js';
+import { drivable, findRoute, spotIndex, stepTo, spotSpeed, type Cell, type CellGrid, type Spot } from './route.js';
 import { F_D, F_T, F_X, F_Y, RAW_TRACKS, TRACKS, TRACK_CONTROL } from './tracks.js';
 
 export { drivable, findRoute, spotLevel, stepTo, type Cell, type CellGrid, type Spot } from './route.js';
@@ -115,6 +115,36 @@ export function orderMove(field: Field, tank: Tank, to: Cell): boolean {
   tank.path = route;
   tank.lastNewCell = field.frame;
   return true;
+}
+
+/**
+ * Where a move lands: the drivable ground cell nearest `near` that is off every bridge, held by no other
+ * tank and passes `ok` (e.g. can still reach the next waypoint), or undefined.
+ */
+// ponytail: sorts every cell of the battlefield per move; a ring search outwards if moves get frequent.
+export function findLanding(field: Field, tank: Tank, near: { x: number; y: number }, ok: (spot: Spot) => boolean): Spot | undefined {
+  const { grid } = field;
+  return Array.from({ length: grid.width * grid.height }, (_, i) => ({ x: i % grid.width, y: Math.floor(i / grid.width), deck: false }))
+    .filter((s, i) => drivable(grid, s.x, s.y) && grid.deck[i]! < 0 && (grid.bridge?.[i] ?? -1) < 0 && !holder(field, s, tank))
+    .sort((a, b) => Math.hypot(a.x - near.x, a.y - near.y) - Math.hypot(b.x - near.x, b.y - near.y))
+    .find(ok);
+}
+
+/** A move: puts the tank on `spot` at once, dropping its old cells and route. A stun carries on. */
+export function moveTank(field: Field, tank: Tank, spot: Spot): void {
+  tank.cell = { ...spot };
+  tank.x = centre(spot.x);
+  tank.y = centre(spot.y);
+  tank.track = -1;
+  tank.trackIndex = 0;
+  tank.headTo = { ...spot };
+  tank.ahead = [];
+  tank.path = [];
+  tank.goal = undefined;
+  tank.accum = 0;
+  tank.blockedSince = -1;
+  tank.ghost = false;
+  tank.lastNewCell = field.frame;
 }
 
 const same = (a: Spot, b: Spot) => a.x === b.x && a.y === b.y && a.deck === b.deck;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addTank, createField, isDriving, orderMove, tankCell, tick, type CellGrid, type Field, type Tank } from './index.js';
+import { addTank, createField, findLanding, findRoute, isDriving, moveTank, orderMove, tankCell, tick, type CellGrid, type Field, type Tank } from './index.js';
 
 /**
  * A grid from rows of chars: `.` clear (100%), `o` ore (70%), `#` tree (hard blocker), `~` water,
@@ -49,6 +49,30 @@ function run(field: Field, maxTicks = 3000) {
 }
 
 describe('movement', () => {
+  it('moves a driving, stunned tank to the nearest free ground cell off bridges that reaches the next waypoint', () => {
+    // (0,0) and (0,2) are cut off, (2,0) is under a high deck, (2,2) is a low bridge, a tank stands on (2,1).
+    const g = { ...grid(['.#+..', '##...', '.#...']), bridge: [-1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, 1, -1, -1] };
+    const field = createField(g, 1);
+    const moved = addTank(field, { x: 4, y: 2 });
+    const parked = addTank(field, { x: 2, y: 1 });
+    orderMove(field, moved, { x: 4, y: 0 });
+    for (let i = 0; i < 5; i++) tick(field);
+    expect(moved.ahead.length).toBeGreaterThan(0);
+    moved.stunnedUntil = field.frame + 90;
+    const next = { x: 4, y: 2 };
+    const landing = findLanding(field, moved, { x: 0, y: 0 }, (s) => findRoute(g, s, next) !== undefined)!;
+    expect(landing).toEqual({ x: 3, y: 0, deck: false });
+    moveTank(field, moved, landing);
+    expect(tankCell(moved)).toEqual(landing);
+    expect(moved.ahead).toEqual([]);
+    expect(isDriving(moved)).toBe(false);
+    expect(moved.stunnedUntil).toBe(field.frame + 90);
+    expect(parked.cell).toEqual({ x: 2, y: 1, deck: false });
+    expect(orderMove(field, moved, next)).toBe(true);
+    run(field);
+    expect(tankCell(moved)).toEqual({ x: 4, y: 2, deck: false });
+  });
+
   it('drives the travel-time route around ore and never enters a blocked cell', () => {
     const field = createField(grid([
       '.......',
