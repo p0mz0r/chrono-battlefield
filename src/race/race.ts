@@ -8,6 +8,14 @@ export const MAX_TANKS = 10;
 const BOT_FILL = 8;
 /** Waypoint reach radius in cells (rulesmd `CloseEnough=2.25`). */
 export const REACH = 2.25;
+const COMMANDS = {
+  rhino: { hint: '', cooldown: 0, racers: false },
+  boost: { hint: ' [name]', cooldown: 20, racers: false },
+  shield: { hint: '', cooldown: 30, racers: true },
+  missile: { hint: ' [name]', cooldown: 30, racers: false },
+} as const;
+type Interaction = Exclude<keyof typeof COMMANDS, 'rhino'>;
+const interactions = Object.keys(COMMANDS).filter((verb): verb is Interaction => verb !== 'rhino');
 
 export type Phase = 'idle' | 'join' | 'countdown' | 'racing' | 'results';
 
@@ -41,6 +49,11 @@ export interface Racer {
   finishedAt: number | undefined;
   /** Seeded random tie-break: placings are never shared. */
   tie: number;
+  boostUntil: number;
+  shieldUntil: number;
+  stunUntil: number;
+  immunityUntil: number;
+  protectedUntil: number;
 }
 
 export interface Race {
@@ -55,6 +68,13 @@ export interface Race {
   finishFrames: number;
   /** Placings, set when the race ends. */
   results: Standing[];
+  /** Interactions enabled for this race; setup can select a subset. */
+  enabled: Set<Interaction>;
+  cooldowns: Map<string, number>;
+  /** Visible failures, newest last. */
+  feed: string[];
+  feedUntil: Map<string, number>;
+  missiles: { target: Racer; named: boolean; launched: number; arrives: number; x: number; y: number }[];
 }
 
 export interface Standing {
@@ -67,7 +87,14 @@ export interface Standing {
 }
 
 export function createRace(course: Course, grid: CellGrid, seed: number): Race {
-  return { course, field: createField(grid, seed), phase: 'idle', racers: [], timer: 0, frame: 0, finishFrames: 0, results: [] };
+  return { course, field: createField(grid, seed), phase: 'idle', racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions), cooldowns: new Map(), feed: [], feedUntil: new Map(), missiles: [] };
+}
+
+export function commandList(race: Race): string[] {
+  if (race.phase === 'join') return [`!rhino${COMMANDS.rhino.hint}`];
+  if (race.phase !== 'racing') return [];
+  return interactions.filter((verb) => race.enabled.has(verb))
+    .map((verb) => `!${verb}${COMMANDS[verb].hint}${COMMANDS[verb].racers ? ' (racers)' : ''}`);
 }
 
 /** Operator: opens the join window (default 90 s); the finish timer (default 60 s) starts at the first finish. */
@@ -75,6 +102,10 @@ export function openJoinWindow(race: Race, { joinSeconds = 90, finishSeconds = 6
   if (race.phase !== 'idle' && race.phase !== 'results') return;
   Object.assign(race, { phase: 'join', racers: [], timer: joinSeconds * TICK_HZ, frame: 0, finishFrames: finishSeconds * TICK_HZ, results: [] });
   race.field.tanks.length = 0;
+  race.cooldowns.clear();
+  race.feed.length = 0;
+  race.feedUntil.clear();
+  race.missiles.length = 0;
 }
 
 const IGNORED: ChatResult = { ok: false, reason: 'ignored' };
@@ -82,18 +113,67 @@ const IGNORED: ChatResult = { ok: false, reason: 'ignored' };
 /** The chat-command contract: every line from every source comes through here. */
 export function chat(race: Race, line: ChatLine): ChatResult {
   const words = line.text.trim().toLowerCase().split(/\s+/);
-  if (words.length !== 1 || words[0] !== '!rhino') return IGNORED;
-  if (race.phase !== 'join' || race.racers.some((r) => r.viewerId === line.viewerId)) return IGNORED;
-  const taken = (name: string) => /^bot[1-8]$/i.test(name) || race.racers.some((r) => r.name.toLowerCase() === name.toLowerCase());
-  let name = line.name.trim() || line.viewerId;
-  for (let n = 2, base = name; taken(name); n++) name = `${base}#${n}`;
-  race.racers.push(racer(race, name, line.viewerId));
-  if (race.racers.length === MAX_TANKS) closeJoinWindow(race);
-  return { ok: true, reason: `joined as ${name}` };
+  if (words.length > 2) return IGNORED;
+  const word = words[0] ?? '';
+  if (!word.startsWith('!')) return IGNORED;
+  const verb = word.slice(1) as keyof typeof COMMANDS;
+  if (!Object.hasOwn(COMMANDS, verb)) return IGNORED;
+  if (verb === 'rhino') {
+    if (words.length !== 1) return IGNORED;
+    if (race.phase !== 'join' || race.racers.some((r) => r.viewerId === line.viewerId)) return IGNORED;
+    const taken = (name: string) => /^bot[1-8]$/i.test(name) || race.racers.some((r) => r.name.toLowerCase() === name.toLowerCase());
+    let name = line.name.trim() || line.viewerId;
+    for (let n = 2, base = name; taken(name); n++) name = `${base}#${n}`;
+    race.racers.push(racer(race, name, line.viewerId));
+    if (race.racers.length === MAX_TANKS) closeJoinWindow(race);
+    return { ok: true, reason: `joined as ${name}` };
+  }
+  if (race.phase !== 'racing' || !race.enabled.has(verb)) return IGNORED;
+  if ((verb === 'shield' && words.length !== 1) || (verb !== 'shield' && words.length > 2)) return IGNORED;
+  const reject = (reason: string): ChatResult => {
+    if ((race.feedUntil.get(line.viewerId) ?? 0) <= race.frame) {
+      race.feed.push(`${line.name}: ${reason}`);
+      race.feedUntil.set(line.viewerId, race.frame + 3 * TICK_HZ);
+      if (race.feed.length > 5) race.feed.shift();
+    }
+    return { ok: false, reason };
+  };
+  const left = (race.cooldowns.get(line.viewerId) ?? 0) - race.frame;
+  if (left > 0) return reject(`cooldown ${Math.ceil(left / TICK_HZ)} s`);
+  let target: Racer | undefined;
+  let named = false;
+  if (verb === 'shield') {
+    target = race.racers.find((r) => r.viewerId === line.viewerId && r.finishedAt === undefined);
+    if (!target) return reject('not a racing racer');
+  } else if (words[1]) {
+    named = true;
+    const name = words[1].replace(/^@/, '');
+    const candidates = race.racers.filter((r) => r.finishedAt === undefined);
+    target = candidates.find((r) => r.name.toLowerCase() === name);
+    if (!target && name.length >= 3) {
+      const matches = candidates.filter((r) => r.name.toLowerCase().startsWith(name));
+      if (matches.length > 1) return reject('ambiguous name');
+      target = matches[0];
+    }
+    if (!target) return reject('unknown name');
+    if (verb === 'missile' && target.protectedUntil > race.frame) return reject('target protected');
+    if (verb === 'missile' && target.immunityUntil > race.frame && target.shieldUntil <= race.frame) return reject('target unable');
+  } else {
+    const candidates = race.racers.filter((r) => r.finishedAt === undefined && (verb !== 'missile' || r.immunityUntil <= race.frame || r.shieldUntil > race.frame));
+    target = candidates[Math.floor(random(race.field) * candidates.length)];
+    if (!target) return reject('no target available');
+  }
+  race.cooldowns.set(line.viewerId, race.frame + COMMANDS[verb].cooldown * TICK_HZ);
+  if (verb === 'boost') {
+    target.boostUntil = race.frame + 5 * TICK_HZ;
+    target.tank!.speedFactor = 1.5;
+  } else if (verb === 'shield') target.shieldUntil = race.frame + 6 * TICK_HZ;
+  else race.missiles.push({ target, named, launched: race.frame, arrives: race.frame + Math.round(1.5 * TICK_HZ), x: target.tank!.x / 256 - 6, y: target.tank!.y / 256 - 6 });
+  return { ok: true, reason: `${verb} ${target.name}` };
 }
 
 const racer = (race: Race, name: string, viewerId?: string): Racer =>
-  ({ viewerId, name, bot: viewerId === undefined, tank: undefined, next: 0, progress: 0, finishedAt: undefined, tie: random(race.field) });
+  ({ viewerId, name, bot: viewerId === undefined, tank: undefined, next: 0, progress: 0, finishedAt: undefined, tie: random(race.field), boostUntil: 0, shieldUntil: 0, stunUntil: 0, immunityUntil: 0, protectedUntil: 0 });
 
 /** Closes the join window: bots fill to 8, tanks go on random start cells facing the first waypoint, 3-2-1. */
 function closeJoinWindow(race: Race) {
@@ -140,6 +220,18 @@ const near = (tank: Tank, c: Cell) => !tank.cell.deck && Math.hypot(tank.x / 256
 function drive(race: Race) {
   const { course, field } = race;
   race.frame++;
+  for (const r of race.racers) if (r.tank && r.boostUntil <= race.frame) r.tank.speedFactor = 1;
+  for (let i = race.missiles.length - 1; i >= 0; i--) {
+    const missile = race.missiles[i]!;
+    if (missile.arrives > race.frame) continue;
+    race.missiles.splice(i, 1);
+    const r = missile.target;
+    if (r.finishedAt !== undefined || r.shieldUntil > race.frame || r.immunityUntil > race.frame) continue;
+    r.stunUntil = race.frame + 3 * TICK_HZ;
+    r.immunityUntil = r.stunUntil + 3 * TICK_HZ;
+    r.tank!.stunnedUntil = field.frame + 3 * TICK_HZ;
+    if (missile.named) r.protectedUntil = race.frame + 15 * TICK_HZ;
+  }
   tick(field);
   const anyFinished = race.racers.some((r) => r.finishedAt !== undefined);
   for (const r of race.racers) {

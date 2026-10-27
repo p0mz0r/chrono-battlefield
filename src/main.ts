@@ -6,7 +6,7 @@ import { LEPTONS_PER_CELL, spotLevel, tankCell, TICK_HZ, type Cell } from './mov
 import { loadCourse as loadCourseArt, type Sprite as CachedSprite } from './load.js';
 import { facingAngle, projectModelPoint } from './ra2/render/voxelRender.js';
 import { loadCourse, type CourseFile } from './race/course.js';
-import { createRace, secondsLeft, standings, tickRace, type Race, type Racer } from './race/race.js';
+import { commandList, createRace, secondsLeft, standings, tickRace, type Race, type Racer } from './race/race.js';
 
 // The race page: a bundled course over its battlefield, the headless race drawn plainly (#45 does the stream view).
 // `?course=<file name without .json>`, `?seed=N` (race seed), `?zoom=N` (follow the leading tank), `?cell=x,y` (centre
@@ -55,13 +55,16 @@ function hudText(race: Race): string {
     const state = s.finishTime !== undefined ? `${s.finishTime.toFixed(1)} s` : race.phase === 'results' ? 'DNF' : `${Math.floor(s.progress * 100)}%`;
     return `${String(i + 1).padStart(2)}. ${s.name.padEnd(16)}${s.bot ? ' bot' : '    '}  ${state}`;
   }).join('\n');
+  let heading: string;
   switch (race.phase) {
-    case 'idle': return `${name}\nNo race.`;
-    case 'join': return `${name}: join window ${left} s. Type !rhino to join.\n${rows}`;
-    case 'countdown': return `${name}\n${left}\n${rows}`;
-    case 'racing': return `${name}${race.timer > 0 ? `: finish timer ${left} s` : ''}\n${rows}`;
-    case 'results': return `${name}: results\n${rows}`;
+    case 'idle': heading = `${name}\nNo race.`; break;
+    case 'join': heading = `${name}: join window ${left} s`; break;
+    case 'countdown': heading = `${name}\n${left}`; break;
+    case 'racing': heading = `${name}${race.timer > 0 ? `: finish timer ${left} s` : ''}`; break;
+    case 'results': heading = `${name}: results`; break;
   }
+  const commands = commandList(race);
+  return `${heading}\n${rows}${commands.length ? `\n\n${commands.join('  ')}` : ''}${race.phase === 'racing' && race.feed.length ? `\n\n${race.feed.join('\n')}` : ''}`;
 }
 
 async function main() {
@@ -138,6 +141,8 @@ async function main() {
     world.addChild(flash);
     return { id, flash, destroyed: !!bridge.destroyed, changedAt: -Infinity };
   });
+  const missiles = new Graphics();
+  world.addChild(missiles);
   const overlay = passability(grid, terrain.originX, terrain.originY);
   const linePoint = (p: { x: number; y: number }) => toScreen(p.x, p.y, level(Math.floor(p.x), Math.floor(p.y)));
   course.line.forEach((p, i) => (i ? overlay.lineTo(linePoint(p).x, linePoint(p).y) : overlay.moveTo(linePoint(p).x, linePoint(p).y)));
@@ -149,7 +154,7 @@ async function main() {
 
   // The Rhinos: one view per racer once its tank is on the start grid, labelled with its name.
   const bodyTex = await frameTextures(rhino.body), turretTex = await frameTextures(rhino.turret);
-  const views = new Map<Racer, { view: Container; body: Sprite; turret: Sprite; prev: { x: number; y: number } }>();
+  const views = new Map<Racer, { view: Container; body: Sprite; turret: Sprite; effects: Graphics; prev: { x: number; y: number } }>();
   const viewOf = (r: Racer) => {
     let v = views.get(r);
     if (!v) {
@@ -160,9 +165,10 @@ async function main() {
       label.anchor.set(0.5, 1);
       label.position.set(0, -14);
       const view = new Container();
-      view.addChild(body, turret, label);
+      const effects = new Graphics();
+      view.addChild(effects, body, turret, label);
       things.addChild(view);
-      views.set(r, (v = { view, body, turret, prev: { x: r.tank!.x, y: r.tank!.y } }));
+      views.set(r, (v = { view, body, turret, effects, prev: { x: r.tank!.x, y: r.tank!.y } }));
     }
     return v;
   };
@@ -190,13 +196,19 @@ async function main() {
     for (const r of race.racers) {
       const tank = r.tank;
       if (!tank) continue;
-      const { view, body, turret, prev } = viewOf(r);
+      const { view, body, turret, effects, prev } = viewOf(r);
       view.visible = r.finishedAt === undefined; // finished tanks leave the battlefield
       const fx = (prev.x + (tank.x - prev.x) * a) / LEPTONS_PER_CELL, fy = (prev.y + (tank.y - prev.y) * a) / LEPTONS_PER_CELL;
       // The prerender's frame 0 looks along -x (screen up-left); movement facing 0 is -y (up-right).
       const f = (Math.round(tank.facing / 2048) + 8) % 32;
       body.texture = bodyTex[f]!;
       turret.texture = turretTex[f]!;
+      const stunned = r.stunUntil > race.frame, shielded = r.shieldUntil > race.frame, boosted = r.boostUntil > race.frame;
+      body.tint = turret.tint = stunned ? 0xff6030 : boosted ? 0x60ff60 : 0xffffff;
+      effects.clear();
+      if (shielded) effects.circle(0, -5, 22).stroke({ color: 0x50caff, width: 2, alpha: 0.9 });
+      if (r.immunityUntil > race.frame && !stunned) effects.circle(0, -5, 25).stroke({ color: 0xffc030, width: 1, alpha: 0.8 });
+      if (r.protectedUntil > race.frame) effects.circle(0, -5, 28).stroke({ color: 0xff55ff, width: 1, alpha: 0.7 });
       const ang = facingAngle(f), [px, py, pz] = rhino.pivot;
       const tp = projectModelPoint(px * Math.cos(ang) - py * Math.sin(ang), px * Math.sin(ang) + py * Math.cos(ang), pz);
       turret.position.set(tp.sx, tp.sy);
@@ -217,6 +229,15 @@ async function main() {
       const age = race.frame - effect.changedAt;
       effect.flash.visible = age >= 0 && age < TICK_HZ;
       if (effect.flash.visible) effect.flash.alpha = 0.7 * (1 - age / TICK_HZ);
+    }
+    missiles.clear();
+    for (const m of race.missiles) {
+      const t = m.target.tank!;
+      const flight = Math.min((race.frame + a - m.launched) / (m.arrives - m.launched), 1);
+      const x = m.x + (t.x / LEPTONS_PER_CELL - m.x) * flight;
+      const y = m.y + (t.y / LEPTONS_PER_CELL - m.y) * flight;
+      const p = toScreen(x, y, spotLevel(grid, t.cell));
+      missiles.circle(p.x, p.y - 20 * Math.sin(flight * Math.PI), 5).fill(0xffdd50);
     }
     const leading = standings(race).find((s) => s.finishTime === undefined);
     const leader = race.racers.find((r) => r.name === leading?.name)?.tank;
