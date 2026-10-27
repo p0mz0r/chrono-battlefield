@@ -30,7 +30,9 @@ export async function loadSounds(read: ReadFile): Promise<{ play(cue: string): v
   const master = context.createGain();
   let muted = localStorage.getItem('rhino-mute') === '1';
   master.gain.value = muted ? 0 : 1;
-  master.connect(context.destination);
+  // Limiter: overlapping cues at full stock volume would clip the OBS mixer channel.
+  const limiter = new DynamicsCompressorNode(context, { threshold: -6, knee: 0, ratio: 20, attack: 0.003, release: 0.25 });
+  master.connect(limiter).connect(context.destination);
   const ini = [IniFile.parse(yrIni), IniFile.parse(baseIni)];
   const loaded = new Map<Cue, Sound>();
   const selections = (Object.entries(EVENTS) as [Cue, string][]).map(([cue, event]) => {

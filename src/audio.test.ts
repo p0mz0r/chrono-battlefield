@@ -11,12 +11,13 @@ it.skipIf(!process.env.RA2_DIR)('plays stock cues with duplicate, Limit and mute
     constructor() { context = this; }
     currentTime = 0;
     destination = {};
-    createGain() { const gain = { gain: { value: 1 }, connect: () => this.destination }; master ??= gain; last = gain; return gain; }
+    createGain() { const gain = { gain: { value: 1 }, connect: (node: unknown) => node }; master ??= gain; last = gain; return gain; }
     createBuffer(_channels: number, length: number, sampleRate: number) { return { length, sampleRate, copyToChannel() {} }; }
     createBufferSource() { return { buffer: undefined, onended: undefined, connect: () => ({ connect() {} }), start: () => { started++; } }; }
     resume() { return Promise.resolve(); }
   }
   vi.stubGlobal('AudioContext', Context);
+  vi.stubGlobal('DynamicsCompressorNode', class { connect() { return {}; } });
   try {
     const sound = await loadSounds(readFromDir);
     sound.play('ready');
