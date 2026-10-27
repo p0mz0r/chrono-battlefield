@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CellGrid } from '../movement/index.js';
 import { loadCourse, mapHash, type CourseFile } from './course.js';
-import { chat, createRace, openJoinWindow, standings, tickRace, type Race } from './race.js';
+import { chat, commandList, createRace, openJoinWindow, standings, tickRace, type Race } from './race.js';
 import { TICK_HZ } from '../movement/index.js';
 import { readdirSync, readFileSync } from 'node:fs';
 import { describeInstall, readFromDir } from '../../test/install.js';
@@ -44,6 +44,104 @@ describe('course', () => {
 const course = (file = loopCourse()) => loadCourse(file, MAP, ARENA);
 const say = (race: Race, viewerId: string, text: string, name = viewerId) => chat(race, { viewerId, name, text });
 const ticks = (race: Race, n: number) => { for (let i = 0; i < n; i++) tickRace(race); };
+const racing = () => {
+  const race = createRace(course(), ARENA, 1);
+  openJoinWindow(race, { joinSeconds: 1 });
+  say(race, 'a', '!rhino', 'Kane');
+  say(race, 'b', '!rhino', 'Kara');
+  ticks(race, 4 * TICK_HZ);
+  return race;
+};
+
+describe('audience interactions', () => {
+  it('parses names, rejects ambiguous targets without spending cooldown, and shows phase commands', () => {
+    const race = createRace(course(), ARENA, 1);
+    expect(commandList(race)).toEqual([]);
+    openJoinWindow(race, { joinSeconds: 1 });
+    expect(commandList(race)).toEqual(['!rhino']);
+    say(race, 'a', '!rhino', 'Kane');
+    say(race, 'b', '!rhino', 'Kara');
+    say(race, 'c', '!rhino', 'Kandy');
+    ticks(race, TICK_HZ);
+    expect(commandList(race)).toEqual([]);
+    ticks(race, 3 * TICK_HZ);
+    expect(commandList(race)).toContain('!shield (racers)');
+    expect(say(race, 'v', '?boost Kane').reason).toBe('ignored');
+    expect(say(race, 'v', '?missile Kane').reason).toBe('ignored');
+    expect(say(race, 'v', '!boost kan').reason).toBe('ambiguous name');
+    expect(say(race, 'v', '!boost kar').ok).toBe(true);
+    expect(say(race, 'v', '!boost ka')).toMatchObject({ ok: false }); // viewer cooldown after the accepted prefix
+    expect(say(race, 'x', '!boost ka').reason).toBe('unknown name');
+    expect(say(race, 'w', '  !BOOST @kane  ')).toMatchObject({ ok: true });
+    expect(race.racers.find((r) => r.name === 'Kane')!.tank!.speedFactor).toBe(1.5);
+  });
+
+  it('boost expires while stunned; shield absorbs a launched missile', () => {
+    const race = racing();
+    expect(say(race, 'v', '!boost Kane').ok).toBe(true);
+    expect(say(race, 'a', '!shield').ok).toBe(true);
+    expect(say(race, 'w', '!missile Kane').ok).toBe(true);
+    ticks(race, 2 * TICK_HZ);
+    const kane = race.racers.find((r) => r.name === 'Kane')!;
+    expect(kane.shieldUntil).toBeGreaterThan(race.frame);
+    expect(kane.stunUntil).toBe(0);
+    ticks(race, 4 * TICK_HZ);
+    expect(kane.tank!.speedFactor).toBe(1);
+    expect(say(race, 'x', '!missile Kane').ok).toBe(true);
+    ticks(race, 2 * TICK_HZ);
+    expect(kane.stunUntil).toBeGreaterThan(race.frame);
+    expect(say(race, 'y', '!missile Kane').ok).toBe(false); // protected by named hit
+  });
+
+  it('random hits can select a protected target, and stun immunity prevents another delay', () => {
+    const race = racing();
+    const kane = race.racers.find((r) => r.name === 'Kane')!;
+    expect(say(race, 'v', '!missile Kane').ok).toBe(true);
+    ticks(race, 2 * TICK_HZ);
+    const first = kane.stunUntil;
+    expect(first).toBeGreaterThan(race.frame);
+    expect(say(race, 'w', '!missile Kane').ok).toBe(false);
+    ticks(race, 3 * TICK_HZ);
+    expect(say(race, 'x', '!missile Kane').ok).toBe(false);
+    expect(kane.stunUntil).toBe(first);
+  });
+
+  it('uses one viewer cooldown with the duration of the last successful interaction', () => {
+    const race = racing();
+    expect(say(race, 'a', '!shield').ok).toBe(true);
+    expect(say(race, 'a', '!boost Kara').reason).toMatch(/cooldown 30/);
+    ticks(race, 30 * TICK_HZ);
+    expect(say(race, 'a', '!boost Kara').ok).toBe(true);
+    expect(say(race, 'a', '!shield').reason).toMatch(/cooldown 20/);
+    expect(say(race, 'outsider', '!shield').reason).toMatch(/racer/);
+    expect(say(race, 'outsider', '!boost Kara').ok).toBe(true);
+  });
+
+  it('ignores unavailable commands and rate limits failure feed', () => {
+    const race = racing();
+    race.enabled.delete('missile');
+    expect(commandList(race)).not.toContain('!missile [name]');
+    expect(say(race, 'v', '!missile Kane').reason).toBe('ignored');
+    expect(say(race, 'v', '!boost missing').ok).toBe(false);
+    expect(say(race, 'v', '!boost missing').ok).toBe(false);
+    expect(race.feed).toHaveLength(1);
+  });
+
+  it('holds a stunned tank mid-step and excludes it from another random stun until immunity ends', () => {
+    const race = racing();
+    expect(say(race, 'v', '!missile').ok).toBe(true);
+    ticks(race, 2 * TICK_HZ);
+    const hit = race.racers.find((r) => r.stunUntil > race.frame)!;
+    expect(hit).toBeDefined();
+    const x = hit.tank!.x, y = hit.tank!.y;
+    ticks(race, 2 * TICK_HZ);
+    expect([hit.tank!.x, hit.tank!.y]).toEqual([x, y]);
+    expect(say(race, 'w', `!missile ${hit.name}`).reason).toBe('target unable');
+    expect(say(race, 'w', '!missile').ok).toBe(true);
+    ticks(race, 2 * TICK_HZ);
+    expect(hit.stunUntil).toBeLessThanOrEqual(race.frame);
+  });
+});
 
 describe('joining', () => {
   it('takes !rhino only during the join window, once per viewer, and ignores every other line', () => {
