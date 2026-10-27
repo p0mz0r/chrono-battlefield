@@ -1,20 +1,27 @@
-import { Application, Container, Graphics, Rectangle, Sprite, Texture } from 'pixi.js';
+import { Application, Container, Graphics, Rectangle, Sprite, Text, Texture } from 'pixi.js';
 import type { CellGrid } from './battlefield/grid.js';
 import { openInstall, readInstall } from './install/read.js';
 import { bindSetupKey, showSetup } from './install/setup.js';
-import { addTank, createField, drivable, isDriving, LEPTONS_PER_CELL, orderMove, spotLevel, tankCell, tick, TICK_HZ, type Cell } from './movement/index.js';
-import { loadCourse, type Sprite as CachedSprite } from './load.js';
+import { LEPTONS_PER_CELL, spotLevel, tankCell, TICK_HZ, type Cell } from './movement/index.js';
+import { loadCourse as loadCourseArt, type Sprite as CachedSprite } from './load.js';
 import { facingAngle, projectModelPoint } from './ra2/render/voxelRender.js';
+import { loadCourse, type CourseFile } from './race/course.js';
+import { createRace, secondsLeft, standings, tickRace, type Race, type Racer } from './race/race.js';
 
-// Dev page: one battlefield's terrain and ten Rhinos that drive to a clicked cell.
-// `?map=<path inside the install>`, `?start=x,y`, `?to=x,y` (order on load), `?tanks=N` (10), `?seed=N`,
-// `?zoom=N` (follow the first tank), `?cell=x,y` (centre there), `?grid=1` (show passability).
+// The race page: a bundled course over its battlefield, the headless race drawn plainly (#45 does the stream view).
+// `?course=<file name without .json>`, `?seed=N` (race seed), `?zoom=N` (follow the leading tank), `?cell=x,y` (centre
+// there), `?grid=1` (passability, ideal line, waypoints). Dev only: `?fast=N` runs N× game speed, and the
+// test-chat panel's URL shortcuts (race/devPanel.ts).
 const status = document.getElementById('status')!;
+const hud = document.getElementById('hud')!;
 const params = new URLSearchParams(location.search);
 const cellParam = (name: string): Cell | undefined => {
   const [x, y] = (params.get(name) ?? '').split(',').map(Number);
   return Number.isInteger(x) && Number.isInteger(y) ? { x: x!, y: y! } : undefined;
 };
+
+/** Courses bundled at build from `courses/*.json`. */
+const COURSES = import.meta.glob<CourseFile>('../courses/*.json', { eager: true, import: 'default' });
 
 /** A cached WebP decoded straight into a texture; its pixels never sit in a JS buffer. */
 const blobTexture = async (image: Blob) => Texture.from(await createImageBitmap(image));
@@ -41,6 +48,22 @@ function passability(grid: CellGrid, originX: number, originY: number): Graphics
   return g;
 }
 
+/** Phase, countdown, standings and results as plain text. */
+function hudText(race: Race): string {
+  const left = secondsLeft(race), name = race.course.file.name;
+  const rows = (race.phase === 'results' ? race.results : standings(race)).map((s, i) => {
+    const state = s.finishTime !== undefined ? `${s.finishTime.toFixed(1)} s` : race.phase === 'results' ? 'DNF' : `${Math.floor(s.progress * 100)}%`;
+    return `${String(i + 1).padStart(2)}. ${s.name.padEnd(16)}${s.bot ? ' bot' : '    '}  ${state}`;
+  }).join('\n');
+  switch (race.phase) {
+    case 'idle': return `${name}\nNo race.`;
+    case 'join': return `${name}: join window ${left} s. Type !rhino to join.\n${rows}`;
+    case 'countdown': return `${name}\n${left}\n${rows}`;
+    case 'racing': return `${name}${race.timer > 0 ? `: finish timer ${left} s` : ''}\n${rows}`;
+    case 'results': return `${name}: results\n${rows}`;
+  }
+}
+
 async function main() {
   bindSetupKey();
   const problems = await openInstall();
@@ -49,24 +72,25 @@ async function main() {
     showSetup(problems);
     return;
   }
-  const mapPath = params.get('map') ?? 'Hills.mmx';
+  const courseName = params.get('course');
+  const file = Object.entries(COURSES).find(([path]) => !courseName || path.endsWith(`/${courseName}.json`))?.[1];
+  if (!file) throw new Error(`No course ${courseName}`);
+  // ponytail: shipped custom maps (courses/maps/, ADR 0006) arrive with the first course over one.
+  if (file.source !== 'install') throw new Error(`Course "${file.name}": shipped maps aren't supported yet`);
+  const mapPath = file.map;
   const started = performance.now();
-  const { map, art, cached } = await loadCourse(readInstall, mapPath);
-  const { battlefield, rhino } = art;
-  const { terrain, images, objects } = battlefield;
-  const grid = battlefield.grid;
+  const { map, mapBytes, art: { battlefield, rhino }, cached } = await loadCourseArt(readInstall, mapPath);
+  const course = loadCourse(file, mapBytes, battlefield.grid);
+  const { terrain, images, objects, grid } = battlefield;
   const level = (x: number, y: number) => grid.level[y * grid.width + x] ?? 0;
+  const race = createRace(course, grid, Number(params.get('seed') ?? Date.now() % 1e9));
 
   const { originX: minX, originY: minY } = terrain;
   /** Battlefield px of a point in cell units (cell centre = x + 0.5). */
   const toScreen = (fx: number, fy: number, z: number) => ({ x: (fx - fy) * 30 + 30 - minX, y: (fx + fy - z) * 15 - minY });
-  const toCell = (sx: number, sy: number): Cell => {
-    let c = { x: 0, y: 0 };
-    for (let i = 0, z = 0; i < 3; i++, z = level(c.x, c.y)) {
-      const a = (sx + minX - 30) / 30, b = (sy + minY) / 15 + z;
-      c = { x: Math.floor((a + b) / 2), y: Math.floor((b - a) / 2) };
-    }
-    return c;
+  const diamond = (x: number, y: number) => {
+    const p = toScreen(x, y, level(x, y));
+    return [p.x, p.y, p.x + 30, p.y + 15, p.x, p.y + 30, p.x - 30, p.y + 15];
   };
 
   const app = new Application();
@@ -79,6 +103,13 @@ async function main() {
     sprite.position.set(chunk.x, chunk.y);
     world.addChild(sprite);
   }
+  // The finish area, chequered.
+  const finish = new Graphics();
+  for (const i of course.finishArea) {
+    const x = i % grid.width, y = (i - x) / grid.width;
+    finish.poly(diamond(x, y)).fill({ color: (x + y) % 2 ? 0xffffff : 0x111111, alpha: 0.6 });
+  }
+  world.addChild(finish);
   const textures = await Promise.all(images.map((img) => blobTexture(img.image)));
   const things = new Container({ sortableChildren: true });
   for (const obj of objects) {
@@ -89,44 +120,32 @@ async function main() {
   }
   world.addChild(things);
   const overlay = passability(grid, terrain.originX, terrain.originY);
+  const linePoint = (p: { x: number; y: number }) => toScreen(p.x, p.y, level(Math.floor(p.x), Math.floor(p.y)));
+  course.line.forEach((p, i) => (i ? overlay.lineTo(linePoint(p).x, linePoint(p).y) : overlay.moveTo(linePoint(p).x, linePoint(p).y)));
+  overlay.stroke({ color: 0xffffff, width: 2, alpha: 0.7 });
+  for (const [x, y] of course.file.waypoints) overlay.poly(diamond(x, y)).fill({ color: 0xff00ff, alpha: 0.7 });
   overlay.visible = params.get('grid') === '1';
   world.addChild(overlay);
   addEventListener('keydown', (e) => { if (e.key === 'g' || e.key === 'G') overlay.visible = !overlay.visible; });
 
-  const trail = new Graphics();
-  world.addChild(trail);
-
-  // The Rhinos.
+  // The Rhinos: one view per racer once its tank is on the start grid, labelled with its name.
   const bodyTex = await frameTextures(rhino.body), turretTex = await frameTextures(rhino.turret);
-  /** Drivable ground cells, nearest to `c` first. */
-  const nearest = (c: Cell, n: number): Cell[] => {
-    const cells: [number, Cell][] = [];
-    for (let y = 0; y < grid.height; y++) for (let x = 0; x < grid.width; x++) {
-      if (drivable(grid, x, y) && grid.deck[y * grid.width + x]! < 0) cells.push([Math.hypot(x - c.x, y - c.y), { x, y }]);
+  const views = new Map<Racer, { view: Container; body: Sprite; turret: Sprite; prev: { x: number; y: number } }>();
+  const viewOf = (r: Racer) => {
+    let v = views.get(r);
+    if (!v) {
+      const body = new Sprite(bodyTex[0]), turret = new Sprite(turretTex[0]);
+      body.anchor.set(0.5);
+      turret.anchor.set(0.5);
+      const label = new Text({ text: r.name, style: { fill: r.bot ? 0xcccccc : 0xffff80, fontSize: 12, fontFamily: 'sans-serif', stroke: { color: 0x000000, width: 3 } } });
+      label.anchor.set(0.5, 1);
+      label.position.set(0, -14);
+      const view = new Container();
+      view.addChild(body, turret, label);
+      things.addChild(view);
+      views.set(r, (v = { view, body, turret, prev: { x: r.tank!.x, y: r.tank!.y } }));
     }
-    return cells.sort((a, b) => a[0] - b[0]).slice(0, n).map(([, cell]) => cell);
-  };
-
-  const waypoint = map.waypoints.find((w) => w.number === 0);
-  const start = cellParam('start') ?? (waypoint && { x: waypoint.x, y: waypoint.y }) ?? { x: grid.width >> 1, y: grid.height >> 1 };
-  const field = createField(grid, Number(params.get('seed') ?? 1));
-  const tanks = nearest(start, Number(params.get('tanks') ?? 10)).map((c) => addTank(field, c));
-  const views = tanks.map(() => {
-    const body = new Sprite(bodyTex[0]), turret = new Sprite(turretTex[0]);
-    body.anchor.set(0.5);
-    turret.anchor.set(0.5);
-    const view = new Container();
-    view.addChild(body, turret);
-    things.addChild(view);
-    return { view, body, turret };
-  });
-  let prev = tanks.map((t) => ({ x: t.x, y: t.y }));
-  /** Each tank to its own cell near `to`, farthest tank to the farthest goal so they don't cross. */
-  const order = (to: Cell) => {
-    const goals = nearest(to, tanks.length);
-    const byDistance = [...tanks].sort((a, b) => Math.hypot(a.cell.x - to.x, a.cell.y - to.y) - Math.hypot(b.cell.x - to.x, b.cell.y - to.y));
-    const ok = byDistance.filter((t, i) => goals[i] && orderMove(field, t, goals[i]!)).length;
-    status.textContent = `${mapPath}: ${ok}/${tanks.length} Rhinos driving to ${to.x},${to.y}`;
+    return v;
   };
 
   const focus = cellParam('cell');
@@ -134,37 +153,27 @@ async function main() {
   const fit = () => world.scale.set(zoom || Math.min(app.screen.width / terrain.width, app.screen.height / terrain.height));
   fit();
   app.renderer.on('resize', fit);
-  app.stage.eventMode = 'static';
-  app.stage.hitArea = app.screen;
-  app.stage.on('pointerdown', (e) => {
-    const p = world.toLocal(e.global);
-    order(toCell(p.x, p.y));
-  });
-
-  // Dev check for headless runs: frames in which two non-ghost tanks held the same spot.
-  let overlaps = 0;
-  const countOverlap = () => {
-    const seen = new Set<string>();
-    for (const t of tanks) for (const s of t.ghost ? [] : [t.cell, ...t.ahead]) {
-      const k = `${s.x},${s.y},${s.deck}`;
-      if (seen.has(k)) return overlaps++;
-      seen.add(k);
-    }
-  };
 
   // Fixed-step simulation, drawn interpolated.
+  const fast = import.meta.env.DEV ? Number(params.get('fast')) || 1 : 1;
   let acc = 0;
   app.ticker.add((t) => {
-    acc += t.deltaMS / 1000;
-    for (let n = 0; acc >= 1 / TICK_HZ && n < 10; n++, acc -= 1 / TICK_HZ) {
-      prev = tanks.map((t) => ({ x: t.x, y: t.y }));
-      tick(field);
-      countOverlap();
+    acc += (t.deltaMS / 1000) * fast;
+    for (let n = 0; acc >= 1 / TICK_HZ && n < 10 * fast; n++, acc -= 1 / TICK_HZ) {
+      for (const [r, v] of views) v.prev = { x: r.tank!.x, y: r.tank!.y };
+      tickRace(race);
+    }
+    for (const [r, v] of views) if (!race.racers.includes(r)) { // a new race
+      v.view.destroy({ children: true });
+      views.delete(r);
     }
     const a = Math.min(acc * TICK_HZ, 1);
-    tanks.forEach((tank, i) => {
-      const { view, body, turret } = views[i]!;
-      const fx = (prev[i]!.x + (tank.x - prev[i]!.x) * a) / LEPTONS_PER_CELL, fy = (prev[i]!.y + (tank.y - prev[i]!.y) * a) / LEPTONS_PER_CELL;
+    for (const r of race.racers) {
+      const tank = r.tank;
+      if (!tank) continue;
+      const { view, body, turret, prev } = viewOf(r);
+      view.visible = r.finishedAt === undefined; // finished tanks leave the battlefield
+      const fx = (prev.x + (tank.x - prev.x) * a) / LEPTONS_PER_CELL, fy = (prev.y + (tank.y - prev.y) * a) / LEPTONS_PER_CELL;
       // The prerender's frame 0 looks along -x (screen up-left); movement facing 0 is -y (up-right).
       const f = (Math.round(tank.facing / 2048) + 8) % 32;
       body.texture = bodyTex[f]!;
@@ -177,24 +186,26 @@ async function main() {
       // ponytail: deck tanks draw over everything (bridge pieces' art overlaps several cells); #45 does proper sorting.
       view.zIndex = (fx + fy + 1) * 15 + (tank.cell.deck ? 1e6 : 0);
       view.alpha = tank.ghost ? 0.5 : 1;
-      if (params.get('grid') && isDriving(tank)) trail.circle(p.x, p.y, 1.5).fill(0x00ffff);
-    });
-    const lead = tanks[0];
-    const center = focus ? toScreen(focus.x, focus.y, level(focus.x, focus.y)) : lead && toScreen(lead.x / LEPTONS_PER_CELL, lead.y / LEPTONS_PER_CELL, spotLevel(grid, lead.cell));
+    }
+    const leading = standings(race).find((s) => s.finishTime === undefined);
+    const leader = race.racers.find((r) => r.name === leading?.name)?.tank;
+    const center = focus ? toScreen(focus.x, focus.y, level(focus.x, focus.y)) : leader && toScreen(leader.x / LEPTONS_PER_CELL, leader.y / LEPTONS_PER_CELL, spotLevel(grid, leader.cell));
     if (zoom && center) world.position.set(app.screen.width / 2 - center.x * zoom, app.screen.height / 2 - center.y * zoom);
-    document.body.dataset.tanks = tanks.map((t) => {
-      const c = tankCell(t);
-      return `${c.x},${c.y},${c.deck ? 'deck' : 'ground'},${t.ghost ? 'ghost' : ''},${isDriving(t) ? 'driving' : 'stopped'}`;
-    }).join(';');
-    document.body.dataset.overlaps = String(overlaps);
-    document.body.dataset.frame = String(field.frame);
+    hud.textContent = hudText(race);
+    // For headless checks.
+    Object.assign(document.body.dataset, {
+      phase: race.phase, frame: String(race.frame),
+      tanks: race.racers.filter((r) => r.tank && r.finishedAt === undefined).map((r) => {
+        const c = tankCell(r.tank!);
+        return `${r.name}@${c.x},${c.y}${c.deck ? 'd' : ''}${r.tank!.ghost ? 'g' : ''}:wp${r.next}`;
+      }).join(' '),
+    });
   });
 
   const loadMs = Math.round(performance.now() - started);
   document.body.dataset.load = `${loadMs},${cached ? 'cached' : 'imported'}`;
-  status.textContent = `${mapPath}: ${map.theater}, ${cached ? 'from cache' : 'imported'} in ${loadMs} ms, ${terrain.missing} missing tiles. ${tanks.length} Rhinos at ${start.x},${start.y}; click a cell to send them. G: passability. ${battlefield.warnings.join('; ')}`;
-  const to = cellParam('to');
-  if (to) order(to);
+  status.textContent = `${course.file.name} on ${mapPath} (${map.theater}, ${cached ? 'from cache' : 'imported'} in ${loadMs} ms), ideal line ${course.length.toFixed(0)} cells. G: passability and ideal line.`;
+  if (import.meta.env.DEV) (await import('./race/devPanel.js')).mountDevPanel(race, params);
   document.body.dataset.ready = String(terrain.missing === 0);
 }
 

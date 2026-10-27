@@ -5,11 +5,13 @@
 <title>Rhino Race</title>
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+  #hud { position: fixed; top: 40px; left: 8px; margin: 0; padding: 6px 8px; background: #000a; color: #eee; font: 14px/1.4 monospace; white-space: pre; }
   #status { position: fixed; top: 8px; left: 8px; margin: 0; padding: 6px 8px; background: #000c; color: #9c9; font: 13px/1.4 monospace; white-space: pre-wrap; }
 </style>
 </head>
 <body>
 <pre id="status">loading…</pre>
+<pre id="hud"></pre>
 <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

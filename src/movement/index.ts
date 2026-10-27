@@ -1,7 +1,7 @@
 import { findRoute, spotIndex, stepTo, spotSpeed, type Cell, type CellGrid, type Spot } from './route.js';
 import { F_D, F_T, F_X, F_Y, RAW_TRACKS, TRACKS, TRACK_CONTROL } from './tracks.js';
 
-export { drivable, findRoute, spotLevel, type Cell, type CellGrid, type Spot } from './route.js';
+export { drivable, findRoute, spotLevel, stepTo, type Cell, type CellGrid, type Spot } from './route.js';
 
 // Pure RA2 cell locomotion (ADR 0005): one tick = one game frame, positions in leptons, facings in
 // 1/65536 turn. Turn in place at ROT before a step, then follow RA1's curved tracks.
@@ -78,7 +78,7 @@ export function createField(grid: CellGrid, seed: number): Field {
 }
 
 /** mulberry32: a uniform float in [0, 1) from the field's seeded stream. */
-function random(field: Field): number {
+export function random(field: Field): number {
   let t = (field.rng = (field.rng + 0x6d2b79f5) >>> 0);
   t = Math.imul(t ^ (t >>> 15), t | 1);
   t ^= t + Math.imul(t ^ (t >>> 7), t | 61);

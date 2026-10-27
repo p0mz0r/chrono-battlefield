@@ -34,7 +34,7 @@ const sprite = async (s: ConvertedSprite): Promise<Sprite> =>
  * Imports the course's battlefield and prerenders the Rhino, or takes both from the cache when this install
  * and map file were imported before. A miss reads only the MIX entries the import needs; a hit reads none.
  */
-export async function loadCourse(read: ReadFile, mapPath: string): Promise<{ map: MapFile; art: CourseArt; cached: boolean }> {
+export async function loadCourse(read: ReadFile, mapPath: string): Promise<{ map: MapFile; mapBytes: Uint8Array; art: CourseArt; cached: boolean }> {
   const mapBytes = await read(mapPath);
   // The map file is read once; the import's own reads of it get these bytes.
   const readMapOnce: ReadFile = async (p, ...range) => (p === mapPath && !range.length ? mapBytes : read(p, ...range));
@@ -56,5 +56,5 @@ export async function loadCourse(read: ReadFile, mapPath: string): Promise<{ map
       rhino: { body: await sprite(rhino.body), turret: await sprite(rhino.turret.sprite), pivot: rhino.turret.pivot },
     };
   });
-  return { map, art, cached };
+  return { map, mapBytes, art, cached };
 }
