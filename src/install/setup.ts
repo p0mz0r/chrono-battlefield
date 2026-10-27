@@ -1,4 +1,4 @@
-import { clearUploads, savedPath, storeUploads, uploadedNames, useFolder } from './read.js';
+import { clearUploads, REQUIRED, savedPath, storeUploads, uploadedNames, useFolder } from './read.js';
 
 // Install setup, used through OBS Interact. Any change reloads the page, which reopens the install.
 const dialog = document.createElement('dialog');
@@ -11,7 +11,7 @@ dialog.innerHTML = `
   <label>RA2 + Yuri's Revenge folder<br><input name="path" size="70" placeholder="C:\\Program Files (x86)\\Origin Games\\Command and Conquer Red Alert II"></label>
   <button value="use">Use this folder</button>
 </form>
-<p><label>Or upload <b>ra2.mix</b>, <b>ra2md.mix</b>, <b>expandmd01.mix</b> and the maps:<br>
+<p><label>Or upload ${REQUIRED.map((name) => `<b>${name}</b>`).join(', ')} and the maps:<br>
   <input type="file" multiple></label></p>
 <p class="stored"></p>
 <p><button class="clear">Clear stored files</button> <button class="close">Close</button></p>`;

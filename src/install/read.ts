@@ -167,8 +167,8 @@ export async function openInstall(): Promise<string[]> {
   return problems.length ? problems : ['No install found'];
 }
 
-/** The files an install must have, beside the maps. */
-export const REQUIRED = ['ra2.mix', 'ra2md.mix', 'expandmd01.mix'];
+/** The files an install must have, beside the maps (language MIXes hold the sounds). */
+export const REQUIRED = ['ra2.mix', 'ra2md.mix', 'expandmd01.mix', 'language.mix', 'langmd.mix'];
 
 const GAME = 'Command and Conquer Red Alert II';
 // Tried in this order after the saved path: the Origin, EA app and Steam defaults, then the same
