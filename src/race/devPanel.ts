@@ -17,14 +17,14 @@ function rng(seed: number) {
   };
 }
 
-export function mountDevPanel(race: Race, params: URLSearchParams): void {
+export function mountDevPanel(race: Race, params: URLSearchParams, switchCamera: () => void = () => {}): void {
   const panel = document.createElement('div');
   panel.id = 'dev-panel';
   panel.style.cssText = 'position:fixed;right:8px;bottom:8px;width:330px;padding:8px;background:#000d;color:#ccc;font:12px/1.5 monospace;border:1px solid #444';
   panel.innerHTML = `
 <b>Operator (dev)</b><br>
 join <input name="join" size="3" value="${params.get('join') ?? 90}"> s, finish timer <input name="finish" size="3" value="${params.get('finish') ?? 60}"> s<br>
-<button name="open">Open join window</button> <button name="end">End race</button>
+<button name="open">Open join window</button> <button name="end">End race</button> <button name="camera">Switch camera</button>
 <hr><b>Test chat</b><br>
 <input name="name" size="10" value="p0mz0r"> <input name="text" size="20" placeholder="!rhino"> <button name="say">Say</button><br>
 <button name="fake">Add</button> <input name="n" size="2" value="${params.get('fake') ?? 5}"> fake viewers<br>
@@ -47,6 +47,7 @@ join <input name="join" size="3" value="${params.get('join') ?? 90}"> s, finish 
 
   $('open').onclick = () => openJoinWindow(race, { joinSeconds: Number($('join').value), finishSeconds: Number($('finish').value) });
   $('end').onclick = () => endRace(race);
+  $('camera').onclick = switchCamera;
   $('say').onclick = () => say(`test:${$('name').value}`, $('name').value, $('text').value);
   $('text').onkeydown = (e) => { if (e.key === 'Enter') $('say').click(); };
   $('fake').onclick = () => {

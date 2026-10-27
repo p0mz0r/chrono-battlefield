@@ -83,6 +83,8 @@ export interface Race {
   feedUntil: Map<string, number>;
   sounds: string[];
   missiles: { target: Racer; named: boolean; launched: number; arrives: number; x: number; y: number }[];
+  lastHit: Racer | undefined;
+  lastHitFrame: number;
   v3s: { firer: Racer; x: number; y: number; dx: number; dy: number; travelled: number }[];
   /** Tesla strikes charging: the Tesla tank stays beside `target` (x, y in cells) until it goes off. */
   teslas: { target: Racer; named: boolean; x: number; y: number; arrives: number }[];
@@ -100,7 +102,7 @@ export interface Standing {
 
 export function createRace(course: Course, grid: CellGrid, seed: number): Race {
   const bridgeGrid = 'bridge' in grid && 'bridges' in grid ? grid as BridgeGrid : undefined;
-  return { course, field: createField(grid, seed), phase: 'idle', racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions.filter((verb) => verb !== 'bridge' || (bridgeGrid && course.file.bridges.length))), cooldowns: new Map(), feed: [], feedUntil: new Map(), sounds: [], missiles: [], v3s: [], teslas: [], bridgeGrid };
+  return { course, field: createField(grid, seed), phase: 'idle', racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions.filter((verb) => verb !== 'bridge' || (bridgeGrid && course.file.bridges.length))), cooldowns: new Map(), feed: [], feedUntil: new Map(), sounds: [], missiles: [], v3s: [], teslas: [], lastHit: undefined, lastHitFrame: -1, bridgeGrid };
 }
 
 export function commandList(race: Race): string[] {
@@ -120,6 +122,8 @@ export function openJoinWindow(race: Race, { joinSeconds = 90, finishSeconds = 6
   race.sounds.length = 0;
   race.feedUntil.clear();
   race.missiles.length = 0;
+  race.lastHit = undefined;
+  race.lastHitFrame = -1;
   race.v3s.length = 0;
   race.teslas.length = 0;
   for (const [id, bridge] of race.bridgeGrid?.bridges.entries() ?? []) {
@@ -257,6 +261,8 @@ function hit(race: Race, r: Racer, named: boolean): void {
   r.stunUntil = race.frame + 3 * TICK_HZ;
   r.immunityUntil = r.stunUntil + 3 * TICK_HZ;
   r.tank!.stunnedUntil = race.field.frame + 3 * TICK_HZ;
+  race.lastHit = r;
+  race.lastHitFrame = race.frame;
   if (named) r.protectedUntil = race.frame + 15 * TICK_HZ;
   race.sounds.push('hit');
 }
