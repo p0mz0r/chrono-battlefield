@@ -75,6 +75,8 @@ export interface Race {
   feed: string[];
   feedUntil: Map<string, number>;
   missiles: { target: Racer; named: boolean; launched: number; arrives: number; x: number; y: number }[];
+  lastHit: Racer | undefined;
+  lastHitFrame: number;
 }
 
 export interface Standing {
@@ -87,7 +89,7 @@ export interface Standing {
 }
 
 export function createRace(course: Course, grid: CellGrid, seed: number): Race {
-  return { course, field: createField(grid, seed), phase: 'idle', racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions), cooldowns: new Map(), feed: [], feedUntil: new Map(), missiles: [] };
+  return { course, field: createField(grid, seed), phase: 'idle', racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions), cooldowns: new Map(), feed: [], feedUntil: new Map(), missiles: [], lastHit: undefined, lastHitFrame: -1 };
 }
 
 export function commandList(race: Race): string[] {
@@ -106,6 +108,8 @@ export function openJoinWindow(race: Race, { joinSeconds = 90, finishSeconds = 6
   race.feed.length = 0;
   race.feedUntil.clear();
   race.missiles.length = 0;
+  race.lastHit = undefined;
+  race.lastHitFrame = -1;
 }
 
 const IGNORED: ChatResult = { ok: false, reason: 'ignored' };
@@ -230,6 +234,8 @@ function drive(race: Race) {
     r.stunUntil = race.frame + 3 * TICK_HZ;
     r.immunityUntil = r.stunUntil + 3 * TICK_HZ;
     r.tank!.stunnedUntil = field.frame + 3 * TICK_HZ;
+    race.lastHit = r;
+    race.lastHitFrame = race.frame;
     if (missile.named) r.protectedUntil = race.frame + 15 * TICK_HZ;
   }
   tick(field);

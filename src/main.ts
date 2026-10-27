@@ -7,6 +7,7 @@ import { loadCourse as loadCourseArt, type Sprite as CachedSprite } from './load
 import { facingAngle, projectModelPoint } from './ra2/render/voxelRender.js';
 import { loadCourse, type CourseFile } from './race/course.js';
 import { commandList, createRace, secondsLeft, standings, tickRace, type Race, type Racer } from './race/race.js';
+import { mountStreamView, type CameraMode } from './race/view.js';
 
 // The race page: a bundled course over its battlefield, the headless race drawn plainly (#45 does the stream view).
 // `?course=<file name without .json>`, `?seed=N` (race seed), `?zoom=N` (follow the leading tank), `?cell=x,y` (centre
@@ -72,6 +73,7 @@ async function main() {
   const problems = await openInstall();
   if (problems.length) {
     status.textContent = 'RA2 + YR install not found';
+    status.style.display = 'block';
     showSetup(problems);
     return;
   }
@@ -135,7 +137,7 @@ async function main() {
 
   // The Rhinos: one view per racer once its tank is on the start grid, labelled with its name.
   const bodyTex = await frameTextures(rhino.body), turretTex = await frameTextures(rhino.turret);
-  const views = new Map<Racer, { view: Container; body: Sprite; turret: Sprite; effects: Graphics; prev: { x: number; y: number } }>();
+  const views = new Map<Racer, { view: Container; body: Sprite; turret: Sprite; effects: Graphics; chip: Graphics; label: Text; prev: { x: number; y: number } }>();
   const viewOf = (r: Racer) => {
     let v = views.get(r);
     if (!v) {
@@ -147,18 +149,24 @@ async function main() {
       label.position.set(0, -14);
       const view = new Container();
       const effects = new Graphics();
-      view.addChild(effects, body, turret, label);
+      const chip = new Graphics().circle(0, -21, 11).fill(r.bot ? 0x7b899b : 0xc52c2c);
+      view.addChild(effects, body, turret, chip, label);
       things.addChild(view);
-      views.set(r, (v = { view, body, turret, effects, prev: { x: r.tank!.x, y: r.tank!.y } }));
+      views.set(r, (v = { view, body, turret, effects, chip, label, prev: { x: r.tank!.x, y: r.tank!.y } }));
     }
     return v;
   };
 
   const focus = cellParam('cell');
   const zoom = Number(params.get('zoom')) || (focus ? 1 : 0);
-  const fit = () => world.scale.set(zoom || Math.min(app.screen.width / terrain.width, app.screen.height / terrain.height));
-  fit();
-  app.renderer.on('resize', fit);
+  let cameraMode: CameraMode = 'overview';
+  const switchCamera = () => { cameraMode = cameraMode === 'overview' ? 'director' : 'overview'; };
+  const drawOverlay = mountStreamView();
+  const bounds = course.line.map((point) => toScreen(point.x, point.y, level(Math.floor(point.x), Math.floor(point.y))));
+  const minCourseX = Math.min(...bounds.map((p) => p.x)), maxCourseX = Math.max(...bounds.map((p) => p.x));
+  const minCourseY = Math.min(...bounds.map((p) => p.y)), maxCourseY = Math.max(...bounds.map((p) => p.y));
+  const overviewScale = () => Math.min((app.screen.width - 440) / (maxCourseX - minCourseX + 120), (app.screen.height - 160) / (maxCourseY - minCourseY + 120));
+  let directorFocus: Racer | undefined, directorReason = 'Leader', cutAt = -Infinity, seenHit = -1;
 
   // Fixed-step simulation, drawn interpolated.
   const fast = import.meta.env.DEV ? Number(params.get('fast')) || 1 : 1;
@@ -174,10 +182,11 @@ async function main() {
       views.delete(r);
     }
     const a = Math.min(acc * TICK_HZ, 1);
+    const ordered = standings(race);
     for (const r of race.racers) {
       const tank = r.tank;
       if (!tank) continue;
-      const { view, body, turret, effects, prev } = viewOf(r);
+      const { view, body, turret, effects, chip, label, prev } = viewOf(r);
       view.visible = r.finishedAt === undefined; // finished tanks leave the battlefield
       const fx = (prev.x + (tank.x - prev.x) * a) / LEPTONS_PER_CELL, fy = (prev.y + (tank.y - prev.y) * a) / LEPTONS_PER_CELL;
       // The prerender's frame 0 looks along -x (screen up-left); movement facing 0 is -y (up-right).
@@ -195,9 +204,12 @@ async function main() {
       turret.position.set(tp.sx, tp.sy);
       const p = toScreen(fx, fy, spotLevel(grid, tank.cell));
       view.position.set(p.x, p.y);
-      // ponytail: deck tanks draw over everything (bridge pieces' art overlaps several cells); #45 does proper sorting.
-      view.zIndex = (fx + fy + 1) * 15 + (tank.cell.deck ? 1e6 : 0);
+      view.zIndex = (fx + fy + 1) * 15 + (tank.cell.deck ? 60 : 0);
       view.alpha = tank.ghost ? 0.5 : 1;
+      const place = ordered.findIndex((s) => s.name === r.name) + 1;
+      label.text = cameraMode === 'director' || zoom ? r.name : String(place);
+      chip.visible = cameraMode === 'overview' && !zoom;
+      label.style.fontSize = chip.visible ? 13 : 12;
     }
     missiles.clear();
     for (const m of race.missiles) {
@@ -208,10 +220,31 @@ async function main() {
       const p = toScreen(x, y, spotLevel(grid, t.cell));
       missiles.circle(p.x, p.y - 20 * Math.sin(flight * Math.PI), 5).fill(0xffdd50);
     }
-    const leading = standings(race).find((s) => s.finishTime === undefined);
-    const leader = race.racers.find((r) => r.name === leading?.name)?.tank;
-    const center = focus ? toScreen(focus.x, focus.y, level(focus.x, focus.y)) : leader && toScreen(leader.x / LEPTONS_PER_CELL, leader.y / LEPTONS_PER_CELL, spotLevel(grid, leader.cell));
-    if (zoom && center) world.position.set(app.screen.width / 2 - center.x * zoom, app.screen.height / 2 - center.y * zoom);
+    const live = ordered.map((s) => race.racers.find((r) => r.name === s.name)!).filter((r) => r.finishedAt === undefined);
+    if (cameraMode === 'director' && race.phase === 'racing') {
+      if (race.lastHit && race.lastHitFrame > seenHit && race.frame - cutAt > 2.5 * TICK_HZ) {
+        seenHit = race.lastHitFrame;
+        directorFocus = race.lastHit;
+        directorReason = 'Just hit';
+        cutAt = race.frame;
+      } else if (live.length && (!directorFocus || directorFocus.finishedAt !== undefined || race.frame - cutAt >= 7 * TICK_HZ)) {
+        if (directorReason === 'Leader' && live.length > 1) {
+          let closest = 0;
+          for (let i = 1; i < live.length - 1; i++) if (live[i]!.progress - live[i + 1]!.progress < live[closest]!.progress - live[closest + 1]!.progress) closest = i;
+          directorFocus = live[closest + 1];
+          directorReason = `Battle for P${closest + 1}`;
+        } else {
+          directorFocus = live[0];
+          directorReason = 'Leader';
+        }
+        cutAt = race.frame;
+      }
+    }
+    const scale = zoom || (cameraMode === 'director' && race.phase === 'racing' ? Math.max(1.8, overviewScale() * 2.5) : overviewScale());
+    const target = focus ? toScreen(focus.x, focus.y, level(focus.x, focus.y)) : cameraMode === 'director' && race.phase === 'racing' && directorFocus?.tank ? toScreen(directorFocus.tank.x / LEPTONS_PER_CELL, directorFocus.tank.y / LEPTONS_PER_CELL, spotLevel(grid, directorFocus.tank.cell)) : { x: (minCourseX + maxCourseX) / 2, y: (minCourseY + maxCourseY) / 2 };
+    world.scale.set(scale);
+    world.position.set((app.screen.width + (cameraMode === 'overview' ? 360 : 0)) / 2 - target.x * scale, app.screen.height / 2 - target.y * scale);
+    drawOverlay(race, cameraMode, directorFocus, directorReason);
     hud.textContent = hudText(race);
     // For headless checks.
     Object.assign(document.body.dataset, {
@@ -226,12 +259,13 @@ async function main() {
   const loadMs = Math.round(performance.now() - started);
   document.body.dataset.load = `${loadMs},${cached ? 'cached' : 'imported'}`;
   status.textContent = `${course.file.name} on ${mapPath} (${map.theater}, ${cached ? 'from cache' : 'imported'} in ${loadMs} ms), ideal line ${course.length.toFixed(0)} cells. G: passability and ideal line.`;
-  if (import.meta.env.DEV) (await import('./race/devPanel.js')).mountDevPanel(race, params);
+  if (import.meta.env.DEV) (await import('./race/devPanel.js')).mountDevPanel(race, params, switchCamera);
   document.body.dataset.ready = String(terrain.missing === 0);
 }
 
 main().catch((err: unknown) => {
   status.textContent = String(err);
+  status.style.display = 'block';
   status.style.color = '#f66';
   document.body.dataset.ready = 'error';
   if (/^Missing install file/.test(String((err as Error)?.message))) showSetup([(err as Error).message]);
