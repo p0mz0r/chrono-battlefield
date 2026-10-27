@@ -33,6 +33,8 @@ export interface Tank {
   facing: number;
   /** Speed multiplier (boost, handicap): scales speed, never `ROT`. Takes effect the next frame. */
   speedFactor: number;
+  /** Field frame through which a hit stops movement without releasing occupied or reserved spots. */
+  stunnedUntil: number;
   /** The spot the tank stands in. */
   cell: Spot;
   /** Ghosting: drives through other tanks until it stands on a free cell. */
@@ -90,7 +92,7 @@ export function addTank(field: Field, cell: Cell, opts: { facing?: number; speed
   const spot = { x: cell.x, y: cell.y, deck: false };
   const tank: Tank = {
     id: field.tanks.length, x: centre(cell.x), y: centre(cell.y), facing: opts.facing ?? 0,
-    speedFactor: opts.speedFactor ?? 1, cell: spot, ghost: false, goal: undefined,
+    speedFactor: opts.speedFactor ?? 1, stunnedUntil: 0, cell: spot, ghost: false, goal: undefined,
     path: [], track: -1, trackIndex: 0, headTo: { ...spot }, ahead: [], speed: 0, accum: 0, blockedSince: -1, nextSearch: 0, lastNewCell: field.frame,
   };
   field.tanks.push(tank);
@@ -155,7 +157,7 @@ function upcoming(grid: CellGrid, tank: Tank, n: number): Spot[] {
  * one off the asker's next steps, then picks its own route up again. A tank on a track can't be asked.
  */
 function makeWay(field: Field, tank: Tank, asker: Tank): void {
-  if (tank.track !== -1) return;
+  if (tank.track !== -1 || field.frame < tank.stunnedUntil) return;
   const { grid } = field;
   const avoid = upcoming(grid, asker, 3);
   let fallback: number | undefined;
@@ -186,6 +188,10 @@ export function tick(field: Field): void {
 }
 
 function tickTank(field: Field, tank: Tank): void {
+  if (field.frame < tank.stunnedUntil) {
+    tank.lastNewCell = field.frame;
+    return;
+  }
   const wants = isDriving(tank) || (tank.goal !== undefined && !(tank.cell.x === tank.goal.x && tank.cell.y === tank.goal.y));
   if (!wants) tank.lastNewCell = field.frame;
   else if (!tank.ghost && field.frame - tank.lastNewCell >= GHOST_AFTER) tank.ghost = true;
