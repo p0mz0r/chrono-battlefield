@@ -490,6 +490,23 @@ describe('ending', () => {
     expect(progress).toEqual([...progress].sort((a, b) => b - a));
     expect(progress.every((p) => p > 0.5 && p < 1)).toBe(true);
   });
+
+  it('gives each race its own seed, and replays the second race of a session from that seed', () => {
+    const run = (race: Race) => {
+      openJoinWindow(race, { joinSeconds: 1, finishSeconds: 5 });
+      say(race, 'a', '!rhino'); say(race, 'b', '!rhino');
+      for (let i = 0; i < 20_000 && race.phase !== 'results'; i++) {
+        tickRace(race);
+        if (race.frame === 10 * TICK_HZ) say(race, 'a', '!chrono b');
+      }
+      return race.results;
+    };
+    const session = createRace(course(loopCourse(1)), ARENA, 1);
+    run(session);
+    const second = run(session);
+    expect(session.seed).not.toBe(1);
+    expect(run(createRace(course(loopCourse(1)), ARENA, session.seed))).toEqual(second);
+  });
 });
 
 describe('course progress', () => {

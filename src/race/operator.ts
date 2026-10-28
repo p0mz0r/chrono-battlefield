@@ -92,6 +92,8 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, c
       }
       race.enabled = new Set(VERBS.filter((v) => choices.enabled.includes(v) && (v !== 'bridge' || race.course.file.bridges.length)));
       openJoinWindow(race, { joinSeconds: choices.joinSeconds, finishSeconds: choices.finishSeconds });
+      // Off stream, in the OBS log (Help > Log Files): obs-browser logs only console errors.
+      console.error(`Rhino Race seed ${race.seed}: replay with ?course=${current.replace(/^.*\/|\.json$/g, '')}&seed=${race.seed}`);
       root.hidden = true;
     }
   };

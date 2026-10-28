@@ -39,6 +39,10 @@ shows both keys (Enter next race, S race setup). Viewers join with !rhino in cha
 filled with bots. Press End race twice within three seconds to end or cancel
 a race.
 
+Each race writes its seed to the OBS log (Help > Log Files > View Current
+Log), never on stream: "Rhino Race seed N: replay with ?course=...&seed=N".
+Include that line when reporting a race that went wrong.
+
 The game doesn't connect to Twitch, YouTube or other chat itself. A chat
 tool such as Streamer.bot passes chat lines in through obs-websocket: request
 CallVendorRequest, vendor "obs-browser", request "emit_event", data

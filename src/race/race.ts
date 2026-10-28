@@ -66,6 +66,8 @@ export interface Racer {
 export interface Race {
   readonly course: Course;
   readonly field: Field;
+  /** This race's seed: `createRace`'s for the page's first race, a fresh one for each later join window. */
+  seed: number;
   phase: Phase;
   paused: boolean;
   racers: Racer[];
@@ -103,7 +105,7 @@ export interface Standing {
 
 export function createRace(course: Course, grid: CellGrid, seed: number): Race {
   const bridgeGrid = 'bridge' in grid && 'bridges' in grid ? grid as BridgeGrid : undefined;
-  return { course, field: createField(grid, seed), phase: 'idle', paused: false, racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions.filter((verb) => verb !== 'bridge' || (bridgeGrid && course.file.bridges.length))), cooldowns: new Map(), feed: [], feedUntil: new Map(), sounds: [], missiles: [], v3s: [], teslas: [], lastHit: undefined, lastHitFrame: -1, bridgeGrid };
+  return { course, field: createField(grid, seed), seed, phase: 'idle', paused: false, racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions.filter((verb) => verb !== 'bridge' || (bridgeGrid && course.file.bridges.length))), cooldowns: new Map(), feed: [], feedUntil: new Map(), sounds: [], missiles: [], v3s: [], teslas: [], lastHit: undefined, lastHitFrame: -1, bridgeGrid };
 }
 
 export function commandList(race: Race): string[] {
@@ -117,6 +119,9 @@ export function commandList(race: Race): string[] {
 /** Operator: opens the join window (default 90 s); the finish timer (default 60 s) starts at the first finish. */
 export function openJoinWindow(race: Race, { joinSeconds = 90, finishSeconds = 60 } = {}): void {
   if (race.phase !== 'idle' && race.phase !== 'results' && race.phase !== 'cancelled') return;
+  // A race replays from its seed alone; an empty join window (back to idle) ran nothing, so it keeps its seed.
+  if (race.phase !== 'idle') race.seed = Math.floor(random(race.field) * 2 ** 32);
+  Object.assign(race.field, { rng: race.seed >>> 0, frame: 0 });
   Object.assign(race, { phase: 'join', paused: false, racers: [], timer: joinSeconds * TICK_HZ, frame: 0, finishFrames: finishSeconds * TICK_HZ, results: [] });
   race.field.tanks.length = 0;
   race.cooldowns.clear();
