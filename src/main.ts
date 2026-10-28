@@ -40,6 +40,16 @@ async function frameTextures(s: CachedSprite): Promise<Texture[]> {
   return s.frames.map((f) => new Texture({ source, frame: new Rectangle(f.x, f.y, f.w, f.h) }));
 }
 
+/** An SHP animation's frames, each in its place on the full SHP canvas (anchor 0.5 = the SHP's centre). */
+async function animTextures(s: CachedSprite): Promise<Texture[]> {
+  const { source } = await blobTexture(s.image);
+  const orig = new Rectangle(0, 0, s.spriteWidth, s.spriteHeight);
+  return s.frames.map((f) => new Texture({ source, frame: new Rectangle(f.x, f.y, f.w, f.h), orig, trim: new Rectangle(f.offsetX, f.offsetY, f.w, f.h) }));
+}
+
+/** Stock animations play at 15 frames a second. */
+const ANIM_FPS = 15;
+
 /** Passability as movement sees it: red impassable or blocked, yellow slow, blue ramp, cyan high-bridge deck. */
 function passability(grid: CellGrid, originX: number, originY: number): Graphics {
   const g = new Graphics();
@@ -107,7 +117,7 @@ async function main() {
     return offset === undefined ? bytes : bytes.subarray(offset, offset + length!);
   } : readInstall;
   const started = performance.now();
-  const { map, mapBytes, art: { battlefield, rhino, tesla, v3, missile }, cached } = await loadCourseArt(read, mapPath);
+  const { map, mapBytes, art: { battlefield, rhino, tesla, v3, missile, warpOut, warpIn, fire }, cached } = await loadCourseArt(read, mapPath);
   if (edit && params.get('map')) {
     const first = battlefield.grid.speed.findIndex((speed, i) => speed > 0 && !battlefield.grid.blocked[i] && battlefield.grid.deck[i]! < 0);
     if (first < 0) throw new Error('Map has no drivable ground cells');
@@ -180,6 +190,7 @@ async function main() {
   const missiles = new Graphics(), fx = new Container();
   world.addChild(missiles, fx);
   const [v3Tex, missileTex, teslaBody, teslaTurret] = await Promise.all([frameTextures(v3), frameTextures(missile), frameTextures(tesla.body), frameTextures(tesla.turret)]);
+  const [warpOutTex, warpInTex, fireTex] = await Promise.all([animTextures(warpOut), animTextures(warpIn), animTextures(fire)]);
   /** Prerender frame for a heading in cells (see the Rhino's `+ 8` below). */
   const frameOf = (dx: number, dy: number) => (Math.round((Math.atan2(dx, -dy) / (2 * Math.PI)) * 32) + 40) % 32;
   let fxUsed = 0;
@@ -188,6 +199,7 @@ async function main() {
     sprite.anchor.set(0.5);
     Object.assign(sprite, { texture: tex, visible: true, alpha: 1, tint: 0xffffff });
     sprite.position.set(x, y);
+    sprite.scale.set(1);
     return sprite;
   };
   /** Tesla strikes that went off (for the discharge and chronoshift out). */
@@ -225,7 +237,7 @@ async function main() {
   // Labels sit on their own layer over everything, at a constant screen size: number chips zoomed out, names zoomed in.
   const tags = new Container();
   world.addChild(tags);
-  const views = new Map<Racer, { view: Container; body: Sprite; turret: Sprite; effects: Graphics; tag: Container; chip: Graphics; label: Text; prev: { x: number; y: number } }>();
+  const views = new Map<Racer, { view: Container; body: Sprite; turret: Sprite; fire: Sprite; effects: Graphics; tag: Container; chip: Graphics; label: Text; prev: { x: number; y: number } }>();
   const viewOf = (r: Racer) => {
     let v = views.get(r);
     if (!v) {
@@ -239,10 +251,11 @@ async function main() {
       tag.addChild(chip, label);
       tags.addChild(tag);
       const view = new Container();
-      const effects = new Graphics();
-      view.addChild(effects, body, turret);
+      const effects = new Graphics(), fire = new Sprite(fireTex[0]);
+      fire.anchor.set(0.5);
+      view.addChild(effects, body, turret, fire);
       things.addChild(view);
-      views.set(r, (v = { view, body, turret, effects, tag, chip, label, prev: { x: r.tank!.x, y: r.tank!.y } }));
+      views.set(r, (v = { view, body, turret, fire, effects, tag, chip, label, prev: { x: r.tank!.x, y: r.tank!.y } }));
     }
     return v;
   };
@@ -287,7 +300,7 @@ async function main() {
     for (const r of race.racers) {
       const tank = r.tank;
       if (!tank) continue;
-      const { view, body, turret, effects, tag, chip, label, prev } = viewOf(r);
+      const { view, body, turret, fire, effects, tag, chip, label, prev } = viewOf(r);
       view.visible = tag.visible = r.finishedAt === undefined; // finished tanks leave the battlefield
       const fx = (prev.x + (tank.x - prev.x) * a) / LEPTONS_PER_CELL, fy = (prev.y + (tank.y - prev.y) * a) / LEPTONS_PER_CELL;
       // The prerender's frame 0 looks along -x (screen up-left); movement facing 0 is -y (up-right).
@@ -296,6 +309,8 @@ async function main() {
       turret.texture = turretTex[f]!;
       const stunned = r.stunUntil > race.frame, shielded = r.shieldUntil > race.frame, boosted = r.boostUntil > race.frame;
       body.tint = turret.tint = stunned ? 0xff6030 : boosted ? 0x60ff60 : 0xffffff;
+      fire.visible = stunned; // burning until the stun ends
+      if (stunned) fire.texture = fireTex[Math.floor((race.frame + a) * ANIM_FPS / TICK_HZ) % fireTex.length]!;
       effects.clear();
       if (shielded) effects.circle(0, -5, 22).stroke({ color: 0x50caff, width: 2, alpha: 0.9 });
       if (r.immunityUntil > race.frame && !stunned) effects.circle(0, -5, 25).stroke({ color: 0xffc030, width: 1, alpha: 0.8 });
@@ -343,6 +358,18 @@ async function main() {
       const lx = Math.min(Math.max(Math.floor(x), 0), grid.width - 1), ly = Math.min(Math.max(Math.floor(y), 0), grid.height - 1);
       const p = toScreen(x, y, level(lx, ly));
       put(v3Tex[frameOf(r.dx, r.dy)]!, p.x, p.y - 12);
+    }
+    // A chronosphere warps out of the cell the tank left and in at the cell it landed on.
+    for (const r of race.racers) {
+      if (!r.warp) continue;
+      const shown = Math.floor((race.frame + a - r.warp.at) * ANIM_FPS / TICK_HZ);
+      for (const [cell, tex] of [[r.warp.from, warpOutTex], [r.warp.to, warpInTex]] as const) {
+        if (shown >= tex.length) continue;
+        const p = toScreen(cell.x + 0.5, cell.y + 0.5, level(cell.x, cell.y));
+        const sprite = put(tex[shown]!, p.x, p.y);
+        sprite.alpha = 0.75; // translucent in RA2's art.ini
+        sprite.scale.set(0.5); // drawn for the superweapon's 3×3 cells; one tank gets half
+      }
     }
     for (const strike of charging) if (!race.teslas.includes(strike)) zaps.push({ x: strike.x, y: strike.y, at: race.frame });
     charging = new Set(race.teslas);

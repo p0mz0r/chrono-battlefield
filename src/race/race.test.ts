@@ -182,9 +182,10 @@ describe('audience interactions', () => {
     for (let seed = 1; seed <= 40; seed++) {
       const race = racing(seed);
       ticks(race, 500);
-      const kane = kaneOf(race), before = kane.progress, held = othersHeld(race, kane);
+      const kane = kaneOf(race), before = kane.progress, held = othersHeld(race, kane), left = { x: kane.tank!.cell.x, y: kane.tank!.cell.y };
       kane.tank!.stunnedUntil = race.field.frame + 20;
       expect(say(race, 'viewer', '!chrono Kane')).toEqual({ ok: true, reason: 'chrono Kane' });
+      expect(kane.warp).toEqual({ from: left, to: { x: kane.tank!.cell.x, y: kane.tank!.cell.y }, at: race.frame }); // drawn as a warp at both cells
       shares.push((kane.progress - before) / race.course.drawnLength);
       expect(held.has(`${kane.tank!.cell.x},${kane.tank!.cell.y},false`)).toBe(false);
       expect(kane.tank!.cell.deck).toBe(false);

@@ -2,7 +2,7 @@ import { beforeAll, expect, it } from 'vitest';
 import { describeInstall, readFromDir } from '../../test/install.js';
 import { mountTheater } from '../ra2/mount.js';
 import type { Vfs } from '../ra2/index.js';
-import { prerenderRocket, prerenderTank } from './rhino.js';
+import { prerenderAnim, prerenderRocket, prerenderTank } from './rhino.js';
 
 const painted = (rgba: Uint8Array | Uint8ClampedArray) => rgba.some((v, i) => i % 4 === 3 && v > 0);
 
@@ -25,5 +25,10 @@ describeInstall('interaction art from the install', () => {
     expect(prerenderRocket(hiding(/^dmisl/), 'temperate', 'dmisl').name).toBe('v3rocket');
     expect(() => prerenderRocket(hiding(/^(v3rocket|dmisl)/), 'temperate', 'dmisl')).toThrow(/Missing install file: dmisl\.vxl/);
     expect(painted(prerenderRocket(vfs, 'temperate', 'v3rocket').colorRgba)).toBe(true);
+  });
+
+  it('takes the chronosphere warp and the stun fire from the stock animations', () => {
+    for (const name of ['chronofd', 'chronotg', 'fire01']) expect(painted(prerenderAnim(vfs, name).colorRgba)).toBe(true);
+    expect(() => prerenderAnim(vfs, 'nosuchanim')).toThrow(/Missing install file: nosuchanim\.shp/);
   });
 });

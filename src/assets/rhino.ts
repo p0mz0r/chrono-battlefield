@@ -1,6 +1,6 @@
-import { HvaFile, Palette, VxlFile, type Vfs } from '../ra2/index.js';
+import { HvaFile, Palette, ShpFile, VxlFile, type Vfs } from '../ra2/index.js';
 import { renderTurretToSprite, renderVoxelToSprite, type TurretRender } from '../ra2/render/voxelRender.js';
-import type { ConvertedSprite } from '../ra2/render/sprite.js';
+import { convertShpToAtlas, type ConvertedSprite } from '../ra2/render/sprite.js';
 import { theaterArtExt } from '../ra2/theater.js';
 
 /** On-screen Rhino hull width in px: the one size knob (ADR 0002). */
@@ -28,6 +28,7 @@ function reader(vfs: Files, theater: string) {
     vxl: (n: string) => VxlFile.parse(open(`${n}.vxl`)),
     hva: (n: string) => HvaFile.parse(open(`${n}.hva`)),
     pal: () => Palette.parse(open(`unit${theaterArtExt(theater.toLowerCase())}.pal`)),
+    open,
   };
 }
 
@@ -50,4 +51,10 @@ export function prerenderRocket(vfs: Files, theater: string, prefer: 'v3rocket' 
   const other = prefer === 'dmisl' ? 'v3rocket' : 'dmisl';
   const name = has(prefer) || !has(other) ? prefer : other;
   return renderVoxelToSprite(name, vxl(name), hva(name), pal(), { footprintPx });
+}
+
+/** A stock SHP animation (e.g. `chronofd`, `fire01`) in the theater-independent `anim.pal`. */
+export function prerenderAnim(vfs: Files, name: string): ConvertedSprite {
+  const { open } = reader(vfs, '');
+  return convertShpToAtlas(name, ShpFile.parse(open(`${name}.shp`)), Palette.parse(open('anim.pal')));
 }
