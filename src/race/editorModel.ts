@@ -67,3 +67,18 @@ export function inspectCourse(file: CourseFile, bytes: Uint8Array, grid: CellGri
 }
 
 const point = ([x, y]: [number, number]) => ({ x, y });
+
+/** Uploading a custom map over `existing` (undefined: no file of that name): write it, reuse the identical file, or ask first. */
+export function mapUpload(existing: Uint8Array | undefined, incoming: Uint8Array): 'write' | 'same' | 'conflict' {
+  if (!existing) return 'write';
+  return existing.length === incoming.length && existing.every((byte, i) => byte === incoming[i]) ? 'same' : 'conflict';
+}
+
+/** `name-2.map`, `name-3.map`… : the first that isn't taken. */
+export function freeMapName(name: string, taken: (name: string) => boolean): string {
+  const dot = name.lastIndexOf('.');
+  for (let n = 2; ; n++) {
+    const next = `${name.slice(0, dot)}-${n}${name.slice(dot)}`;
+    if (!taken(next)) return next;
+  }
+}

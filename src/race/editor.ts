@@ -11,7 +11,7 @@ export function mountEditor(app: Application, world: Container, grid: CellGrid, 
   file.mapHash = mapHash(bytes);
   const panel = document.createElement('section');
   panel.id = 'course-editor';
-  panel.style.cssText = 'position:fixed;top:8px;right:8px;width:350px;max-height:calc(100vh - 30px);overflow:auto;padding:10px;background:#071019ed;color:#eef;font:13px/1.5 sans-serif;border:1px solid #6a8;z-index:5';
+  panel.style.cssText = 'position:fixed;top:8px;right:8px;width:350px;max-height:calc(100vh - 30px);overflow:auto;padding:10px;background:#071019ed;color:#eef;font:13px/1.5 sans-serif;overflow-wrap:anywhere;border:1px solid #6a8;z-index:5';
   panel.innerHTML = `<b>Course editor</b> <small>(dev only)</small><br>
     <label>Name <input name="name" style="width:220px"></label><br>
     <label>Author <input name="author" style="width:210px"></label><br>
@@ -135,16 +135,29 @@ export function mountEditor(app: Application, world: Container, grid: CellGrid, 
       saved.textContent = `Saved ${await res.text()}`;
     } catch (error) { saved.textContent = String(error); }
   };
+  /** Uploads `selected` as `name`; a different map of that name is replaced only when the user keeps the name. Returns the name used. */
+  const upload = async (selected: File, name: string, replace = false): Promise<string> => {
+    sessionStorage.setItem('courseEditorNextMap', `?edit=1&map=${encodeURIComponent(name)}&source=shipped`); // Vite may reload as soon as the map file appears.
+    const res = await fetch(`/__course/map/${encodeURIComponent(name)}${replace ? '?replace=1' : ''}`, { method: 'PUT', body: selected });
+    if (res.status === 409) {
+      const { message, suggested, usedBy } = await res.json() as { message: string; suggested: string; usedBy: string[] };
+      const warning = usedBy.length ? ` Saved courses use it (${usedBy.join(', ')}); replacing it means they no longer match their map.` : '';
+      const choice = prompt(`${message}${warning}
+
+Save your file as (keep ${name} to replace it):`, suggested)?.trim();
+      if (!choice) throw new Error('Upload cancelled.');
+      return upload(selected, choice, choice === name);
+    }
+    if (!res.ok) throw new Error(await res.text());
+    return name;
+  };
   input('use-map').onclick = async () => {
     const selected = input('map-file').files?.[0]; if (!selected) return;
-    const next = `?edit=1&map=${encodeURIComponent(selected.name)}&source=shipped`;
-    sessionStorage.setItem('courseEditorNextMap', next); // Vite may reload as soon as the map file appears.
     try {
-      const res = await fetch(`/__course/map/${encodeURIComponent(selected.name)}`, { method: 'PUT', body: selected });
-      if (!res.ok) throw new Error(await res.text());
+      const name = await upload(selected, selected.name);
       sessionStorage.removeItem('courseEditorNextMap');
-      location.href = next;
-    } catch (error) { sessionStorage.removeItem('courseEditorNextMap'); $('.saved').textContent = String(error); }
+      location.href = `?edit=1&map=${encodeURIComponent(name)}&source=shipped`;
+    } catch (error) { sessionStorage.removeItem('courseEditorNextMap'); $('.saved').textContent = error instanceof Error ? error.message : String(error); }
   };
   const canvas = app.canvas;
   canvas.addEventListener('wheel', (event) => { event.preventDefault(); world.scale.set(Math.max(0.15, Math.min(4, world.scale.x * (event.deltaY < 0 ? 1.2 : 1 / 1.2)))); refresh(); }, { passive: false });

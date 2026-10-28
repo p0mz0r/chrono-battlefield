@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import type { CellGrid } from '../battlefield/grid.js';
 import { mapHash, type CourseFile } from './course.js';
-import { inspectCourse } from './editorModel.js';
+import { freeMapName, inspectCourse, mapUpload } from './editorModel.js';
 
 const bytes = new TextEncoder().encode('map');
 const grid: CellGrid = {
@@ -35,4 +35,13 @@ it('suggests crossed bridges in line order and updates time', () => {
   expect(report.suggestedBridges).toEqual([[9, 2]]);
   one.waypoints = [[2, 3]]; one.laps = [];
   expect(inspectCourse(one, bytes, grid).seconds).toBeLessThan(report.seconds!);
+});
+
+it('reuses an identical uploaded map and never replaces a different one silently', () => {
+  const a = new TextEncoder().encode('map a'), b = new TextEncoder().encode('map b');
+  expect(mapUpload(undefined, a)).toBe('write');
+  expect(mapUpload(a, a.slice())).toBe('same');
+  expect(mapUpload(a, b)).toBe('conflict');
+  const taken = new Set(['oasis.map', 'oasis-2.map']);
+  expect(freeMapName('oasis.map', (name) => taken.has(name))).toBe('oasis-3.map');
 });

@@ -1,9 +1,9 @@
-import { createReadStream, mkdirSync, statSync, writeFileSync } from 'node:fs';
+import { createReadStream, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { open, readFile } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 import { defineConfig, type Plugin } from 'vite';
 import { importBattlefield } from './src/battlefield/import.js';
-import { inspectCourse } from './src/race/editorModel.js';
+import { freeMapName, inspectCourse, mapUpload } from './src/race/editorModel.js';
 import type { CourseFile } from './src/race/course.js';
 
 /** Dev only: serves the install in RA2_DIR under /ra2/ for readInstall (ADR 0004). */
@@ -46,6 +46,10 @@ function serveInstall(): Plugin {
   };
 }
 
+/** Every `courses/*.json`, with its file name (no `.json`). */
+const savedCourses = () => readdirSync('courses').filter((name) => name.endsWith('.json'))
+  .map((name) => ({ ...JSON.parse(readFileSync(resolve('courses', name), 'utf8')) as CourseFile, file: name.slice(0, -5) }));
+
 /** The only write surface: a bounded JSON course or credited custom map inside courses/. Dev server only. */
 function saveCourse(): Plugin {
   return {
@@ -64,9 +68,20 @@ function saveCourse(): Plugin {
           try {
             if (mapName) {
               if (!/^[\w.-]+\.(map|yrm|mpr)$/i.test(mapName) || mapName.includes('..')) throw new Error('Invalid map name');
-              const path = resolve('courses/maps', mapName);
-              mkdirSync(resolve('courses/maps'), { recursive: true });
-              writeFileSync(path, Buffer.concat(chunks), { flag: 'wx' });
+              const dir = resolve('courses/maps'), path = resolve(dir, mapName), bytes = new Uint8Array(Buffer.concat(chunks));
+              mkdirSync(dir, { recursive: true });
+              const decision = mapUpload(existsSync(path) ? new Uint8Array(readFileSync(path)) : undefined, bytes);
+              if (decision === 'conflict' && url.searchParams.get('replace') !== '1') {
+                res.statusCode = 409;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({
+                  message: `A map named ${mapName} already exists, with different contents.`,
+                  suggested: freeMapName(mapName, (name) => existsSync(resolve(dir, name))),
+                  usedBy: savedCourses().filter((c) => c.source === 'shipped' && c.map.toLowerCase() === mapName.toLowerCase()).map((c) => c.name),
+                }));
+                return;
+              }
+              if (decision !== 'same') writeFileSync(path, bytes);
               res.end(mapName);
               return;
             }
@@ -99,7 +114,7 @@ function saveCourse(): Plugin {
             const path = resolve('courses', `${slug}.json`);
             writeFileSync(path, JSON.stringify(file, null, 2) + '\n');
             res.end(`courses/${slug}.json`);
-          } catch (error) { res.statusCode = 400; res.end(String(error)); }
+          } catch (error) { res.statusCode = 400; res.end(error instanceof Error ? error.message : String(error)); }
         });
       });
     },
