@@ -186,6 +186,7 @@ export function mountEditor(app: Application, world: Container, grid: CellGrid, 
   input('save').onclick = () => save();
   // One file to hand an operator (ADR 0007); its custom map travels inside.
   input('export').onclick = () => {
+    if (file.source === 'shipped' && (!file.author.trim() || !file.link.trim())) { $('.saved').textContent = 'A custom map travels with its author and source link: fill both in to export.'; return; }
     const link = document.createElement('a');
     link.href = URL.createObjectURL(new Blob([exportCourse(file, bytes)], { type: 'application/json' }));
     link.download = `${courseSlug(file.name)}.rhino-course.json`;
@@ -216,7 +217,7 @@ export function mountEditor(app: Application, world: Container, grid: CellGrid, 
     group('New course on a custom map', customMaps.map((m) => [m, `?edit=1&map=${encodeURIComponent(m)}&source=shipped`]));
     open.onchange = () => { if (open.value) location.href = open.value; };
   });
-  /** Uploads `selected` as `name`; a different map of that name is replaced only when the user keeps the name. Returns the name used. */
+  /** Uploads `selected` as `name`; a different map of that name is replaced only when the course maker keeps the name. Returns the name used. */
   const upload = async (selected: File, name: string, replace = false): Promise<string> => {
     sessionStorage.setItem('courseEditorNext', `?edit=1&map=${encodeURIComponent(name)}&source=shipped`); // Vite may reload as soon as the map file appears.
     const res = await fetch(`/__course/map/${encodeURIComponent(name)}${replace ? '?replace=1' : ''}`, { method: 'PUT', body: selected });

@@ -113,6 +113,7 @@ export function placeObjects(stock: Stock, originX: number, originY: number): Ob
     const [fw, fh] = foundation(stock, s.type), z = (s.x + s.y + fw + fh) * 15;
     place(s.type, s.x, s.y, 0, 'unit', 30, 0, z, 'building');
     // Overlays are centred like the base (CNCMaps); a still frame (LoopStart) is enough. The bib lies under the base.
+    // ponytail: fixed depth just above the base, not RA2's ActiveAnim…YSort/ZAdjust; read those if an overlay sorts wrong against a neighbour.
     const art = stock.artOf(s.type);
     for (const [i, key] of BUILDING_PARTS.entries()) {
       const part = art?.getString(key);

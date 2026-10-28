@@ -28,6 +28,8 @@ it('refuses other files, a map that does not match, and a missing or different i
   const tampered = JSON.parse(exportCourse(course('shipped', custom), custom));
   tampered.mapFile = btoa('other bytes');
   await expect(readCourseFile('oasis.rhino-course.json', JSON.stringify(tampered), installMaps)).rejects.toThrow("The map inside oasis.rhino-course.json doesn't match its course");
+  const uncredited = { ...course('shipped', custom), author: ' ' };
+  await expect(readCourseFile('anon.rhino-course.json', exportCourse(uncredited, custom), installMaps)).rejects.toThrow('The custom map in anon.rhino-course.json has no author or source link');
   const missing = { ...course('install', install), map: 'Gone.mmx' };
   await expect(readCourseFile('gone.rhino-course.json', exportCourse(missing), installMaps)).rejects.toThrow("gone.rhino-course.json needs the install map Gone.mmx, which your install doesn't have or has in a different version");
   const other = course('install', new TextEncoder().encode('older version'));

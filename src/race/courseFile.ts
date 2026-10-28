@@ -30,12 +30,13 @@ export function exportCourse(course: CourseFile, mapBytes?: Uint8Array): string 
  * `installMap` reads a map from the operator's install (undefined when it has none).
  */
 export async function readCourseFile(fileName: string, text: string, installMap: (path: string) => Promise<Uint8Array | undefined>): Promise<ImportedCourse> {
-  let data: { format?: unknown; course?: unknown; mapFile?: unknown } | undefined;
+  let data: { format?: unknown; version?: unknown; course?: unknown; mapFile?: unknown } | undefined;
   try { data = JSON.parse(text) as typeof data; } catch { /* reported below */ }
-  if (data?.format !== FORMAT || !isCourseFile(data.course)) throw new Error(`${fileName} is not a Rhino Race course file`);
+  if (data?.format !== FORMAT || data.version !== 1 || !isCourseFile(data.course)) throw new Error(`${fileName} is not a Rhino Race course file`);
   const course = data.course;
   const id = `imported/${courseSlug(course.name)}`;
   if (course.source === 'shipped') {
+    if (!course.author.trim() || !course.link.trim()) throw new Error(`The custom map in ${fileName} has no author or source link`);
     let map: Uint8Array | undefined;
     try { map = typeof data.mapFile === 'string' ? fromBase64(data.mapFile) : undefined; } catch { /* reported below */ }
     if (!map || mapHash(map) !== course.mapHash) throw new Error(`The map inside ${fileName} doesn't match its course`);

@@ -115,7 +115,7 @@ function saveCourse(): Plugin {
             const result = inspectCourse(file, bytes, battlefield.grid);
             if (result.errors.length) throw new Error(result.errors.join(' '));
             const path = resolve('courses', `${slug}.json`);
-            // Same slug, different course: only over the editor's own file, or once the user agreed.
+            // Same slug, different course: only over the editor's own file, or once the course maker agreed.
             if (existsSync(path) && slug !== url.searchParams.get('origin') && url.searchParams.get('overwrite') !== '1') {
               const other = JSON.parse(readFileSync(path, 'utf8')) as CourseFile;
               res.statusCode = 409;
