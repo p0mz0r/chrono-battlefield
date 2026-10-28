@@ -1,11 +1,13 @@
 import { Container as PixiContainer, Graphics, Point, Text, type Application, type Container } from 'pixi.js';
 import type { CellGrid } from '../battlefield/grid.js';
 import { mapHash, type CourseFile } from './course.js';
-import { inspectCourse } from './editorModel.js';
+import { courseSlug, inspectCourse } from './editorModel.js';
 
 // Loaded only by the dev page. All edits stay in this draft until Save succeeds.
+// `origin` is the course's own file name (`courses/<origin>.json`), empty for a new course.
 export function mountEditor(app: Application, world: Container, grid: CellGrid, bytes: Uint8Array, original: CourseFile,
-  toScreen: (x: number, y: number, z: number) => { x: number; y: number }, fresh = false): void {
+  toScreen: (x: number, y: number, z: number) => { x: number; y: number }, origin: string): void {
+  const fresh = !origin;
   const file: CourseFile = structuredClone(original);
   if (fresh) file.startGrid = [];
   file.mapHash = mapHash(bytes);
@@ -13,6 +15,7 @@ export function mountEditor(app: Application, world: Container, grid: CellGrid, 
   panel.id = 'course-editor';
   panel.style.cssText = 'position:fixed;top:8px;right:8px;width:350px;max-height:calc(100vh - 30px);overflow:auto;padding:10px;background:#071019ed;color:#eef;font:13px/1.5 sans-serif;overflow-wrap:anywhere;border:1px solid #6a8;z-index:5';
   panel.innerHTML = `<b>Course editor</b> <small>(dev only)</small><br>
+    <label>Open <select name="open"><option value="">Saved course or new course…</option></select></label><br>
     <label>Name <input name="name" style="width:220px"></label><br>
     <label>Author <input name="author" style="width:210px"></label><br>
     <label>Source link <input name="link" style="width:190px"></label><br>
@@ -25,7 +28,7 @@ export function mountEditor(app: Application, world: Container, grid: CellGrid, 
     <h4>Lap sections</h4><div class="laps"></div><button name="add-lap">Add lap</button>
     <h4>Bridges in play</h4><div class="bridges"></div><button name="suggest">Use suggested order</button>
     <h4>Validation</h4><div class="report" role="status" aria-live="polite"></div>
-    <button name="save">Save course</button> <span class="saved" role="status"></span><hr>
+    <button name="save">Save course</button> <button name="save-as">Save as…</button> <span class="saved" role="status"></span><hr>
     <label>Custom map (.map/.yrm/.mpr) <input name="map-file" type="file" accept=".map,.yrm,.mpr"></label>
     <button name="use-map">Use custom map</button>`;
   document.body.append(panel);
@@ -126,18 +129,52 @@ export function mountEditor(app: Application, world: Container, grid: CellGrid, 
   input('link').oninput = () => { file.link = input('link').value; refresh(); };
   input('add-lap').onclick = () => { file.laps.push({ from: 0, to: Math.max(0, file.waypoints.length - 1), count: 2 }); refresh(); };
   input('suggest').onclick = () => { file.bridges = inspectCourse(file, bytes, grid).suggestedBridges; refresh(); };
-  input('save').onclick = async () => {
+  const save = async (overwrite = false): Promise<void> => {
     const saved = $('.saved'); saved.textContent = 'Saving…';
     if (inspectCourse(file, bytes, grid).errors.length) { saved.textContent = 'Invalid course'; return; }
+    const slug = courseSlug(file.name);
+    sessionStorage.setItem('courseEditorNext', `?edit=1&course=${slug}`); // Vite reloads once the course file changes.
     try {
-      const res = await fetch('/__course/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(file) });
+      const res = await fetch(`/__course/save?origin=${encodeURIComponent(origin)}${overwrite ? '&overwrite=1' : ''}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(file) });
+      if (res.status === 409) {
+        sessionStorage.removeItem('courseEditorNext');
+        if (confirm(await res.text())) return save(true);
+        saved.textContent = 'Not saved: choose another name.';
+        return;
+      }
       if (!res.ok) throw new Error(await res.text());
       saved.textContent = `Saved ${await res.text()}`;
-    } catch (error) { saved.textContent = String(error); }
+      location.href = `?edit=1&course=${slug}`;
+    } catch (error) { sessionStorage.removeItem('courseEditorNext'); saved.textContent = error instanceof Error ? error.message : String(error); }
   };
+  input('save').onclick = () => save();
+  input('save-as').onclick = () => {
+    const name = prompt('Save as a new course named:', file.name)?.trim();
+    if (!name) return;
+    file.name = input('name').value = name;
+    refresh();
+    void save();
+  };
+  void fetch('/__course/list').then((res) => res.json()).then(({ courses, installMaps, customMaps }: {
+    courses: { file: string; name: string; map: string; source: string }[]; installMaps: string[]; customMaps: string[];
+  }) => {
+    const open = $<HTMLSelectElement>('[name="open"]');
+    const group = (label: string, options: [string, string][]) => {
+      if (!options.length) return;
+      const g = document.createElement('optgroup'); g.label = label;
+      for (const [text, value] of options) g.append(new Option(text, value));
+      open.append(g);
+    };
+    for (const map of [...new Set(courses.map((c) => c.map))].sort()) {
+      group(`Saved courses on ${map}`, courses.filter((c) => c.map === map).map((c) => [`${c.name}${c.file === origin ? ' (open)' : ''}`, `?edit=1&course=${encodeURIComponent(c.file)}`]));
+    }
+    group('New course on an install map', installMaps.map((m) => [m, `?edit=1&map=${encodeURIComponent(m)}`]));
+    group('New course on a custom map', customMaps.map((m) => [m, `?edit=1&map=${encodeURIComponent(m)}&source=shipped`]));
+    open.onchange = () => { if (open.value) location.href = open.value; };
+  });
   /** Uploads `selected` as `name`; a different map of that name is replaced only when the user keeps the name. Returns the name used. */
   const upload = async (selected: File, name: string, replace = false): Promise<string> => {
-    sessionStorage.setItem('courseEditorNextMap', `?edit=1&map=${encodeURIComponent(name)}&source=shipped`); // Vite may reload as soon as the map file appears.
+    sessionStorage.setItem('courseEditorNext', `?edit=1&map=${encodeURIComponent(name)}&source=shipped`); // Vite may reload as soon as the map file appears.
     const res = await fetch(`/__course/map/${encodeURIComponent(name)}${replace ? '?replace=1' : ''}`, { method: 'PUT', body: selected });
     if (res.status === 409) {
       const { message, suggested, usedBy } = await res.json() as { message: string; suggested: string; usedBy: string[] };
@@ -155,9 +192,9 @@ Save your file as (keep ${name} to replace it):`, suggested)?.trim();
     const selected = input('map-file').files?.[0]; if (!selected) return;
     try {
       const name = await upload(selected, selected.name);
-      sessionStorage.removeItem('courseEditorNextMap');
+      sessionStorage.removeItem('courseEditorNext');
       location.href = `?edit=1&map=${encodeURIComponent(name)}&source=shipped`;
-    } catch (error) { sessionStorage.removeItem('courseEditorNextMap'); $('.saved').textContent = error instanceof Error ? error.message : String(error); }
+    } catch (error) { sessionStorage.removeItem('courseEditorNext'); $('.saved').textContent = error instanceof Error ? error.message : String(error); }
   };
   const canvas = app.canvas;
   canvas.addEventListener('wheel', (event) => { event.preventDefault(); world.scale.set(Math.max(0.15, Math.min(4, world.scale.x * (event.deltaY < 0 ? 1.2 : 1 / 1.2)))); refresh(); }, { passive: false });

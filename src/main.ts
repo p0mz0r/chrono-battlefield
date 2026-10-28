@@ -91,8 +91,8 @@ function hudText(race: Race): string {
 
 async function main() {
   if (import.meta.env.DEV) {
-    const next = sessionStorage.getItem('courseEditorNextMap');
-    if (next) { sessionStorage.removeItem('courseEditorNextMap'); location.href = next; return; }
+    const next = sessionStorage.getItem('courseEditorNext');
+    if (next) { sessionStorage.removeItem('courseEditorNext'); location.href = next; return; }
   }
   let live: Race | undefined; // install setup stays off stream while a race runs
   bindSetupKey(() => !live || ['idle', 'results', 'cancelled'].includes(live.phase));
@@ -426,7 +426,7 @@ async function main() {
   const loadMs = Math.round(performance.now() - started);
   document.body.dataset.load = `${loadMs},${cached ? 'cached' : 'imported'}`;
   status.textContent = `${course.file.name} on ${mapPath} (${map.theater}, ${cached ? 'from cache' : 'imported'} in ${loadMs} ms), ideal line ${course.length.toFixed(0)} cells. G: passability and ideal line.`;
-  if (edit) (await import('./race/editor.js')).mountEditor(app, world, grid, mapBytes, file!, toScreen, params.has('map'));
+  if (edit) (await import('./race/editor.js')).mountEditor(app, world, grid, mapBytes, file!, toScreen, params.has('map') ? '' : Object.entries(COURSES).find(([, c]) => c === file)![0].replace(/^.*\/|\.json$/g, ''));
   else {
     mountOperator(race, COURSES, Object.entries(COURSES).find(([, candidate]) => candidate === file)?.[0] ?? '', (mode) => { cameraMode = mode; }, sounds.mute);
     // Chat from outside the page (e.g. Streamer.bot via obs-websocket obs-browser emit_event): `chronoChat` with { viewerId, name, text }.

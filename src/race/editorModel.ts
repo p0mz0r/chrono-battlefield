@@ -82,3 +82,6 @@ export function freeMapName(name: string, taken: (name: string) => boolean): str
     if (!taken(next)) return next;
   }
 }
+
+/** A course's file name: `courses/<slug>.json`. */
+export const courseSlug = (name: string) => name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');

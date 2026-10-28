@@ -3,7 +3,7 @@ import { open, readFile } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 import { defineConfig, type Plugin } from 'vite';
 import { importBattlefield } from './src/battlefield/import.js';
-import { freeMapName, inspectCourse, mapUpload } from './src/race/editorModel.js';
+import { courseSlug, freeMapName, inspectCourse, mapUpload } from './src/race/editorModel.js';
 import type { CourseFile } from './src/race/course.js';
 
 /** Dev only: serves the install in RA2_DIR under /ra2/ for readInstall (ADR 0004). */
@@ -57,6 +57,16 @@ function saveCourse(): Plugin {
     configureServer(server) {
       server.middlewares.use('/__course', (req, res) => {
         const url = new URL(req.url!, 'http://dev');
+        if (req.method === 'GET' && url.pathname === '/list') { // read-only: the editor's Open menu
+          const root = process.env.RA2_DIR, dir = resolve('courses/maps');
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({
+            courses: savedCourses().map(({ file, name, map, source }) => ({ file, name, map, source })),
+            installMaps: root ? readdirSync(root).filter((name) => /\.(mmx|yro)$/i.test(name)) : [],
+            customMaps: existsSync(dir) ? readdirSync(dir).filter((name) => /\.(map|yrm|mpr)$/i.test(name)) : [],
+          }));
+          return;
+        }
         const mapName = url.pathname.startsWith('/map/') ? decodeURIComponent(url.pathname.slice(5)) : '';
         if (!((req.method === 'POST' && url.pathname === '/save') || (req.method === 'PUT' && mapName))) { res.statusCode = 404; res.end(); return; }
         const chunks: Buffer[] = []; let length = 0;
@@ -93,7 +103,7 @@ function saveCourse(): Plugin {
               !Array.isArray(file.laps) || !Array.isArray(file.finish) || !Array.isArray(file.bridges) ||
               ![...file.startGrid, ...file.waypoints, file.finish, ...file.bridges].every((p) => Array.isArray(p) && p.length === 2 && p.every((n) => Number.isInteger(n) && n >= 0)) ||
               !file.laps.every((lap) => lap && typeof lap === 'object' && ['from', 'to', 'count'].every((key) => Number.isInteger(lap[key])))) throw new Error('Invalid course file');
-            const slug = file.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+            const slug = courseSlug(file.name);
             if (!slug) throw new Error('Name must contain a letter or number');
             if (!/^[\w .\-\\/]+\.(mmx|yro|map|yrm|mpr)$/i.test(file.map) || file.map.includes('..')) throw new Error('Invalid map path');
             if (file.source === 'shipped' && (!/^[\w.-]+\.(map|yrm|mpr)$/i.test(file.map) || file.map.includes('..') || !statSync(resolve('courses/maps', file.map), { throwIfNoEntry: false })?.isFile() || !file.author.trim() || !file.link.trim())) throw new Error('Custom map needs a saved map, author and source link');
@@ -112,6 +122,13 @@ function saveCourse(): Plugin {
             const result = inspectCourse(file as unknown as CourseFile, bytes, battlefield.grid);
             if (result.errors.length) throw new Error(result.errors.join(' '));
             const path = resolve('courses', `${slug}.json`);
+            // Same slug, different course: only over the editor's own file, or once the user agreed.
+            if (existsSync(path) && slug !== url.searchParams.get('origin') && url.searchParams.get('overwrite') !== '1') {
+              const other = JSON.parse(readFileSync(path, 'utf8')) as CourseFile;
+              res.statusCode = 409;
+              res.end(`Another course, "${other.name}" on ${other.map}, is saved as courses/${slug}.json. Replace it?`);
+              return;
+            }
             writeFileSync(path, JSON.stringify(file, null, 2) + '\n');
             res.end(`courses/${slug}.json`);
           } catch (error) { res.statusCode = 400; res.end(error instanceof Error ? error.message : String(error)); }
