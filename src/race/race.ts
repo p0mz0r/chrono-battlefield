@@ -61,6 +61,8 @@ export interface Racer {
   protectedUntil: number;
   botNext: number;
   botV3Next: boolean;
+  /** The last chronosphere: the cells left and landed on, and the race frame. */
+  warp: { from: Cell; to: Cell; at: number } | undefined;
 }
 
 export interface Race {
@@ -223,6 +225,7 @@ export function chat(race: Race, line: ChatLine): ChatResult {
   else if (verb === 'missile') { race.missiles.push({ target, named, launched: race.frame, arrives: race.frame + Math.round(1.5 * TICK_HZ), x: target.tank!.x / 256 - 6, y: target.tank!.y / 256 - 6 }); race.sounds.push('missileLaunch'); }
   else if (verb === 'chrono') {
     // A move: the tank drives on from its new cell towards the waypoint after it (re-pathed next frame).
+    target.warp = { from: { x: target.tank!.cell.x, y: target.tank!.cell.y }, to: { x: shift!.landing.x, y: shift!.landing.y }, at: race.frame };
     moveTank(race.field, target.tank!, shift!.landing);
     target.next = shift!.next;
     target.progress = courseProgress(race.course, shift!.landing.x + 0.5, shift!.landing.y + 0.5, target.next);
@@ -254,7 +257,7 @@ function chronoshift(race: Race, racer: Racer): Shift | undefined {
 }
 
 const racer = (race: Race, name: string, viewerId?: string): Racer =>
-  ({ viewerId, name, bot: viewerId === undefined, tank: undefined, next: 0, progress: 0, finishedAt: undefined, tie: random(race.field), boostUntil: 0, shieldUntil: 0, stunUntil: 0, immunityUntil: 0, protectedUntil: 0, botNext: 0, botV3Next: false });
+  ({ viewerId, name, bot: viewerId === undefined, tank: undefined, next: 0, progress: 0, finishedAt: undefined, tie: random(race.field), boostUntil: 0, shieldUntil: 0, stunUntil: 0, immunityUntil: 0, protectedUntil: 0, botNext: 0, botV3Next: false, warp: undefined });
 
 function launchV3(race: Race, firer: Racer, back: boolean): void {
   race.sounds.push('cannon', 'v3Launch');

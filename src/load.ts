@@ -1,4 +1,4 @@
-import { prerenderRhino, prerenderRocket, prerenderTank } from './assets/rhino.js';
+import { prerenderAnim, prerenderRhino, prerenderRocket, prerenderTank } from './assets/rhino.js';
 import type { Battlefield } from './battlefield/import.js';
 import { importBattlefield } from './battlefield/import.js';
 import type { ObjectImage } from './battlefield/objects.js';
@@ -9,7 +9,7 @@ import { loadMap, mountTheater, type ReadFile } from './ra2/mount.js';
 import type { ConvertedSprite } from './ra2/render/sprite.js';
 
 type Encoded<T> = Omit<T, 'rgba'> & { image: Blob };
-export type Sprite = Pick<ConvertedSprite, 'atlasWidth' | 'atlasHeight' | 'frames'> & { image: Blob };
+export type Sprite = Pick<ConvertedSprite, 'atlasWidth' | 'atlasHeight' | 'spriteWidth' | 'spriteHeight' | 'frames'> & { image: Blob };
 
 /** A course's import output as cached: every image a lossless WebP, decoded only into GPU textures. */
 export interface CourseArt {
@@ -23,6 +23,10 @@ export interface CourseArt {
   /** The V3 rocket and the homing missile (Dreadnought missile), 32 facings each. */
   v3: Sprite;
   missile: Sprite;
+  /** Stock animations: the chronosphere at the cell left (`ChronoBlast`) and the cell landed on (`ChronoBlastDest`), and a stunned tank's fire. */
+  warpOut: Sprite;
+  warpIn: Sprite;
+  fire: Sprite;
 }
 
 type Tank = { body: Sprite; turret: Sprite; pivot: readonly [number, number, number] };
@@ -35,7 +39,7 @@ async function webp(rgba: Uint8Array | Uint8ClampedArray, width: number, height:
 }
 
 const sprite = async (s: ConvertedSprite): Promise<Sprite> =>
-  ({ atlasWidth: s.atlasWidth, atlasHeight: s.atlasHeight, frames: s.frames, image: await webp(s.colorRgba, s.atlasWidth, s.atlasHeight) });
+  ({ atlasWidth: s.atlasWidth, atlasHeight: s.atlasHeight, spriteWidth: s.spriteWidth, spriteHeight: s.spriteHeight, frames: s.frames, image: await webp(s.colorRgba, s.atlasWidth, s.atlasHeight) });
 
 /**
  * Imports the course's battlefield and prerenders the Rhino, or takes both from the cache when this install
@@ -64,6 +68,9 @@ export async function loadCourse(read: ReadFile, mapPath: string): Promise<{ map
       tesla: { body: await sprite(tesla.body), turret: await sprite(tesla.turret.sprite), pivot: tesla.turret.pivot },
       v3: await sprite(prerenderRocket(vfs, map.theater, 'v3rocket')),
       missile: await sprite(prerenderRocket(vfs, map.theater, 'dmisl')),
+      warpOut: await sprite(prerenderAnim(vfs, 'chronofd')),
+      warpIn: await sprite(prerenderAnim(vfs, 'chronotg')),
+      fire: await sprite(prerenderAnim(vfs, 'fire01')),
     };
   });
   return { map, mapBytes, art, cached };
