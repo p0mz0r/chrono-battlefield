@@ -63,6 +63,15 @@ Keys inside Interact:
   F2      install setup (between races)
 
 
+ADDING COURSES
+--------------
+
+Ask the course maker for the course's .rhino-course.json file (one file per
+course; a course on a custom map has the map inside). In Interact, press S
+for race setup, choose Import courses..., and pick the file(s). Imported
+courses appear in the course list marked "imported" and stay until you
+Remove them there, also after an OBS restart or a newer release.
+
 LICENCE
 -------
 

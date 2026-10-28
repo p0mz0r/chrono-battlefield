@@ -3,8 +3,8 @@ import { open, readFile } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 import { defineConfig, type Plugin } from 'vite';
 import { importBattlefield } from './src/battlefield/import.js';
-import { courseSlug, freeMapName, inspectCourse, mapUpload } from './src/race/editorModel.js';
-import type { CourseFile } from './src/race/course.js';
+import { freeMapName, inspectCourse, mapUpload } from './src/race/editorModel.js';
+import { courseSlug, isCourseFile, type CourseFile } from './src/race/course.js';
 
 /** Dev only: serves the install in RA2_DIR under /ra2/ for readInstall (ADR 0004). */
 function serveInstall(): Plugin {
@@ -95,18 +95,11 @@ function saveCourse(): Plugin {
               res.end(mapName);
               return;
             }
-            const file = JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>;
-            if (typeof file.name !== 'string' || !file.name.trim() || typeof file.map !== 'string' ||
-              typeof file.mapHash !== 'string' || !/^crc32:[0-9a-f]{8}$/.test(file.mapHash) ||
-              !['install', 'shipped'].includes(String(file.source)) || typeof file.author !== 'string' || typeof file.link !== 'string' ||
-              !Array.isArray(file.startGrid) || file.startGrid.length !== 10 || !Array.isArray(file.waypoints) ||
-              !Array.isArray(file.laps) || !Array.isArray(file.finish) || !Array.isArray(file.bridges) ||
-              ![...file.startGrid, ...file.waypoints, file.finish, ...file.bridges].every((p) => Array.isArray(p) && p.length === 2 && p.every((n) => Number.isInteger(n) && n >= 0)) ||
-              !file.laps.every((lap) => lap && typeof lap === 'object' && ['from', 'to', 'count'].every((key) => Number.isInteger(lap[key])))) throw new Error('Invalid course file');
+            const file = JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
+            if (!isCourseFile(file)) throw new Error('Invalid course file');
             const slug = courseSlug(file.name);
             if (!slug) throw new Error('Name must contain a letter or number');
-            if (!/^[\w .\-\\/]+\.(mmx|yro|map|yrm|mpr)$/i.test(file.map) || file.map.includes('..')) throw new Error('Invalid map path');
-            if (file.source === 'shipped' && (!/^[\w.-]+\.(map|yrm|mpr)$/i.test(file.map) || file.map.includes('..') || !statSync(resolve('courses/maps', file.map), { throwIfNoEntry: false })?.isFile() || !file.author.trim() || !file.link.trim())) throw new Error('Custom map needs a saved map, author and source link');
+            if (file.source === 'shipped' && (!statSync(resolve('courses/maps', file.map), { throwIfNoEntry: false })?.isFile() || !file.author.trim() || !file.link.trim())) throw new Error('Custom map needs a saved map, author and source link');
             if (file.source === 'install' && !process.env.RA2_DIR) throw new Error('RA2_DIR is not set');
             const read = async (name: string, offset?: number, size?: number): Promise<Uint8Array> => {
               const path = resolve(name === file.map && file.source === 'shipped' ? resolve('courses/maps') : resolve(process.env.RA2_DIR!), name);
@@ -119,7 +112,7 @@ function saveCourse(): Plugin {
             };
             const bytes = await read(file.map);
             const battlefield = await importBattlefield(read, file.map);
-            const result = inspectCourse(file as unknown as CourseFile, bytes, battlefield.grid);
+            const result = inspectCourse(file, bytes, battlefield.grid);
             if (result.errors.length) throw new Error(result.errors.join(' '));
             const path = resolve('courses', `${slug}.json`);
             // Same slug, different course: only over the editor's own file, or once the user agreed.

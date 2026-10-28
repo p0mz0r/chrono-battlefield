@@ -1,7 +1,8 @@
 import { Container as PixiContainer, Graphics, Point, Text, type Application, type Container } from 'pixi.js';
 import type { CellGrid } from '../battlefield/grid.js';
-import { mapHash, type CourseFile } from './course.js';
-import { courseSlug, inspectCourse } from './editorModel.js';
+import { courseSlug, mapHash, type CourseFile } from './course.js';
+import { exportCourse } from './courseFile.js';
+import { inspectCourse } from './editorModel.js';
 
 // Loaded only by the dev page. All edits stay in this draft until Save succeeds.
 // `origin` is the course's own file name (`courses/<origin>.json`), empty for a new course.
@@ -28,7 +29,7 @@ export function mountEditor(app: Application, world: Container, grid: CellGrid, 
     <h4>Lap sections</h4><div class="laps"></div><button name="add-lap">Add lap</button>
     <h4>Bridges in play</h4><div class="bridges"></div><button name="suggest">Use suggested order</button>
     <h4>Validation</h4><div class="report" role="status" aria-live="polite"></div>
-    <button name="save">Save course</button> <button name="save-as">Save as…</button> <span class="saved" role="status"></span><hr>
+    <button name="save">Save course</button> <button name="save-as">Save as…</button> <button name="export">Export course</button> <span class="saved" role="status"></span><hr>
     <label>Custom map (.map/.yrm/.mpr) <input name="map-file" type="file" accept=".map,.yrm,.mpr"></label>
     <button name="use-map">Use custom map</button>`;
   document.body.append(panel);
@@ -68,7 +69,7 @@ export function mountEditor(app: Application, world: Container, grid: CellGrid, 
     if (result.errors.length) for (const error of result.errors) {
       const row = document.createElement('div'); row.textContent = `✗ ${error}`; row.style.color = '#faa'; report.append(row);
     } else report.textContent = `✓ Valid · ideal ${result.course!.length.toFixed(0)} cells · estimated ${Math.ceil(result.seconds!)} s`;
-    input('save').disabled = result.errors.length > 0;
+    input('save').disabled = input('export').disabled = result.errors.length > 0;
     art.clear();
     labels.removeChildren().forEach((label) => label.destroy());
     if (result.course) {
@@ -148,6 +149,14 @@ export function mountEditor(app: Application, world: Container, grid: CellGrid, 
     } catch (error) { sessionStorage.removeItem('courseEditorNext'); saved.textContent = error instanceof Error ? error.message : String(error); }
   };
   input('save').onclick = () => save();
+  // One file to hand an operator (ADR 0007); its custom map travels inside.
+  input('export').onclick = () => {
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob([exportCourse(file, bytes)], { type: 'application/json' }));
+    link.download = `${courseSlug(file.name)}.rhino-course.json`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
   input('save-as').onclick = () => {
     const name = prompt('Save as a new course named:', file.name)?.trim();
     if (!name) return;

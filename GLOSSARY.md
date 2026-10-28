@@ -170,6 +170,10 @@ _Avoid_: Battlefield, scenario
 A start grid, ordered waypoints and a finish area laid over a battlefield; tanks find their own way between waypoints. One battlefield can carry many courses.
 _Avoid_: Path, track, route
 
+**Course file**:
+One file, `<name>.rhino-course.json`, that carries a course to an operator, with its custom map inside when it has one; the operator imports it in race setup.
+_Avoid_: Course pack, map pack, export
+
 **Waypoint**:
 One cell on a course that tanks must pass close to, in order, on their way to the finish.
 _Avoid_: Checkpoint, node, gate
