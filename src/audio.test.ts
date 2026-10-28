@@ -1,8 +1,9 @@
 import { expect, it, vi } from 'vitest';
 import { readFromDir } from '../test/install.js';
 import { loadSounds } from './audio.js';
+import type { ReadFile } from './ra2/mount.js';
 
-it.skipIf(!process.env.RA2_DIR)('plays stock cues with duplicate, Limit and mute controls', async () => {
+it.skipIf(!process.env.RA2_DIR)('plays stock cues with duplicate, Limit and mute controls; a second load reads no audio', async () => {
   let started = 0, master: { gain: { value: number } } | undefined, last: { gain: { value: number } } | undefined;
   let context: Context;
   const storage = new Map<string, string>();
@@ -19,7 +20,16 @@ it.skipIf(!process.env.RA2_DIR)('plays stock cues with duplicate, Limit and mute
   vi.stubGlobal('AudioContext', Context);
   vi.stubGlobal('DynamicsCompressorNode', class { connect() { return {}; } });
   try {
-    const sound = await loadSounds(readFromDir);
+    const map = new Map<string, unknown>();
+    const store = { get: async (k: string) => map.get(k), set: async (k: string, v: unknown) => void map.set(k, v), keys: async () => [...map.keys()], delete: async (k: string) => void map.delete(k) };
+    const audioReads: string[] = [];
+    const read: ReadFile = (path, ...range) => (/^lang/.test(path) && audioReads.push(path), readFromDir(path, ...range));
+    await loadSounds(read, store);
+    expect(audioReads).toContain('language.mix');
+    audioReads.length = 0;
+    master = undefined;
+    const sound = await loadSounds(read, store);
+    expect(audioReads).toEqual([]);
     sound.play('ready');
     sound.play('ready');
     expect(started).toBe(1);

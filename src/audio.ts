@@ -1,3 +1,4 @@
+import { cachedImport, importStore, type Store } from './install/cache.js';
 import { AudioBank, IniFile } from './ra2/index.js';
 import { locateNested, readNested, type ReadFile } from './ra2/mount.js';
 
@@ -13,8 +14,10 @@ const EVENTS = {
 
 type Cue = keyof typeof EVENTS;
 type Sound = { buffer: AudioBuffer; limit: number; volume: number };
+type Decoded = { samples: Int16Array; sampleRate: number; limit: number; volume: number };
 
-export async function loadSounds(read: ReadFile): Promise<{ play(cue: string): void; mute(): void }> {
+/** Each cue's PCM and INI settings, read from the install. */
+async function decodeSounds(read: ReadFile): Promise<Record<Cue, Decoded>> {
   const [baseIni, yrIni] = await Promise.all([
     readNested(read, 'ra2.mix', ['local.mix', 'sound.ini']), readNested(read, 'expandmd01.mix', ['soundmd.ini']),
   ]);
@@ -26,15 +29,8 @@ export async function loadSounds(read: ReadFile): Promise<{ play(cue: string): v
     ]);
     return { path, bag, bank: AudioBank.parseIndex(idx, bag.size) };
   }));
-  const context = new AudioContext();
-  const master = context.createGain();
-  let muted = localStorage.getItem('rhino-mute') === '1';
-  master.gain.value = muted ? 0 : 1;
-  // Limiter: overlapping cues at full stock volume would clip the OBS mixer channel.
-  const limiter = new DynamicsCompressorNode(context, { threshold: -6, knee: 0, ratio: 20, attack: 0.003, release: 0.25 });
-  master.connect(limiter).connect(context.destination);
   const ini = [IniFile.parse(yrIni), IniFile.parse(baseIni)];
-  const loaded = new Map<Cue, Sound>();
+  const decoded = {} as Record<Cue, Decoded>;
   const selections = (Object.entries(EVENTS) as [Cue, string][]).map(([cue, event]) => {
     const section = ini.map(file => file.getSection(event)).find(Boolean);
     const name = section?.getString('Sounds').split(/\s+/)[0]?.replace(/^\$/, '').toLowerCase();
@@ -50,12 +46,29 @@ export async function loadSounds(read: ReadFile): Promise<{ play(cue: string): v
     const ranges = chosen.map(({ entry }) => ({ offset: source.bag.offset + entry.offset, length: entry.size }));
     const bodies = read.ranges ? await read.ranges(source.path, ranges) : await Promise.all(ranges.map(range => read(source.path, range.offset, range.length)));
     chosen.forEach(({ cue, section, name }, i) => {
-      const decoded = source.bank.decode(name, bodies[i]!)!;
-      const buffer = context.createBuffer(1, decoded.samples.length, decoded.sampleRate);
-      buffer.copyToChannel(Float32Array.from(decoded.samples, sample => sample / 32768), 0);
+      const { samples, sampleRate } = source.bank.decode(name, bodies[i]!)!;
       const limit = section.getInt('Limit');
-      loaded.set(cue, { buffer, limit: limit > 0 ? limit : Infinity, volume: Number(section.getString('Volume', '100')) / 100 });
+      decoded[cue] = { samples, sampleRate, limit: limit > 0 ? limit : Infinity, volume: Number(section.getString('Volume', '100')) / 100 };
     });
+  }
+  return decoded;
+}
+
+/** Plays the stock cues. Decoded sounds are cached with the course import, so a hit reads no audio from the install. */
+export async function loadSounds(read: ReadFile, store: Store = importStore): Promise<{ play(cue: string): void; mute(): void }> {
+  const decoded = await cachedImport(store, read, 'sounds', () => decodeSounds(read));
+  const context = new AudioContext();
+  const master = context.createGain();
+  let muted = localStorage.getItem('rhino-mute') === '1';
+  master.gain.value = muted ? 0 : 1;
+  // Limiter: overlapping cues at full stock volume would clip the OBS mixer channel.
+  const limiter = new DynamicsCompressorNode(context, { threshold: -6, knee: 0, ratio: 20, attack: 0.003, release: 0.25 });
+  master.connect(limiter).connect(context.destination);
+  const loaded = new Map<Cue, Sound>();
+  for (const [cue, { samples, sampleRate, limit, volume }] of Object.entries(decoded) as [Cue, Decoded][]) {
+    const buffer = context.createBuffer(1, samples.length, sampleRate);
+    buffer.copyToChannel(Float32Array.from(samples, sample => sample / 32768), 0);
+    loaded.set(cue, { buffer, limit, volume });
   }
   const active = new Map<Cue, number>();
   const last = new Map<Cue, number>();
