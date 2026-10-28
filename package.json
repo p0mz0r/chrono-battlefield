@@ -1,0 +1,22 @@
+{
+  "name": "rhino-race",
+  "private": true,
+  "description": "Rhino Race: a chat-driven Rhino tank race over a real RA2/YR battlefield, for OBS.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build && node tools/release.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  },
+  "dependencies": {
+    "pixi.js": "^8.22.0"
+  }
+}

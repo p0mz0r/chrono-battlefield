@@ -1,0 +1,59 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Rhino Race</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+  #hud { display: none; }
+  #status { display: none; }
+  #stream-view { position: fixed; inset: 0; pointer-events: none; color: #fff; font: 600 18px/1.3 'Segoe UI', sans-serif; text-shadow: 0 2px 3px #000; }
+  .standings { position: absolute; top: 24px; left: 24px; width: 360px; background: #080b10d9; border-left: 5px solid #db3030; box-shadow: 0 8px 25px #0008; }
+  .standings header { padding: 12px 15px; background: #bd2020; font-size: 19px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .standings-head, .standing { display: grid; grid-template-columns: 35px minmax(0, 1fr) 82px 65px; align-items: center; gap: 4px; padding: 5px 10px; }
+  .standings-head { color: #aaa; font-size: 10px; letter-spacing: 1px; }
+  .standings-head span { padding-left: 3px; }
+  .standing { min-height: 29px; border-top: 1px solid #ffffff1a; font-size: 17px; }
+  .standing.focused { background: #ffffff33; }
+  .standing strong { color: #ffd34e; font-size: 20px; }
+  .standing-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .standing small, .result small { color: #bbb; font-size: 11px; }
+  .standing-status { color: #ffd34e; font-size: 10px; }
+  .standing b { text-align: right; font-size: 14px; }
+  .phase { position: absolute; top: 24px; right: 24px; padding: 8px 15px; background: #080b10cc; font-size: 22px; }
+  .commands { position: absolute; left: 24px; bottom: 24px; max-width: 75%; padding: 10px 14px; background: #080b10cc; font-size: 16px; }
+  .feed { position: absolute; right: 24px; bottom: 24px; width: 460px; font-size: 16px; text-align: right; }
+  .feed div { margin-top: 5px; padding: 6px 12px; background: #080b10cc; border-right: 4px solid #db3030; }
+  .lower-third { position: absolute; left: 420px; bottom: 95px; display: flex; min-width: 420px; background: #080b10dd; font-size: 30px; }
+  .lower-third strong { display: grid; place-content: center; min-width: 76px; background: #bd2020; font-size: 48px; }
+  .lower-third div { padding: 8px 18px; }
+  .lower-third small { display: block; font-size: 16px; color: #ddd; }
+  .results { position: absolute; top: 50%; left: 22%; right: 22%; transform: translateY(-50%); padding: 20px 38px; background: #080b10ef; box-shadow: 0 0 0 100vmax #0008; }
+  .results h1, .results h2 { margin: 0 0 5px; text-align: center; }
+  .results h2 { margin-bottom: 16px; color: #ddd; font-size: 18px; }
+  .result { display: grid; grid-template-columns: 48px 1fr 110px; gap: 12px; border-top: 1px solid #ffffff29; padding: 9px; }
+  .result strong { color: #ffd34e; }
+  .result b { text-align: right; }
+  .results .next { margin: 14px 0 0; text-align: center; color: #ddd; font-size: 16px; }
+  .results kbd { padding: 1px 7px; border: 1px solid #ffffff59; border-radius: 4px; color: #ffd34e; font: inherit; }
+  .pause-banner, #end-prompt { position: fixed; left: 50%; top: 45%; transform: translate(-50%, -50%); padding: 18px 32px; background: #080b10e8; color: #fff; font: 800 36px 'Segoe UI', sans-serif; text-align: center; text-shadow: 0 2px 4px #000; pointer-events: none; }
+  #end-prompt { top: 30%; font-size: 26px; }
+  #end-prompt:empty { display: none; }
+  #race-setup { position: fixed; z-index: 5; inset: 8% 20%; padding: 28px 38px; overflow: auto; background: #080b10f2; border: 3px solid #bd2020; color: #fff; font: 20px 'Segoe UI', sans-serif; box-shadow: 0 0 0 100vmax #0009; }
+  #race-setup[hidden] { display: none; }
+  #race-setup h1 { margin-top: 0; }
+  #race-setup label { display: block; margin: 12px 0; }
+  #race-setup select, #race-setup input[type=number] { margin-left: 12px; padding: 6px; font: inherit; }
+  #race-setup select { max-width: 80%; }
+  #race-setup input[type=number] { width: 5em; }
+  #race-setup fieldset { margin-top: 20px; border: 1px solid #777; }
+  #race-setup fieldset label { display: inline-block; min-width: 140px; }
+  #race-setup p { color: #ffd34e; }
+</style>
+</head>
+<body>
+<pre id="status">loading…</pre>
+<pre id="hud"></pre>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

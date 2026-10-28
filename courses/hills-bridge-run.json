@@ -1,0 +1,13 @@
+{
+  "name": "Bridge Run",
+  "map": "Hills.mmx",
+  "mapHash": "crc32:4763a4b0",
+  "source": "install",
+  "author": "Westwood Studios",
+  "link": "",
+  "startGrid": [[56, 98], [58, 98], [60, 98], [62, 98], [64, 98], [56, 100], [58, 100], [60, 100], [62, 100], [64, 100]],
+  "waypoints": [[73, 75], [101, 75], [104, 48], [57, 52]],
+  "laps": [{ "from": 0, "to": 3, "count": 2 }],
+  "finish": [58, 92],
+  "bridges": [[76, 75]]
+}
