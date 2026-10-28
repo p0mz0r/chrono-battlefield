@@ -27,7 +27,9 @@ const cellParam = (name: string): Cell | undefined => {
 
 /** Courses bundled at build from `courses/*.json`. */
 const COURSES = import.meta.glob<CourseFile>('../courses/*.json', { eager: true, import: 'default' });
-const COURSE_MAPS = import.meta.glob<string>('../courses/maps/*', { eager: true, query: '?url', import: 'default' });
+// Dev: Vite's server answers *.map as a source map (application/json), so an eager import broke the whole page; dev fetches /courses/maps instead.
+// Lazy, so a map Vite cannot import only matters if it is the one requested.
+const COURSE_MAPS = import.meta.glob<string>('../courses/maps/*', { query: '?url', import: 'default' });
 
 /** World scale under which tank labels are number chips rather than names (Overview ≈ 0.7, Director ≥ 1.8). */
 const CHIPS_BELOW = 1.2;
@@ -107,7 +109,7 @@ async function main() {
   if (!file && !edit) throw new Error(`No course ${courseName}`);
   const mapPath = edit && params.get('map') || file!.map;
   const source = edit && params.get('map') ? (params.get('source') === 'shipped' ? 'shipped' : 'install') : file!.source;
-  const url = source === 'shipped' ? (COURSE_MAPS[`../courses/maps/${mapPath}`] ?? (edit ? `/courses/maps/${encodeURIComponent(mapPath)}` : undefined)) : undefined;
+  const url = source !== 'shipped' ? undefined : import.meta.env.DEV ? `/courses/maps/${encodeURIComponent(mapPath)}` : await COURSE_MAPS[`../courses/maps/${mapPath}`]?.();
   if (source === 'shipped' && !url) throw new Error(`Missing shipped map ${mapPath}`);
   const read = source === 'shipped' ? async (path: string, offset?: number, length?: number) => {
     if (path !== mapPath) return readInstall(path, offset, length);

@@ -85,6 +85,10 @@ const readUploads: Read = async (path, offset, length) => {
 export const uploadedNames = async () => (await uploads('readonly', (s) => s.getAllKeys())).map(String);
 export const clearUploads = () => uploads('readwrite', (s) => s.clear());
 
+/** From a picked install folder, the files the game reads: the required MIXes and the maps (any subfolder). */
+export const installFiles = (files: File[]) =>
+  files.filter((f) => REQUIRED.includes(f.name.toLowerCase()) || /\.(mmx|yro|map|yrm|mpr)$/i.test(f.name));
+
 /** Stores the files as-is; returns the required names still missing. Once complete, they replace the saved path. */
 export async function storeUploads(files: File[]): Promise<string[]> {
   for (const file of files) await uploads('readwrite', (s) => s.put(file, file.name.toLowerCase()));
@@ -127,6 +131,10 @@ export async function useFolder(path: string): Promise<string[]> {
     localStorage.removeItem(PATH_KEY);
     return [];
   }
+  // Only OBS's `http://absolute/` can read a folder by path; a browser can't, so say so rather than "Nothing readable".
+  if (!inObs()) return [import.meta.env.DEV
+    ? 'The dev page reads the install from RA2_DIR; a folder path works only in an OBS browser source.'
+    : 'A folder path works only in an OBS browser source (Local file). In a browser, upload the files below.'];
   const found = await findInstall(path, existsAbsolute, []);
   if (found.root) localStorage.setItem(PATH_KEY, found.root);
   return found.root ? [] : describe(found, path);

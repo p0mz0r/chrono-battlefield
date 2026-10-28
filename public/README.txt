@@ -18,8 +18,10 @@ SET UP IN OBS
    - Tick "Control audio via OBS" (the game gets its own mixer channel).
    - Untick "Shutdown source when not visible".
 3. The page looks for the install by itself. If it shows the install setup
-   screen instead, right-click the source > Interact, and enter the install
-   folder (the one with ra2.mix and ra2md.mix) or upload the files it names.
+   screen instead, right-click the source > Interact, and choose the install
+   folder (the one with ra2.mix and ra2md.mix). Choosing copies the files the
+   game needs (about 600 MB) into OBS once; typing the folder's path instead
+   reads it in place.
    F2 in Interact opens that screen again later, between races.
 4. Add the hotkey script: Tools > Scripts > + > chrono-battlefield.lua (in
    this folder). Pick the "Rhino Race" source in the script settings.
