@@ -2,6 +2,8 @@
 
 Five original directions for choosing a game and stream identity. Each concept has a 1024 × 576 preview on dark and light backgrounds, plus square 72 × 72 and 32 × 32 icon variants. The previews can be placed on a 1920 × 1080 stream card; the small variants are for Stream Deck and favicon use.
 
+Concept 4, [Time Trial](concept-4/notes.md), was selected. Use the [final exports](final/README.md) for production.
+
 ## Contact sheet
 
 ![Five concepts on dark and light backgrounds with 72 px and 32 px variants](sheet.png)
