@@ -1,5 +1,6 @@
 import { Container as PixiContainer, Graphics, Point, Text, type Application, type Container } from 'pixi.js';
 import type { CellGrid } from '../battlefield/grid.js';
+import { spotLevel } from '../movement/index.js';
 import { courseSlug, finishAreaOf, mapHash, type CourseFile, type LinePoint } from './course.js';
 import { exportCourse } from './courseFile.js';
 import { closestSegment, inspectCourse, type CourseDraft } from './editorModel.js';
@@ -159,7 +160,7 @@ export function mountEditor(app: Application, world: Container, grid: CellGrid, 
     $('.save-reason').textContent = result.errors.length ? `${result.errors.length} issue${result.errors.length === 1 ? '' : 's'} to fix before saving. See Validation above.` : '';
     art.clear();
     labels.removeChildren().forEach((label) => label.destroy());
-    const linePoint = (p: LinePoint) => { const i = Math.floor(p.y) * grid.width + Math.floor(p.x); return toScreen(p.x, p.y, (p.deck ? grid.deck[i] : grid.level[i]) ?? 0); };
+    const linePoint = (p: LinePoint) => toScreen(p.x, p.y, spotLevel(grid, { x: Math.floor(p.x), y: Math.floor(p.y), deck: p.deck }));
     if (lastLine) for (const [width, color, alpha] of [[5, OUTLINE, 0.5], [2.5, 0xffffff, result.errors.length ? 0.3 : 0.9]] as const) {
       lastLine.forEach((p, i) => { const s = linePoint(p); i ? art.lineTo(s.x, s.y) : art.moveTo(s.x, s.y); });
       art.stroke({ color, width: width / world.scale.x, alpha });

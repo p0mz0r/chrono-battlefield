@@ -232,7 +232,7 @@ async function main() {
   };
   if (import.meta.env.DEV) { // the stream never shows the course line or waypoints
     const overlay = passability(grid, terrain.originX, terrain.originY);
-    const linePoint = (p: LinePoint) => toScreen(p.x, p.y, p.deck ? grid.deck[Math.floor(p.y) * grid.width + Math.floor(p.x)]! : level(Math.floor(p.x), Math.floor(p.y)));
+    const linePoint = (p: LinePoint) => toScreen(p.x, p.y, spotLevel(grid, { x: Math.floor(p.x), y: Math.floor(p.y), deck: p.deck }));
     course.line.forEach((p, i) => (i ? overlay.lineTo(linePoint(p).x, linePoint(p).y) : overlay.moveTo(linePoint(p).x, linePoint(p).y)));
     overlay.stroke({ color: 0xffffff, width: 2, alpha: 0.7 });
     for (const fork of course.forks.values()) {

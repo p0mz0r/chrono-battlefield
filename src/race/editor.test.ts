@@ -55,7 +55,7 @@ it('suggests low bridges the ideal line crosses water on', () => {
   try {
     const one = file();
     expect(inspectCourse(one, bytes, grid).suggestedBridges).toEqual([[9, 5]]);
-    one.forks = [{ from: 0, to: 1, via: [[2, 5]] }]; // the alternate route crosses the western bridge
+    one.forks = [{ from: 0, to: 1, via: [[2, 5]] }]; // the fork crosses the western bridge
     expect(inspectCourse(one, bytes, grid).suggestedBridges).toEqual([[9, 5], [2, 5]]);
   } finally {
     for (let x = 0; x < 12; x++) { grid.speed[60 + x] = 1; grid.bridge[60 + x] = -1; }
