@@ -10,6 +10,16 @@ A battlefield plus a Rhino needs `ra2.mix`, `ra2md.mix`, `expandmd01.mix` and on
 
 Most maps in `Maps\Yuri's Revenge` have a CNCMaps render beside them: `<map>.png`. Compare against it for layout. It also highlights ore/gems and applies map lighting, so those differences are expected until we draw them.
 
+## Checking the page in a browser
+
+Use headless Chromium through `tools/shot.mjs`; the owner's own Chrome windows are personal, so leave them alone.
+
+1. Start the dev server as a background task with its output in `.vite.log`: `npx vite --port 5173 --strictPort > .vite.log 2>&1`. Read the log when a request fails or the server stops.
+2. Shoot: `node tools/shot.mjs "http://localhost:5173/?edit=1&map=DeepFrze.yro" --out <file>.png`. It prints page errors, failed requests and dialogs; a clean run prints only the shot path. The default size, 2560x1270, is the owner's maximised window.
+3. To interact first, pass `--steps steps.mjs`, a module whose default export `async (page) => {}` drives the page with the Playwright API (click, keyboard, `page.evaluate`). Keep step files in a scratch folder.
+
+If launch fails with "Executable doesn't exist", run `npx playwright-core install chromium-headless-shell` once.
+
 ## Measuring frame rate
 
 Measure in a real browser window or in OBS. Orca's embedded browser throttles hidden tabs and reports 30 fps or NaN.

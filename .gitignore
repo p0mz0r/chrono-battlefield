@@ -12,3 +12,6 @@ courses/arena.json
 courses/arena-lap.json
 courses/maps/2_arabian_oasis.map
 courses/maps/2_arctic_circle.map
+
+# Dev server output, for agents to read
+.vite.log

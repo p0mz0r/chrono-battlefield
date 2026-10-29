@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { createReadStream, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { open, readFile } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
@@ -132,4 +133,6 @@ function saveCourse(): Plugin {
 }
 
 // Relative asset URLs: OBS loads dist/index.html from http://absolute/<path>/.
-export default defineConfig({ base: './', plugins: [serveInstall(), saveCourse()] });
+export default defineConfig({ base: './', plugins: [serveInstall(), saveCourse()],
+  // Only this checkout's tests: agent worktrees can sit inside the repo folder.
+  test: { include: ['src/**/*.test.ts'] } });

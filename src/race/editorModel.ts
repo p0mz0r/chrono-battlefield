@@ -84,6 +84,32 @@ export function inspectCourse(draft: CourseDraft, bytes: Uint8Array, grid: CellG
   }
 }
 
+/** Undo history of draft snapshots; typing in one text field is one step, not one per key. */
+export function createHistory(draft: CourseDraft) {
+  const steps = [JSON.stringify(draft)];
+  let at = 0, typed = '';
+  return {
+    get canUndo() { return at > 0; },
+    get canRedo() { return at < steps.length - 1; },
+    /** Records `draft` if it changed; `field` names the text field just typed in, if any. */
+    record(draft: CourseDraft, field = '') {
+      const snapshot = JSON.stringify(draft);
+      if (snapshot === steps[at]) return;
+      if (field && field === typed && at === steps.length - 1) steps[at] = snapshot;
+      else { steps.splice(at + 1); steps.push(snapshot); at++; }
+      typed = field;
+    },
+    /** Moves `by` steps (-1 undo, +1 redo) and makes `draft` exactly that snapshot; false past either end. */
+    step(draft: CourseDraft, by: number): boolean {
+      if (at + by < 0 || at + by >= steps.length) return false;
+      at += by; typed = '';
+      for (const key of Object.keys(draft)) delete draft[key as keyof CourseDraft]; // a key the snapshot lacks (`finish`) goes too
+      Object.assign(draft, JSON.parse(steps[at]!));
+      return true;
+    },
+  };
+}
+
 const point = ([x, y]: [number, number]) => ({ x, y });
 
 /** Index of the closest path segment; also the insertion index for a new via waypoint. */

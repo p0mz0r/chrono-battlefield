@@ -2,7 +2,7 @@ import { Container as PixiContainer, Graphics, Point, Text, type Application, ty
 import type { CellGrid } from '../battlefield/grid.js';
 import { courseSlug, finishAreaOf, mapHash, type CourseFile } from './course.js';
 import { exportCourse } from './courseFile.js';
-import { closestSegment, inspectCourse, type CourseDraft } from './editorModel.js';
+import { closestSegment, createHistory, inspectCourse, type CourseDraft } from './editorModel.js';
 import { simulateRace, type Race } from './race.js';
 import './editor.css';
 
@@ -58,15 +58,14 @@ export function mountEditor(app: Application, world: Container, grid: CellGrid, 
   let startAt = file.startGrid.length % 10, startSlotChosen = false;
   let drag: { kind: 'start' | 'finish' | 'waypoint' | 'fork' | 'bridge'; index: number; fork?: number } | undefined;
   let pan: { x: number; y: number; wx: number; wy: number } | undefined;
-  const history = [JSON.stringify(file)];
-  let historyAt = 0, clean = history[0]!, writing = false, lastLine: { x: number; y: number }[] | undefined;
-  let typing = '', typed = ''; // the text field being typed in, and the one the last history step came from
-  const restore = (step: number) => {
-    historyAt = step; typed = '';
-    for (const key of Object.keys(file)) delete file[key as keyof CourseDraft]; // a key the snapshot lacks (`finish`) must go too
-    Object.assign(file, JSON.parse(history[step]!));
+  const history = createHistory(file);
+  let clean = JSON.stringify(file), writing = false, lastLine: { x: number; y: number }[] | undefined;
+  let typing = ''; // the text field just typed in
+  const restore = (by: number) => {
+    if (!history.step(file, by)) return false;
     input('name').value = file.name; input('author').value = file.author; input('link').value = file.link;
     mode = 'select'; modes();
+    return true;
   };
   const navigate = (url: string) => { if (JSON.stringify(file) === clean || confirm('Discard unsaved course changes?')) { writing = true; location.href = url; } };
   window.addEventListener('beforeunload', (event) => { if (!writing && JSON.stringify(file) !== clean) event.preventDefault(); });
@@ -77,8 +76,7 @@ export function mountEditor(app: Application, world: Container, grid: CellGrid, 
     if (tool) { event.preventDefault(); tool.click(); return; }
     if (!(event.ctrlKey || event.metaKey) || !['z', 'y'].includes(event.key.toLowerCase()) ||
       event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
-    const step = historyAt + (event.key.toLowerCase() === 'y' || event.shiftKey ? 1 : -1);
-    if (step >= 0 && step < history.length) { event.preventDefault(); restore(step); }
+    if (restore(event.key.toLowerCase() === 'y' || event.shiftKey ? 1 : -1)) event.preventDefault();
   });
   const xy = (c: [number, number]) => toScreen(c[0] + 0.5, c[1] + 0.5, grid.level[c[1] * grid.width + c[0]] ?? 0);
   const forkPath = () => {
@@ -129,15 +127,10 @@ export function mountEditor(app: Application, world: Container, grid: CellGrid, 
   };
   const refresh = () => {
     const snapshot = JSON.stringify(file);
-    // Typing in one field is one undo step, not one per key.
-    if (!drag && snapshot !== history[historyAt]) {
-      if (typing && typing === typed && historyAt === history.length - 1) history[historyAt] = snapshot;
-      else { history.splice(historyAt + 1); history.push(snapshot); historyAt++; }
-      typed = typing;
-    }
+    if (!drag) history.record(file, typing);
     typing = '';
-    input('undo').disabled = historyAt === 0;
-    input('redo').disabled = historyAt === history.length - 1;
+    input('undo').disabled = !history.canUndo;
+    input('redo').disabled = !history.canRedo;
     $('.dirty').toggleAttribute('hidden', snapshot === clean);
     const result = inspectCourse(file, bytes, grid);
     if (result.course && !result.errors.length) lastLine = result.course.line;
@@ -278,8 +271,8 @@ export function mountEditor(app: Application, world: Container, grid: CellGrid, 
   };
   panel.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach((tool) => tool.onclick = () => { mode = tool.dataset.mode as typeof mode; modes(); });
   for (const key of ['name', 'author', 'link'] as const) input(key).oninput = () => { file[key] = input(key).value; typing = key; refresh(); };
-  input('undo').onclick = () => restore(historyAt - 1);
-  input('redo').onclick = () => restore(historyAt + 1);
+  input('undo').onclick = () => restore(-1);
+  input('redo').onclick = () => restore(1);
   input('add-lap').onclick = () => { file.laps.push({ from: 0, to: Math.max(0, file.waypoints.length - 1), count: 2 }); refresh(); };
   input('suggest').onclick = () => { file.bridges = inspectCourse(file, bytes, grid).suggestedBridges; refresh(); };
   const save = async (overwrite = false): Promise<void> => {
