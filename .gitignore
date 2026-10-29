@@ -2,3 +2,13 @@ node_modules/
 dist/
 __pycache__/
 release/
+
+# Local agent and design-tool state
+.codex/
+.impeccable/
+
+# Local test courses and their custom maps (not shipped)
+courses/arena.json
+courses/arena-lap.json
+courses/maps/2_arabian_oasis.map
+courses/maps/2_arctic_circle.map

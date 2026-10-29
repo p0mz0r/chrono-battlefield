@@ -182,6 +182,10 @@ _Avoid_: Checkpoint, node, gate
 A run of consecutive waypoints on a course that tanks drive a set number of times before going on; a circuit is a course that is one lap section.
 _Avoid_: Loop, circuit, lap
 
+**Fork**:
+A second way from one waypoint to a later one, through its own fork cells; each tank takes it at the fork's set chance, otherwise drives the waypoints between.
+_Avoid_: Alternate route, branch, via, route waypoint
+
 **Start grid**:
 The ten cells where a course's tanks are placed at random before the start countdown.
 _Avoid_: Grid, spawn, starting line

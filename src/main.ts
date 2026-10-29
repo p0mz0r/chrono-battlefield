@@ -160,7 +160,7 @@ async function main() {
     world.addChild(sprite);
   }
   // The finish area, chequered.
-  const finish = new Graphics();
+  const finish = new Graphics({ label: 'finish-area' }); // the editor redraws it as the finish moves
   for (const i of course.finishArea) {
     const x = i % grid.width, y = (i - x) / grid.width;
     finish.poly(diamond(x, y)).fill({ color: (x + y) % 2 ? 0xffffff : 0x111111, alpha: 0.6 });
@@ -235,6 +235,10 @@ async function main() {
     const linePoint = (p: { x: number; y: number }) => toScreen(p.x, p.y, level(Math.floor(p.x), Math.floor(p.y)));
     course.line.forEach((p, i) => (i ? overlay.lineTo(linePoint(p).x, linePoint(p).y) : overlay.moveTo(linePoint(p).x, linePoint(p).y)));
     overlay.stroke({ color: 0xffffff, width: 2, alpha: 0.7 });
+    for (const fork of course.forks.values()) {
+      fork.line.forEach((p, i) => (i ? overlay.lineTo(linePoint(p).x, linePoint(p).y) : overlay.moveTo(linePoint(p).x, linePoint(p).y)));
+      overlay.stroke({ color: 0x9de675, width: 2, alpha: 0.8 });
+    }
     for (const [x, y] of course.file.waypoints) overlay.poly(diamond(x, y)).fill({ color: 0xff00ff, alpha: 0.7 });
     overlay.visible = params.get('grid') === '1';
     world.addChild(overlay);
@@ -274,7 +278,8 @@ async function main() {
   let cameraMode: CameraMode = 'overview';
   const drawOverlay = edit ? undefined : mountStreamView();
   if (edit) world.scale.set(Math.min(app.screen.width / terrain.width, app.screen.height / terrain.height));
-  const bounds = course.line.map((point) => toScreen(point.x, point.y, level(Math.floor(point.x), Math.floor(point.y))));
+  const bounds = [...course.line, ...[...course.forks.values()].flatMap((fork) => fork.line)]
+    .map((point) => toScreen(point.x, point.y, level(Math.floor(point.x), Math.floor(point.y))));
   const minCourseX = Math.min(...bounds.map((p) => p.x)), maxCourseX = Math.max(...bounds.map((p) => p.x));
   const minCourseY = Math.min(...bounds.map((p) => p.y)), maxCourseY = Math.max(...bounds.map((p) => p.y));
   const overviewScale = () => Math.min((app.screen.width - 440) / (maxCourseX - minCourseX + 320), (app.screen.height - 160) / (maxCourseY - minCourseY + 320));
@@ -433,7 +438,7 @@ async function main() {
   const loadMs = Math.round(performance.now() - started);
   document.body.dataset.load = `${loadMs},${cached ? 'cached' : 'imported'}`;
   status.textContent = `${course.file.name} on ${mapPath} (${map.theater}, ${cached ? 'from cache' : 'imported'} in ${loadMs} ms), ideal line ${course.length.toFixed(0)} cells. G: passability and ideal line.`;
-  if (edit) (await import('./race/editor.js')).mountEditor(app, world, grid, mapBytes, file!, toScreen, params.has('map') ? '' : Object.entries(COURSES).find(([, c]) => c === file)![0].replace(/^.*\/|\.json$/g, ''));
+  if (edit) (await import('./race/editor.js')).mountEditor(app, world, grid, mapBytes, file!, toScreen, params.has('map') ? '' : Object.entries(COURSES).find(([, c]) => c === file)![0].replace(/^.*\/|\.json$/g, ''), race);
   else {
     mountOperator(race, courses, imported, Object.entries(courses).find(([, candidate]) => candidate === file)?.[0] ?? '', (mode) => { cameraMode = mode; }, sounds.mute);
     // Chat from outside the page (e.g. Streamer.bot via obs-websocket obs-browser emit_event): `chronoChat` with { viewerId, name, text }.

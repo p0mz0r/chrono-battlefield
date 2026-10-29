@@ -90,7 +90,10 @@ export function toggleBridge(race: Race, label: string | undefined): ChatResult 
       .filter((i) => i !== index(grid, race.course.finish))
       .map((i) => ({ x: i % grid.width, y: Math.floor(i / grid.width) }))];
     const travellers = race.racers.filter((r) => r.finishedAt === undefined && r.tank)
-      .map((r) => ({ tank: r.tank!, goals: race.course.waypoints.slice(r.next), finishes: finishArea }));
+      .map((r) => ({ tank: r.tank!, goals: [
+        ...(r.fork ? race.course.forks.get(r.fork.from)!.via.slice(r.fork.nextVia) : []),
+        ...race.course.waypoints.slice(r.next),
+      ], finishes: finishArea }));
     if (!destroyBridge(grid, race.field, id, travellers)) return { ok: false, reason: `bridge ${label!.toUpperCase()} refused: route to finish lost` };
   }
   bridge.changedAt = race.frame;

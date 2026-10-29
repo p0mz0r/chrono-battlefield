@@ -35,3 +35,18 @@ it('refuses other files, a map that does not match, and a missing or different i
   const other = course('install', new TextEncoder().encode('older version'));
   await expect(readCourseFile('old.rhino-course.json', exportCourse(other), installMaps)).rejects.toThrow('needs the install map Hills.mmx');
 });
+
+it('keeps forks in exported courses and rejects malformed fork references', async () => {
+  const withFork = course('install', install);
+  withFork.waypoints.push([4, 2]);
+  withFork.forks = [{ from: 0, to: 1, via: [[3, 5]], weight: 70 }];
+  expect((await readCourseFile('fork.rhino-course.json', exportCourse(withFork), installMaps)).course.forks).toEqual(withFork.forks);
+  withFork.forks[0]!.to = 2;
+  await expect(readCourseFile('bad.rhino-course.json', exportCourse(withFork), installMaps)).rejects.toThrow('not a Rhino Race course file');
+  withFork.forks[0]!.to = 1;
+  withFork.forks[0]!.weight = 101;
+  await expect(readCourseFile('bad-weight.rhino-course.json', exportCourse(withFork), installMaps)).rejects.toThrow('not a Rhino Race course file');
+  delete withFork.forks[0]!.to;
+  delete withFork.forks[0]!.weight;
+  expect((await readCourseFile('old-fork.rhino-course.json', exportCourse(withFork), installMaps)).course.forks).toEqual(withFork.forks);
+});

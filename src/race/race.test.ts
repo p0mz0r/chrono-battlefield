@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CellGrid } from '../movement/index.js';
 import { loadCourse, mapHash, type CourseFile } from './course.js';
-import { chat, commandList, createRace, endRace, openJoinWindow, standings, tickRace, type Race, type Racer } from './race.js';
+import { chat, commandList, createRace, endRace, openJoinWindow, simulateRace, standings, tickRace, type Race, type Racer } from './race.js';
 import { TICK_HZ } from '../movement/index.js';
 import { readdirSync, readFileSync } from 'node:fs';
 import { describeInstall, readFromDir } from '../../test/install.js';
@@ -38,6 +38,37 @@ describe('course', () => {
   it('refuses a course whose map hash does not match the map file', () => {
     expect(() => loadCourse(loopCourse(), new TextEncoder().encode('another map'), ARENA)).toThrow(/hash/i);
     expect(loadCourse(loopCourse(), MAP, ARENA).waypoints.length).toBeGreaterThan(0);
+  });
+  it('drives a chosen fork through its via cell and rejoins at the next waypoint', () => {
+    const open = grid(Array.from({ length: 20 }, () => '.'.repeat(30)));
+    const file: CourseFile = { ...loopCourse(1), waypoints: [[14, 3], [19, 3], [24, 3]], laps: [], finish: [27, 3], forks: [{ from: 0, to: 2, via: [[14, 15], [24, 15]], weight: 100 }] };
+    const race = createRace(loadCourse(file, MAP, open), open, 5);
+    simulateRace(race, race.course, 1);
+    ticks(race, 3 * TICK_HZ);
+    const runner = race.racers[0]!;
+    let sawFork = false, sawVia = false;
+    for (let i = 0; i < 8000 && runner.finishedAt === undefined; i++) {
+      tickRace(race);
+      if (runner.fork) { sawFork = true; expect(runner.next).toBe(2); }
+      if (runner.fork?.nextVia === 1) sawVia = true;
+    }
+    expect(sawFork).toBe(true);
+    expect(sawVia).toBe(true);
+    expect(runner.fork).toBeUndefined();
+    expect(runner.finishedAt).toBeDefined();
+
+    file.forks![0]!.weight = 0;
+    const straight = createRace(loadCourse(file, MAP, open), open, 5);
+    simulateRace(straight, straight.course, 1);
+    ticks(straight, 3 * TICK_HZ);
+    let sawMainWaypoint = false;
+    for (let i = 0; i < 8000 && straight.racers[0]!.finishedAt === undefined; i++) {
+      tickRace(straight);
+      expect(straight.racers[0]!.fork).toBeUndefined();
+      if (straight.racers[0]!.next === 1) sawMainWaypoint = true;
+    }
+    expect(sawMainWaypoint).toBe(true);
+    expect(straight.racers[0]!.finishedAt).toBeDefined();
   });
 });
 
@@ -552,4 +583,15 @@ describeInstall('bundled courses', () => {
     expect(course.startGrid).toHaveLength(10);
     expect(course.finishArea.size).toBeGreaterThan(0);
   }, 30_000);
+});
+
+describe('editor simulation', () => {
+  it('races ten bots and no viewers, even over a running race', () => {
+    const race = racing();
+    simulateRace(race, course());
+    expect(race.phase).toBe('countdown');
+    expect(race.racers.map((r) => r.bot)).toEqual(new Array(10).fill(true));
+    ticks(race, 3 * TICK_HZ + 1);
+    expect(race.phase).toBe('racing');
+  });
 });
