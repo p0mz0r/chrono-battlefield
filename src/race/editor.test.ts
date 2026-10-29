@@ -48,6 +48,19 @@ it('suggests crossed bridges in line order and updates time', () => {
   expect(inspectCourse(one, bytes, grid).seconds).toBeLessThan(report.seconds!);
 });
 
+it('suggests a high bridge only when the ideal line is on its deck', () => {
+  const id = grid.bridges.length; // (9, 5), between waypoints (9, 2) and (9, 9)
+  grid.bridge[69] = id; grid.bridges.push({ kind: 'high', cells: [69] });
+  try {
+    grid.deck[69] = 4; // overhead: the line drives under it
+    expect(inspectCourse(file(), bytes, grid).suggestedBridges).not.toContainEqual([9, 5]);
+    grid.deck[69] = 0; // level with the ground: the line drives over it
+    expect(inspectCourse(file(), bytes, grid).suggestedBridges).toContainEqual([9, 5]);
+  } finally {
+    grid.bridge[69] = -1; grid.deck[69] = -1; grid.bridges.pop();
+  }
+});
+
 it('validates alternate via cells and traces their route to the merge waypoint', () => {
   const one = file();
   one.forks = [{ from: 0, to: 2, via: [[3, 7]] }];

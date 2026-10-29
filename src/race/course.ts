@@ -61,8 +61,8 @@ export interface Course {
   finish: Cell;
   /** Ground cell indices (`y * width + x`) of the finish area. */
   finishArea: Set<number>;
-  /** Ideal line: cell centres (cell units, centre = x + 0.5) from the start grid through every waypoint to the finish cell. */
-  line: { x: number; y: number }[];
+  /** Ideal line: cell centres (cell units, centre = x + 0.5) from the start grid through every waypoint to the finish cell, on the deck or the ground. */
+  line: { x: number; y: number; deck: boolean }[];
   /** Distance along the line (cells) at each line point. */
   along: number[];
   /** Distance along the line of each unrolled waypoint. */
@@ -101,14 +101,14 @@ export function loadCourse(file: CourseFile, mapBytes: Uint8Array, grid: CellGri
   const { points: waypoints, sources } = unroll(file), finish = cell(file.finish), startGrid = file.startGrid.map(cell);
   // The ideal line through `points`, start grid cell 0 to the finish cell.
   const trace = (points: Cell[], start = startGrid[0]!) => {
-    const line = [{ x: start.x + 0.5, y: start.y + 0.5 }], along = [0], waypointAlong: number[] = [];
+    const line = [{ x: start.x + 0.5, y: start.y + 0.5, deck: false }], along = [0], waypointAlong: number[] = [];
     let at: Spot = { ...start, deck: false };
     for (const to of points) {
       const route = findRoute(grid, at, to);
       if (!route) throw new Error(`Course "${file.name}": ${to.x},${to.y} can't be reached from ${at.x},${at.y}`);
       for (const face of route) {
         at = stepTo(grid, at, face)!;
-        const p = { x: at.x + 0.5, y: at.y + 0.5 }, q = line[line.length - 1]!;
+        const p = { x: at.x + 0.5, y: at.y + 0.5, deck: at.deck }, q = line[line.length - 1]!;
         line.push(p);
         along.push(along[along.length - 1]! + Math.hypot(p.x - q.x, p.y - q.y));
       }

@@ -73,9 +73,10 @@ export function inspectCourse(draft: CourseDraft, bytes: Uint8Array, grid: CellG
       const a = course.line[n - 1]!, b = course.line[n]!;
       const x = Math.floor(b.x), y = Math.floor(b.y), i = y * grid.width + x;
       const id = grid.bridge[i]!;
-      if (id >= 0 && !visited.has(id)) { visited.add(id); suggestedBridges.push([x, y]); }
+      // Only a bridge the ideal line drives on: a low one, or a high one's deck. Pieces left of a destroyed bridge and decks overhead don't count.
+      if (id >= 0 && (b.deck || grid.bridges[id]!.kind === 'low') && !visited.has(id)) { visited.add(id); suggestedBridges.push([x, y]); }
       // Rhino Speed=6, GameSpeedBias=1.6, 30 Hz; add a modest turn allowance.
-      seconds += Math.hypot(b.x - a.x, b.y - a.y) * 256 / (Math.floor(6 * 256 / 100) * 1.6 * 30 * (grid.deck[i]! >= 0 ? 1 : grid.speed[i]!)) * 1.15;
+      seconds += Math.hypot(b.x - a.x, b.y - a.y) * 256 / (Math.floor(6 * 256 / 100) * 1.6 * 30 * (b.deck ? 1 : grid.speed[i]!)) * 1.15;
     }
     return { errors, course, seconds, suggestedBridges };
   } catch (error) {
