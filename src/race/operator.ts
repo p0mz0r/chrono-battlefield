@@ -1,4 +1,6 @@
+import { readInstall } from '../install/read.js';
 import type { CourseFile } from './course.js';
+import { readCourseFile, removeImported, saveImported, type ImportedCourse } from './courseFile.js';
 import { endRace, openJoinWindow, type Race } from './race.js';
 import type { CameraMode } from './view.js';
 
@@ -47,21 +49,65 @@ export function duplicateFilter(): (action: string, source: string, now: number)
   };
 }
 
-/** In-page operator controls. Selection reloads only when the chosen course needs another battlefield. */
-export function mountOperator(race: Race, courses: Record<string, CourseFile>, current: string, switchCamera: (mode: CameraMode) => void, toggleMute: () => void): void {
+/**
+ * In-page operator controls. Selection reloads only when the chosen course needs another battlefield.
+ * `courses` holds bundled and `imported` courses by id; the Courses screen adds and removes imported ones.
+ */
+export function mountOperator(race: Race, courses: Record<string, CourseFile>, imported: ImportedCourse[], current: string, switchCamera: (mode: CameraMode) => void, toggleMute: () => void): void {
   const choices = readChoices();
   const save = () => localStorage.setItem(KEY, JSON.stringify(choices));
   switchCamera(choices.camera);
   const root = document.createElement('section');
   root.id = 'race-setup';
   root.hidden = true;
-  root.innerHTML = `<h1>RACE SETUP</h1><label>Course <select name="course"></select></label><label>Join window <input name="join" type="number" min="1" step="1"> s</label><label>Finish timer <input name="finish" type="number" min="1" step="1"> s</label><fieldset><legend>Audience interactions</legend></fieldset><p>Keys: S setup · Enter start · P pause · E E end · C camera · M mute · F2 install</p>`;
+  root.innerHTML = `<div class="setup"><h1>RACE SETUP</h1><label>Course <select name="course"></select></label><button type="button" name="import">Import courses…</button><label>Join window <input name="join" type="number" min="1" step="1"> s</label><label>Finish timer <input name="finish" type="number" min="1" step="1"> s</label><fieldset><legend>Audience interactions</legend></fieldset><p>Keys: S setup · Enter start · P pause · E E end · C camera · M mute · F2 install</p></div>
+    <div class="courses" hidden><h1>COURSES</h1><label>Import course files (.rhino-course.json) <input name="files" type="file" multiple accept=".json"></label>
+    <div class="messages" role="status"></div><ul></ul><button type="button" name="back">Back to race setup</button></div>`;
   document.body.append(root);
   const select = root.querySelector<HTMLSelectElement>('[name=course]')!;
-  select.add(new Option('Random course', 'random'));
-  for (const [id, file] of Object.entries(courses)) select.add(new Option(`${file.name} · ${file.map} · ~${estimatedSeconds(file)} s`, id));
-  select.value = choices.course || current;
-  if (!select.value) select.value = current;
+  const fill = () => {
+    select.replaceChildren(new Option('Random course', 'random'));
+    for (const [id, file] of Object.entries(courses)) select.add(new Option(`${file.name} · ${file.map} · ~${estimatedSeconds(file)} s${id.startsWith('imported/') ? ' · imported' : ''}`, id));
+    select.value = choices.course || current;
+    if (!select.value) select.value = current;
+  };
+  fill();
+  const setup = root.querySelector<HTMLElement>('.setup')!, screen = root.querySelector<HTMLElement>('.courses')!;
+  const files = screen.querySelector<HTMLInputElement>('[name=files]')!, messages = screen.querySelector('.messages')!, list = screen.querySelector('ul')!;
+  const showCourses = (open: boolean) => { setup.hidden = open; screen.hidden = !open; };
+  const listImported = () => list.replaceChildren(...imported.map((entry) => {
+    const item = document.createElement('li'), remove = document.createElement('button'), { course } = entry;
+    // Custom maps keep their credit (ADR 0006); the link is text, so clicking can't navigate the OBS source away.
+    item.textContent = `${course.name} · ${course.map}${course.source === 'shipped' ? ` · map by ${course.author}, ${course.link}` : ''} `;
+    remove.type = 'button'; remove.textContent = 'Remove';
+    remove.onclick = async () => {
+      await removeImported(entry.id);
+      imported.splice(imported.indexOf(entry), 1);
+      delete courses[entry.id];
+      listImported(); fill();
+    };
+    item.append(remove);
+    return item;
+  }));
+  listImported();
+  root.querySelector<HTMLButtonElement>('[name=import]')!.onclick = () => showCourses(true);
+  screen.querySelector<HTMLButtonElement>('[name=back]')!.onclick = () => showCourses(false);
+  files.onchange = async () => {
+    const lines: string[] = [];
+    for (const file of files.files ?? []) {
+      try {
+        const text = await file.text().catch(() => { throw new Error(`Couldn't read ${file.name}`); });
+        const entry = await readCourseFile(file.name, text, (path) => readInstall(path));
+        await saveImported(entry);
+        imported.splice(0, imported.length, ...imported.filter((other) => other.id !== entry.id), entry);
+        courses[entry.id] = entry.course;
+        lines.push(`Imported ${entry.course.name}`);
+      } catch (error) { lines.push(error instanceof Error ? error.message : String(error)); }
+    }
+    messages.textContent = lines.join('\n');
+    files.value = '';
+    listImported(); fill();
+  };
   const join = root.querySelector<HTMLInputElement>('[name=join]')!, finish = root.querySelector<HTMLInputElement>('[name=finish]')!;
   join.value = String(choices.joinSeconds); finish.value = String(choices.finishSeconds);
   const fieldset = root.querySelector('fieldset')!;
@@ -103,7 +149,7 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, c
   const act = (action: string, source: string) => {
     const now = performance.now();
     if (duplicate(action, source, now)) return;
-    if (action === 'setup' && ['idle', 'results', 'cancelled'].includes(race.phase)) { root.hidden = false; prompt.textContent = ''; }
+    if (action === 'setup' && ['idle', 'results', 'cancelled'].includes(race.phase)) { root.hidden = false; showCourses(false); prompt.textContent = ''; }
     else if (action === 'start') {
       if (source === 'hotkey' && !choices.course && root.hidden) root.hidden = false;
       else start();

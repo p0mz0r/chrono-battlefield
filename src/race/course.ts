@@ -26,6 +26,23 @@ export interface CourseFile {
   bridges: XY[];
 }
 
+/** A course's file name: `courses/<slug>.json`. */
+export const courseSlug = (name: string) => name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+/** Whether untrusted JSON has a course file's shape; install maps are paths inside the install, custom maps plain file names. */
+export function isCourseFile(file: unknown): file is CourseFile {
+  if (!file || typeof file !== 'object') return false;
+  const f = file as Record<string, unknown>;
+  const cell = (p: unknown) => Array.isArray(p) && p.length === 2 && p.every((n) => Number.isInteger(n) && n >= 0);
+  return typeof f.name === 'string' && !!f.name.trim() && typeof f.mapHash === 'string' && /^crc32:[0-9a-f]{8}$/.test(f.mapHash) &&
+    typeof f.map === 'string' && !f.map.includes('..') &&
+    (f.source === 'install' ? /^[\w .\-\\/]+\.(mmx|yro|map|yrm|mpr)$/i : f.source === 'shipped' ? /^[\w.-]+\.(map|yrm|mpr)$/i : /$^/).test(f.map) &&
+    typeof f.author === 'string' && typeof f.link === 'string' &&
+    Array.isArray(f.startGrid) && f.startGrid.length === 10 && Array.isArray(f.waypoints) && Array.isArray(f.laps) && Array.isArray(f.bridges) &&
+    [...f.startGrid, ...f.waypoints, f.finish, ...f.bridges].every(cell) &&
+    f.laps.every((lap) => lap && typeof lap === 'object' && ['from', 'to', 'count'].every((key) => Number.isInteger((lap as Record<string, unknown>)[key])));
+}
+
 /** A course loaded over its battlefield's grid. */
 export interface Course {
   file: CourseFile;

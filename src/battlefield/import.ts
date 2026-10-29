@@ -39,7 +39,7 @@ export async function importBattlefield(read: ReadFile, path: string, mounted?: 
   const stock = new Stock(map, mounted ?? await mountTheater(read, theater));
 
   const terrain = bakeTerrain(stock);
-  const { images, objects, missingArt, unknownTypes } = placeObjects(stock, terrain.originX, terrain.originY);
+  const { images, objects, missingArt, unknownTypes, missingOverlays } = placeObjects(stock, terrain.originX, terrain.originY);
   const reasons: string[] = [];
   if (terrain.missing) reasons.push(`${terrain.missing} cells have no tile art in ${theater}`);
   if (missingArt.size) reasons.push(`no art in ${theater} for ${[...missingArt].join(', ')}`);
@@ -48,6 +48,7 @@ export async function importBattlefield(read: ReadFile, path: string, mounted?: 
 
   const warnings: string[] = [];
   const units = map.units.length + map.infantry.length + map.aircraft.length;
+  if (missingOverlays.size) warnings.push(`no art in ${theater} for building overlays (skipped): ${[...missingOverlays].join(', ')}`);
   if (units) warnings.push(`dropped ${units} units, infantry and aircraft`);
   const countries = new Set(stock.typeList('Countries').map((c) => c.toLowerCase()));
   const overrides = map.ini.sectionNames().filter((name) => {

@@ -28,7 +28,12 @@ export interface Objects {
   missingArt: Set<string>;
   /** Trees and buildings that no type list (stock or the map's) names. */
   unknownTypes: Set<string>;
+  /** `<building>: <overlay>` for building overlays with no art in this theater: skipped, the base still draws. */
+  missingOverlays: Set<string>;
 }
+
+// Art keys a building draws over (or, the bib, under) its base image; undamaged and powered, the battlefield has neither.
+const BUILDING_PARTS = ['ActiveAnim', 'ActiveAnimTwo', 'ActiveAnimThree', 'ActiveAnimFour', 'BibShape'];
 
 // CNCMaps' high-bridge frame variation for frames 0 and 9 (FrameDeciders.cs @56712d7).
 const BRIDGE_VARIATION = [0, 1, 2, 3, 3, 2, 1, 0, 2, 3, 0, 1, 1, 0, 3, 2];
@@ -39,7 +44,7 @@ const BRIDGE_VARIATION = [0, 1, 2, 3, 3, 2, 1, 0, 2, 3, 0, 1, 1, 0, 3, 2];
  */
 export function placeObjects(stock: Stock, originX: number, originY: number): Objects {
   const { map } = stock;
-  const out: Objects = { images: [], objects: [], missingArt: new Set(), unknownTypes: new Set() };
+  const out: Objects = { images: [], objects: [], missingArt: new Set(), unknownTypes: new Set(), missingOverlays: new Set() };
   const level = new Map<number, number>();
   for (const t of map.tiles) level.set(t.y * 1000 + t.x, t.z);
   const shps = new Map<string, ShpFile>();
@@ -105,8 +110,18 @@ export function placeObjects(stock: Stock, originX: number, originY: number): Ob
     if (s.x === undefined || s.y === undefined) continue;
     if (!buildings.has(s.type)) { out.unknownTypes.add(s.type); continue; }
     if (stock.invisible(s.type)) continue;
-    const [fw, fh] = foundation(stock, s.type);
-    place(s.type, s.x, s.y, 0, 'unit', 30, 0, (s.x + s.y + fw + fh) * 15, 'building');
+    const [fw, fh] = foundation(stock, s.type), z = (s.x + s.y + fw + fh) * 15;
+    place(s.type, s.x, s.y, 0, 'unit', 30, 0, z, 'building');
+    // Overlays are centred like the base (CNCMaps); a still frame (LoopStart) is enough. The bib lies under the base.
+    // ponytail: fixed depth just above the base, not RA2's ActiveAnim…YSort/ZAdjust; read those if an overlay sorts wrong against a neighbour.
+    const art = stock.artOf(s.type);
+    for (const [i, key] of BUILDING_PARTS.entries()) {
+      const part = art?.getString(key);
+      if (!part) continue;
+      if (!stock.artFile(part)) { out.missingOverlays.add(`${s.type}: ${part}`); continue; }
+      const bib = key === 'BibShape';
+      place(part, s.x, s.y, bib ? 0 : stock.art.getSection(part)?.getInt('LoopStart') ?? 0, 'unit', 30, 0, bib ? z - 1 : z + (i + 1) / 8, 'building');
+    }
   }
   return out;
 }

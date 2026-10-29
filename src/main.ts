@@ -11,6 +11,7 @@ import { chat, commandList, createRace, secondsLeft, standings, tickRace, type R
 import { directorShot, type Shot } from './race/camera.js';
 import { mountStreamView, type CameraMode } from './race/view.js';
 import { mountOperator, readChoices } from './race/operator.js';
+import { importedCourses } from './race/courseFile.js';
 
 // The race page: a bundled course over its battlefield, the race as the stream sees it (camera modes in race/camera.ts,
 // overlay in race/view.ts; the dev panel's button switches Overview / Director).
@@ -91,8 +92,8 @@ function hudText(race: Race): string {
 
 async function main() {
   if (import.meta.env.DEV) {
-    const next = sessionStorage.getItem('courseEditorNextMap');
-    if (next) { sessionStorage.removeItem('courseEditorNextMap'); location.href = next; return; }
+    const next = sessionStorage.getItem('courseEditorNext');
+    if (next) { sessionStorage.removeItem('courseEditorNext'); location.href = next; return; }
   }
   let live: Race | undefined; // install setup stays off stream while a race runs
   bindSetupKey(() => !live || ['idle', 'results', 'cancelled'].includes(live.phase));
@@ -105,17 +106,23 @@ async function main() {
   }
   const savedCourse = readChoices().course;
   const courseName = params.get('course') ?? (savedCourse && savedCourse !== 'random' ? savedCourse : undefined), edit = import.meta.env.DEV && params.get('edit') === '1';
-  let file = Object.entries(COURSES).find(([path]) => !courseName || path === courseName || path.endsWith(`/${courseName}.json`))?.[1];
+  // Bundled courses, then those the operator imported (race setup > Import courses), by id.
+  const imported = edit ? [] : await importedCourses().catch(() => []);
+  const courses: Record<string, CourseFile> = { ...COURSES, ...Object.fromEntries(imported.map((entry) => [entry.id, entry.course])) };
+  const find = (name?: string) => Object.entries(courses).find(([path]) => !name || path === name || path.endsWith(`/${name}.json`))?.[1];
+  // A remembered choice may since have been removed (an imported course): then the first course.
+  let file = find(courseName) ?? (params.has('course') ? undefined : find());
   if (!file && !edit) throw new Error(`No course ${courseName}`);
   const mapPath = edit && params.get('map') || file!.map;
   const source = edit && params.get('map') ? (params.get('source') === 'shipped' ? 'shipped' : 'install') : file!.source;
-  const url = source !== 'shipped' ? undefined : import.meta.env.DEV ? `/courses/maps/${encodeURIComponent(mapPath)}` : await COURSE_MAPS[`../courses/maps/${mapPath}`]?.();
-  if (source === 'shipped' && !url) throw new Error(`Missing shipped map ${mapPath}`);
+  const embedded = imported.find((entry) => entry.course === file)?.map;
+  const url = source !== 'shipped' || embedded ? undefined : import.meta.env.DEV ? `/courses/maps/${encodeURIComponent(mapPath)}` : await COURSE_MAPS[`../courses/maps/${mapPath}`]?.();
+  if (source === 'shipped' && !url && !embedded) throw new Error(`Missing shipped map ${mapPath}`);
   const read = source === 'shipped' ? async (path: string, offset?: number, length?: number) => {
     if (path !== mapPath) return readInstall(path, offset, length);
-    const response = await fetch(url!);
-    if (!response.ok) throw new Error(`Missing shipped map ${mapPath}`);
-    const bytes = new Uint8Array(await response.arrayBuffer());
+    const response = embedded ? undefined : await fetch(url!);
+    if (response && !response.ok) throw new Error(`Missing shipped map ${mapPath}`);
+    const bytes = embedded ?? new Uint8Array(await response!.arrayBuffer());
     return offset === undefined ? bytes : bytes.subarray(offset, offset + length!);
   } : readInstall;
   const started = performance.now();
@@ -426,9 +433,9 @@ async function main() {
   const loadMs = Math.round(performance.now() - started);
   document.body.dataset.load = `${loadMs},${cached ? 'cached' : 'imported'}`;
   status.textContent = `${course.file.name} on ${mapPath} (${map.theater}, ${cached ? 'from cache' : 'imported'} in ${loadMs} ms), ideal line ${course.length.toFixed(0)} cells. G: passability and ideal line.`;
-  if (edit) (await import('./race/editor.js')).mountEditor(app, world, grid, mapBytes, file!, toScreen, params.has('map'));
+  if (edit) (await import('./race/editor.js')).mountEditor(app, world, grid, mapBytes, file!, toScreen, params.has('map') ? '' : Object.entries(COURSES).find(([, c]) => c === file)![0].replace(/^.*\/|\.json$/g, ''));
   else {
-    mountOperator(race, COURSES, Object.entries(COURSES).find(([, candidate]) => candidate === file)?.[0] ?? '', (mode) => { cameraMode = mode; }, sounds.mute);
+    mountOperator(race, courses, imported, Object.entries(courses).find(([, candidate]) => candidate === file)?.[0] ?? '', (mode) => { cameraMode = mode; }, sounds.mute);
     // Chat from outside the page (e.g. Streamer.bot via obs-websocket obs-browser emit_event): `chronoChat` with { viewerId, name, text }.
     addEventListener('chronoChat', (event) => {
       const { viewerId, name, text } = (event as CustomEvent).detail ?? {};
