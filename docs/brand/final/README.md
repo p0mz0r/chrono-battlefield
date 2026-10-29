@@ -15,3 +15,5 @@ Concept 4 was selected for Rhino Race: Chrono Battlefield. The illustration is o
 | [favicon.ico](favicon.ico) | Browser icon containing 16 × 16 and 32 × 32 sizes |
 
 The 72, 144, 32, and 16 px icons were visually checked at their actual sizes. The tank and track read at Stream Deck sizes; the cyan/red ring remains recognizable at favicon sizes.
+
+The transparent files have a clean matte: the emblem is fully opaque inside its dark outline (the white checker squares included) with no pale fringe, and the lettering is set from the font file rather than cut out of an image. `logo-light.png` has dark lettering for light backgrounds; on a dark background use `logo-dark.png`.
