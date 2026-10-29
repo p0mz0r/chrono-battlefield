@@ -21,4 +21,12 @@ describeInstall('building overlays', () => {
     expect(skipped.missingOverlays).toContain('CAOILD: CAOILD_F');
     expect(skipped.missingArt.size).toBe(0);
   }, 30_000);
+
+  it('draws the tech outpost repair pad (IdleAnim) over its base', async () => {
+    const map = await loadMap(readFromDir, 'Carville.mmx');
+    const stock = new Stock(map, await mountTheater(readFromDir, map.theater));
+    const outpost = map.structures.find((s) => s.type === 'CAOUTP')!;
+    const placed = placeObjects(stock, 0, 0).objects.filter((o) => o.kind === 'building' && o.cellX === outpost.x && o.cellY === outpost.y);
+    expect(placed).toHaveLength(4); // base, CAOUTP_F, CAOUTP_D, CAOUTPBB
+  }, 30_000);
 });

@@ -32,8 +32,8 @@ export interface Objects {
   missingOverlays: Set<string>;
 }
 
-// Art keys a building draws over (or, the bib, under) its base image; undamaged and powered, the battlefield has neither.
-const BUILDING_PARTS = ['ActiveAnim', 'ActiveAnimTwo', 'ActiveAnimThree', 'ActiveAnimFour', 'BibShape'];
+// Art keys a building draws over (or, the bib, under) its base image: at rest (IdleAnim, not SpecialAnim), undamaged and powered.
+const BUILDING_PARTS = ['ActiveAnim', 'ActiveAnimTwo', 'ActiveAnimThree', 'ActiveAnimFour', 'IdleAnim', 'IdleAnimTwo', 'BibShape'];
 
 // CNCMaps' high-bridge frame variation for frames 0 and 9 (FrameDeciders.cs @56712d7).
 const BRIDGE_VARIATION = [0, 1, 2, 3, 3, 2, 1, 0, 2, 3, 0, 1, 1, 0, 3, 2];
