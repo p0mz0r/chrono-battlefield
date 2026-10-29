@@ -1,6 +1,6 @@
 import { Container as PixiContainer, Graphics, Point, Text, type Application, type Container } from 'pixi.js';
 import type { CellGrid } from '../battlefield/grid.js';
-import { courseSlug, finishAreaOf, mapHash, type CourseFile } from './course.js';
+import { courseSlug, finishAreaOf, mapHash, type CourseFile, type LinePoint } from './course.js';
 import { exportCourse } from './courseFile.js';
 import { closestSegment, inspectCourse, type CourseDraft } from './editorModel.js';
 import { simulateRace, type Race } from './race.js';
@@ -59,7 +59,7 @@ export function mountEditor(app: Application, world: Container, grid: CellGrid, 
   let drag: { kind: 'start' | 'finish' | 'waypoint' | 'fork' | 'bridge'; index: number; fork?: number } | undefined;
   let pan: { x: number; y: number; wx: number; wy: number } | undefined;
   const history = [JSON.stringify(file)];
-  let historyAt = 0, clean = history[0]!, writing = false, lastLine: { x: number; y: number }[] | undefined;
+  let historyAt = 0, clean = history[0]!, writing = false, lastLine: LinePoint[] | undefined;
   let typing = '', typed = ''; // the text field being typed in, and the one the last history step came from
   const restore = (step: number) => {
     historyAt = step; typed = '';
@@ -159,8 +159,9 @@ export function mountEditor(app: Application, world: Container, grid: CellGrid, 
     $('.save-reason').textContent = result.errors.length ? `${result.errors.length} issue${result.errors.length === 1 ? '' : 's'} to fix before saving. See Validation above.` : '';
     art.clear();
     labels.removeChildren().forEach((label) => label.destroy());
+    const linePoint = (p: LinePoint) => { const i = Math.floor(p.y) * grid.width + Math.floor(p.x); return toScreen(p.x, p.y, (p.deck ? grid.deck[i] : grid.level[i]) ?? 0); };
     if (lastLine) for (const [width, color, alpha] of [[5, OUTLINE, 0.5], [2.5, 0xffffff, result.errors.length ? 0.3 : 0.9]] as const) {
-      lastLine.forEach((p, i) => { const s = toScreen(p.x, p.y, grid.level[Math.floor(p.y) * grid.width + Math.floor(p.x)] ?? 0); i ? art.lineTo(s.x, s.y) : art.moveTo(s.x, s.y); });
+      lastLine.forEach((p, i) => { const s = linePoint(p); i ? art.lineTo(s.x, s.y) : art.moveTo(s.x, s.y); });
       art.stroke({ color, width: width / world.scale.x, alpha });
     }
     area.clear();
@@ -169,7 +170,7 @@ export function mountEditor(app: Application, world: Container, grid: CellGrid, 
       area.poly([p.x, p.y, p.x + 30, p.y + 15, p.x, p.y + 30, p.x - 30, p.y + 15]).fill({ color: (x + y) % 2 ? 0xffffff : 0x111111, alpha: 0.6 });
     }
     if (result.course) for (const fork of result.course.forks.values()) {
-      fork.line.forEach((p, i) => { const s = toScreen(p.x, p.y, grid.level[Math.floor(p.y) * grid.width + Math.floor(p.x)] ?? 0); i ? art.lineTo(s.x, s.y) : art.moveTo(s.x, s.y); });
+      fork.line.forEach((p, i) => { const s = linePoint(p); i ? art.lineTo(s.x, s.y) : art.moveTo(s.x, s.y); });
       art.stroke({ color: 0x9de675, width: 3 / world.scale.x, alpha: 0.9 });
     }
     if (mode === 'fork') {
