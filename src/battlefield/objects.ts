@@ -1,4 +1,7 @@
-import { ShpFile } from '../ra2/index.js';
+import { RHINO_FOOTPRINT_PX } from '../assets/rhino.js';
+import { HvaFile, Palette, ShpFile, VxlFile } from '../ra2/index.js';
+import { deriveModelScale, PX_PER_UNIT_Z, renderTurretToSprite } from '../ra2/render/voxelRender.js';
+import type { ConvertedSprite } from '../ra2/render/sprite.js';
 import { foundation, isHighBridge } from './grid.js';
 import type { Stock } from './stock.js';
 
@@ -63,6 +66,8 @@ export function placeObjects(stock: Stock, originX: number, originY: number): Ob
   const shps = new Map<string, ShpFile>();
   const images = new Map<string, number>();
   const ramps = new Map<string, Uint8Array>();
+  const turrets = new Map<string, { sprite: ConvertedSprite; pivot: [number, number] }>();
+  let rhinoScale: number | undefined;
   // The unit palette in an owner's house colour (rules `Color=` of its country or house, looked up in `[Colors]`), else as filed.
   const unitPalette = (owner: string) => {
     const hsv = map.ini.getSection(owner)?.getString('Color') || stock.rulesOf(owner)?.getString('Color');
@@ -145,6 +150,42 @@ export function placeObjects(stock: Stock, originX: number, originY: number): Ob
       const bib = key === 'BibShape';
       place(part, s.x, s.y, bib ? 0 : stock.art.getSection(part)?.getInt('LoopStart') ?? 0, 'unit', 30, 0, bib ? z - 1 : z + (i + 1) / 8, 'building', s.owner);
     }
+    // A voxel turret (the Grand Cannon's gun, with its `<Image>barl` barrel when there is one): its prerender at the
+    // Rhino's scale, facing the map's facing (field 5, 0..255; frame 0 looks along -x, facing 0 along -y), its ground pivot TurretAnimX/Y px from the base's centre.
+    // The map's own section of the type wins over stock rules.
+    const rule = (key: string) => map.ini.getSection(s.type)?.getString(key) || stock.rulesOf(s.type)?.getString(key) || '';
+    const tur = rule('TurretAnim').toLowerCase();
+    if (!tur || !/^[yt1]/i.test(rule('TurretAnimIsVoxel'))) continue;
+    if (!stock.vfs.exists(`${tur}.vxl`) || !stock.vfs.exists(`${tur}.hva`)) { out.missingOverlays.add(`${s.type}: ${tur}`); continue; }
+    let turret = turrets.get(`${tur}:${s.owner}`);
+    if (!turret) {
+      const vxl = VxlFile.parse(stock.need(`${tur}.vxl`)), palette = Palette.parse(new Uint8Array(768));
+      const barl = `${(rule('Image') || s.type).toLowerCase()}barl`, hasBarl = stock.vfs.exists(`${barl}.vxl`) && stock.vfs.exists(`${barl}.hva`);
+      palette.rgb.set(s.owner ? unitPalette(s.owner) : stock.palette('unit'));
+      rhinoScale ??= deriveModelScale(VxlFile.parse(stock.need('htnk.vxl')).sections, RHINO_FOOTPRINT_PX);
+      const { sprite } = renderTurretToSprite(tur, vxl, vxl, HvaFile.parse(stock.need(`${tur}.hva`)), palette,
+        hasBarl ? VxlFile.parse(stock.need(`${barl}.vxl`)) : undefined, hasBarl ? HvaFile.parse(stock.need(`${barl}.hva`)) : undefined,
+        { footprintPx: rhinoScale / deriveModelScale(vxl.sections, 1) });
+      // The sprite rotates about the turret's bounds centre; RA2's pivot is bounds (0, 0, 0), straight below it.
+      // ponytail: the centre's 1-2 voxel x/y offset from (0, 0) is dropped; rotate it by the facing if a turret sits off its pad.
+      const sec = vxl.sections[0]!, below = (sec.minBounds[2] + sec.maxBounds[2]) / 2 * sec.scale * rhinoScale * PX_PER_UNIT_Z;
+      turrets.set(`${tur}:${s.owner}`, turret = { sprite, pivot: [sprite.origin![0], sprite.origin![1] + below] });
+    }
+    const { sprite, pivot } = turret, facing = (Math.round(Number(s.fields[5] ?? 0) / 8) + 8) & 31, key = `${tur}.vxl:${facing}:${s.owner}`;
+    const f = sprite.frames[facing]!;
+    let image = images.get(key);
+    if (image === undefined) {
+      const rgba = new Uint8ClampedArray(f.w * f.h * 4);
+      for (let y = 0; y < f.h; y++) rgba.set(sprite.colorRgba.subarray(((f.y + y) * sprite.atlasWidth + f.x) * 4, ((f.y + y) * sprite.atlasWidth + f.x + f.w) * 4), y * f.w * 4);
+      image = out.images.push({ width: f.w, height: f.h, rgba }) - 1;
+      images.set(key, image);
+    }
+    const z0 = level.get(s.y * 1000 + s.x) ?? 0;
+    out.objects.push({
+      image, kind: 'building', cellX: s.x, cellY: s.y, z: z + 1,
+      x: (s.x - s.y) * 30 - originX + 30 + Number(rule('TurretAnimX') || 0) - Math.round(pivot[0]),
+      y: (s.x + s.y - z0) * 15 - originY + Number(rule('TurretAnimY') || 0) - Math.round(pivot[1]),
+    });
   }
   return out;
 }
