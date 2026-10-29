@@ -27,6 +27,22 @@ describeInstall('building overlays', () => {
     const stock = new Stock(map, await mountTheater(readFromDir, map.theater));
     const outpost = map.structures.find((s) => s.type === 'CAOUTP')!;
     const placed = placeObjects(stock, 0, 0).objects.filter((o) => o.kind === 'building' && o.cellX === outpost.x && o.cellY === outpost.y);
-    expect(placed).toHaveLength(4); // base, CAOUTP_F, CAOUTP_D, CAOUTPBB
+    expect(placed).toHaveLength(5); // base, CAOUTP_F, CAOUTP_D, CAOUTPBB, the OUTP voxel gun
+  }, 30_000);
+});
+
+describeInstall('house colour', () => {
+  it('draws a neutral building\'s remap ramp grey, not the file\'s red', async () => {
+    const map = await loadMap(readFromDir, 'DeepFrze.yro');
+    const stock = new Stock(map, await mountTheater(readFromDir, map.theater));
+    const { images, objects } = placeObjects(stock, 0, 0);
+    const cannon = objects.find((o) => o.kind === 'building' && o.cellX === 75 && o.cellY === 112)!;
+    const { rgba } = images[cannon.image]!;
+    let red = 0;
+    for (let p = 0; p < rgba.length; p += 4) if (rgba[p + 3] && rgba[p]! > 128 && rgba[p + 1] === 0 && rgba[p + 2] === 0) red++;
+    expect(red).toBe(0);
+    // The voxel gun and barrel stand on the base: a second, wider image at the same cell.
+    const gun = objects.filter((o) => o.cellX === 75 && o.cellY === 112)[1]!;
+    expect(images[gun.image]!.width).toBeGreaterThan(images[cannon.image]!.width);
   }, 30_000);
 });

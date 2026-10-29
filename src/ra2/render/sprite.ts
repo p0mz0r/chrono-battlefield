@@ -48,6 +48,8 @@ export interface ConvertedSprite {
     readonly offsetX: number;
     readonly offsetY: number;
   }[];
+  /** Voxel prerenders only: the pixel in every frame that the model's rotation origin projects to. */
+  readonly origin?: readonly [number, number];
   /** True for a procedurally-generated VXL placeholder (see makeVehiclePlaceholder). */
   readonly placeholder?: boolean;
   /** True for a cameo composited from a techno's own art (see cameo.ts composeCameo). */

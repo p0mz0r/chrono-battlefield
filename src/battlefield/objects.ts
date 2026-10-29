@@ -1,4 +1,7 @@
-import { ShpFile } from '../ra2/index.js';
+import { RHINO_FOOTPRINT_PX } from '../assets/rhino.js';
+import { HvaFile, Palette, ShpFile, VxlFile } from '../ra2/index.js';
+import { deriveModelScale, PX_PER_UNIT_Z, renderTurretToSprite } from '../ra2/render/voxelRender.js';
+import type { ConvertedSprite } from '../ra2/render/sprite.js';
 import { foundation, isHighBridge } from './grid.js';
 import type { Stock } from './stock.js';
 
@@ -39,6 +42,19 @@ const BUILDING_PARTS = ['ActiveAnim', 'ActiveAnimTwo', 'ActiveAnimThree', 'Activ
 const BRIDGE_VARIATION = [0, 1, 2, 3, 3, 2, 1, 0, 2, 3, 0, 1, 1, 0, 3, 2];
 
 /**
+ * The unit palette with its remap ramp (16..31, pure red in the file) recoloured to a `[Colors]` entry (H,S,V, 0-255 each).
+ * ponytail: ramp brightness is the red ramp's own, scaled onto the colour's V; CNCMaps' exact ramp is not read.
+ */
+function remapped(rgb: Uint8Array, hsv: number[]): Uint8Array {
+  const out = rgb.slice(), [h, s, v] = [hsv[0]! / 255 * 6, hsv[1]! / 255, hsv[2]! / 255];
+  for (let i = 16; i <= 31; i++) {
+    const value = v * rgb[i * 3]! / 255, f = (n: number) => { const k = (n + h) % 6; return Math.round(255 * value * (1 - s * Math.max(0, Math.min(k, 4 - k, 1)))); };
+    out[i * 3] = f(5); out[i * 3 + 1] = f(3); out[i * 3 + 2] = f(1);
+  }
+  return out;
+}
+
+/**
  * Places overlay, trees and buildings the way CNCMaps draws them: the SHP canvas centred on the cell's tile
  * top-left plus (30, 0) for overlay and buildings, (30, 15) for trees. `originX/Y` is the terrain's origin.
  */
@@ -49,20 +65,32 @@ export function placeObjects(stock: Stock, originX: number, originY: number): Ob
   for (const t of map.tiles) level.set(t.y * 1000 + t.x, t.z);
   const shps = new Map<string, ShpFile>();
   const images = new Map<string, number>();
+  const ramps = new Map<string, Uint8Array>();
+  const turrets = new Map<string, { sprite: ConvertedSprite; pivot: [number, number] }>();
+  let rhinoScale: number | undefined;
+  // The unit palette in an owner's house colour (rules `Color=` of its country or house, looked up in `[Colors]`), else as filed.
+  const unitPalette = (owner: string) => {
+    const hsv = map.ini.getSection(owner)?.getString('Color') || stock.rulesOf(owner)?.getString('Color');
+    const value = hsv && stock.rules.getSection('Colors')?.getString(hsv);
+    if (!value) return stock.palette('unit');
+    let ramp = ramps.get(value);
+    if (!ramp) ramps.set(value, ramp = remapped(stock.palette('unit'), value.split(',').map(Number)));
+    return ramp;
+  };
 
   const place = (
     type: string, cx: number, cy: number, frame: number, pal: 'iso' | 'unit' | 'theater',
-    dx: number, dy: number, z: number, kind: PlacedObject['kind'],
+    dx: number, dy: number, z: number, kind: PlacedObject['kind'], owner = '',
   ) => {
     const file = stock.artFile(type);
     if (!file) { out.missingArt.add(type); return; }
     let shp = shps.get(file);
     if (!shp) { shp = ShpFile.parse(stock.need(file)); shps.set(file, shp); }
     if (frame >= shp.count) frame = 0;
-    const key = `${file}:${frame}:${pal}`;
+    const key = `${file}:${frame}:${pal}:${owner}`;
     let image = images.get(key);
     if (image === undefined) {
-      const f = shp.frame(frame), rgb = stock.palette(pal);
+      const f = shp.frame(frame), rgb = pal === 'unit' && owner ? unitPalette(owner) : stock.palette(pal);
       if (!f.pixels.length) return;
       const rgba = new Uint8ClampedArray(f.cx * f.cy * 4);
       for (let p = 0; p < f.pixels.length; p++) {
@@ -111,7 +139,7 @@ export function placeObjects(stock: Stock, originX: number, originY: number): Ob
     if (!buildings.has(s.type)) { out.unknownTypes.add(s.type); continue; }
     if (stock.invisible(s.type)) continue;
     const [fw, fh] = foundation(stock, s.type), z = (s.x + s.y + fw + fh) * 15;
-    place(s.type, s.x, s.y, 0, 'unit', 30, 0, z, 'building');
+    place(s.type, s.x, s.y, 0, 'unit', 30, 0, z, 'building', s.owner);
     // Overlays are centred like the base (CNCMaps); a still frame (LoopStart) is enough. The bib lies under the base.
     // ponytail: fixed depth just above the base, not RA2's ActiveAnim…YSort/ZAdjust; read those if an overlay sorts wrong against a neighbour.
     const art = stock.artOf(s.type);
@@ -120,8 +148,44 @@ export function placeObjects(stock: Stock, originX: number, originY: number): Ob
       if (!part) continue;
       if (!stock.artFile(part)) { out.missingOverlays.add(`${s.type}: ${part}`); continue; }
       const bib = key === 'BibShape';
-      place(part, s.x, s.y, bib ? 0 : stock.art.getSection(part)?.getInt('LoopStart') ?? 0, 'unit', 30, 0, bib ? z - 1 : z + (i + 1) / 8, 'building');
+      place(part, s.x, s.y, bib ? 0 : stock.art.getSection(part)?.getInt('LoopStart') ?? 0, 'unit', 30, 0, bib ? z - 1 : z + (i + 1) / 8, 'building', s.owner);
     }
+    // A voxel turret (the Grand Cannon's gun, with its `<Image>barl` barrel when there is one): its prerender at the
+    // Rhino's scale, facing the map's facing (field 5, 0..255; frame 0 looks along -x, facing 0 along -y), its ground pivot TurretAnimX/Y px from the base's centre.
+    // The map's own section of the type wins over stock rules.
+    const rule = (key: string) => map.ini.getSection(s.type)?.getString(key) || stock.rulesOf(s.type)?.getString(key) || '';
+    const tur = rule('TurretAnim').toLowerCase();
+    if (!tur || !/^[yt1]/i.test(rule('TurretAnimIsVoxel'))) continue;
+    if (!stock.vfs.exists(`${tur}.vxl`) || !stock.vfs.exists(`${tur}.hva`)) { out.missingOverlays.add(`${s.type}: ${tur}`); continue; }
+    let turret = turrets.get(`${tur}:${s.owner}`);
+    if (!turret) {
+      const vxl = VxlFile.parse(stock.need(`${tur}.vxl`)), palette = Palette.parse(new Uint8Array(768));
+      const barl = `${(rule('Image') || s.type).toLowerCase()}barl`, hasBarl = stock.vfs.exists(`${barl}.vxl`) && stock.vfs.exists(`${barl}.hva`);
+      palette.rgb.set(s.owner ? unitPalette(s.owner) : stock.palette('unit'));
+      rhinoScale ??= deriveModelScale(VxlFile.parse(stock.need('htnk.vxl')).sections, RHINO_FOOTPRINT_PX);
+      const { sprite } = renderTurretToSprite(tur, vxl, vxl, HvaFile.parse(stock.need(`${tur}.hva`)), palette,
+        hasBarl ? VxlFile.parse(stock.need(`${barl}.vxl`)) : undefined, hasBarl ? HvaFile.parse(stock.need(`${barl}.hva`)) : undefined,
+        { footprintPx: rhinoScale / deriveModelScale(vxl.sections, 1) });
+      // The sprite rotates about the turret's bounds centre; RA2's pivot is bounds (0, 0, 0), straight below it.
+      // ponytail: the centre's 1-2 voxel x/y offset from (0, 0) is dropped; rotate it by the facing if a turret sits off its pad.
+      const sec = vxl.sections[0]!, below = (sec.minBounds[2] + sec.maxBounds[2]) / 2 * sec.scale * rhinoScale * PX_PER_UNIT_Z;
+      turrets.set(`${tur}:${s.owner}`, turret = { sprite, pivot: [sprite.origin![0], sprite.origin![1] + below] });
+    }
+    const { sprite, pivot } = turret, facing = (Math.round(Number(s.fields[5] ?? 0) / 8) + 8) & 31, key = `${tur}.vxl:${facing}:${s.owner}`;
+    const f = sprite.frames[facing]!;
+    let image = images.get(key);
+    if (image === undefined) {
+      const rgba = new Uint8ClampedArray(f.w * f.h * 4);
+      for (let y = 0; y < f.h; y++) rgba.set(sprite.colorRgba.subarray(((f.y + y) * sprite.atlasWidth + f.x) * 4, ((f.y + y) * sprite.atlasWidth + f.x + f.w) * 4), y * f.w * 4);
+      image = out.images.push({ width: f.w, height: f.h, rgba }) - 1;
+      images.set(key, image);
+    }
+    const z0 = level.get(s.y * 1000 + s.x) ?? 0;
+    out.objects.push({
+      image, kind: 'building', cellX: s.x, cellY: s.y, z: z + 1,
+      x: (s.x - s.y) * 30 - originX + 30 + Number(rule('TurretAnimX') || 0) - Math.round(pivot[0]),
+      y: (s.x + s.y - z0) * 15 - originY + Number(rule('TurretAnimY') || 0) - Math.round(pivot[1]),
+    });
   }
   return out;
 }

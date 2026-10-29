@@ -341,7 +341,8 @@ function projectFacing(
     const table = normalTableFor(section.normalsMode);
     // Combined per-voxel transform: HVA(frame,section) ∘ sectionTransform, with
     // the section grid pre-scaled by the tailer scale and the model-fit scale.
-    const hvaM = hva.sectionCount > si ? hva.matrix(si, hvaFrame) : IDENTITY_3X4;
+    // HVA translations are in bounds units; RA2 scales them by the section scale like the voxels (CNCMaps' HVAMultiplier).
+    const hvaM = (hva.sectionCount > si ? hva.matrix(si, hvaFrame) : IDENTITY_3X4).map((m, i) => (i % 4 === 3 ? m * section.scale : m));
     const combined = composeMatrix(hvaM, section.transform);
     // The grid point voxels are centered on (rotation pivot), grid units.
     const [halfX, halfY, halfZ] = origin(section);
@@ -614,6 +615,7 @@ function assembleSprite(
     atlasHeight: pack.height,
     colorRgba,
     frames,
+    origin: [-minX / ss, -minY / ss],
     ...(anyRemap ? { maskRgba } : {}),
   };
   return result;
