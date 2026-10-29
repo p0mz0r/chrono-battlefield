@@ -1,5 +1,5 @@
 import { addTank, createField, findLanding, findRoute, isDriving, moveTank, orderMove, random, tick, TICK_HZ, type Cell, type CellGrid, type Field, type Spot, type Tank } from '../movement/index.js';
-import { courseProgress, type Course } from './course.js';
+import { courseProgress, forkProgress, type Course } from './course.js';
 import { repairBridge, toggleBridge, type BridgeGrid } from './bridge.js';
 
 // The headless race (#6 rules, #8 chat contract): plain data stepped by `tickRace`, no rendering.
@@ -48,6 +48,8 @@ export interface Racer {
   tank: Tank | undefined;
   /** Index into `course.waypoints` of the next waypoint; `waypoints.length` = heading for the finish. */
   next: number;
+  /** Alternate leg being driven; cleared on reaching its merge waypoint or a move. */
+  fork: { from: number; nextVia: number } | undefined;
   /** Course progress in cells along the ideal line. */
   progress: number;
   /** Race frame (since GO) the tank finished on. */
@@ -66,7 +68,7 @@ export interface Racer {
 }
 
 export interface Race {
-  readonly course: Course;
+  course: Course;
   readonly field: Field;
   /** This race's seed: `createRace`'s for the page's first race, a fresh one for each later join window. */
   seed: number;
@@ -228,6 +230,7 @@ export function chat(race: Race, line: ChatLine): ChatResult {
     target.warp = { from: { x: target.tank!.cell.x, y: target.tank!.cell.y }, to: { x: shift!.landing.x, y: shift!.landing.y }, at: race.frame };
     moveTank(race.field, target.tank!, shift!.landing);
     target.next = shift!.next;
+    target.fork = undefined;
     target.progress = courseProgress(race.course, shift!.landing.x + 0.5, shift!.landing.y + 0.5, target.next);
     if (named) target.protectedUntil = race.frame + 15 * TICK_HZ;
     race.sounds.push('chrono');
@@ -257,7 +260,7 @@ function chronoshift(race: Race, racer: Racer): Shift | undefined {
 }
 
 const racer = (race: Race, name: string, viewerId?: string): Racer =>
-  ({ viewerId, name, bot: viewerId === undefined, tank: undefined, next: 0, progress: 0, finishedAt: undefined, tie: random(race.field), boostUntil: 0, shieldUntil: 0, stunUntil: 0, immunityUntil: 0, protectedUntil: 0, botNext: 0, botV3Next: false, warp: undefined });
+  ({ viewerId, name, bot: viewerId === undefined, tank: undefined, next: 0, fork: undefined, progress: 0, finishedAt: undefined, tie: random(race.field), boostUntil: 0, shieldUntil: 0, stunUntil: 0, immunityUntil: 0, protectedUntil: 0, botNext: 0, botV3Next: false, warp: undefined });
 
 function launchV3(race: Race, firer: Racer, back: boolean): void {
   race.sounds.push('cannon', 'v3Launch');
@@ -299,6 +302,15 @@ function closeJoinWindow(race: Race) {
   });
   race.phase = 'countdown';
   race.timer = 3 * TICK_HZ;
+}
+
+/** Dev (course editor): ends any race, then races `course` with bots alone, one per start cell up to `bots`, straight to 3-2-1. */
+export function simulateRace(race: Race, course: Course, bots = 10): void {
+  endRace(race);
+  race.course = course;
+  openJoinWindow(race);
+  for (let n = 1; n <= Math.min(bots, course.startGrid.length); n++) race.racers.push(racer(race, `Bot${n}`));
+  closeJoinWindow(race);
 }
 
 /** Seconds left on the start countdown (3, 2, 1), the join window or the finish timer. */
@@ -368,15 +380,27 @@ function drive(race: Race) {
     const tank = r.tank!;
     if (r.finishedAt !== undefined) continue;
     // Waypoints count only when reached; a move (#43) sets `next` to the first waypoint ahead of where it lands.
-    while (r.next < course.waypoints.length && near(tank, course.waypoints[r.next]!)) r.next++;
-    r.progress = courseProgress(course, tank.x / 256, tank.y / 256, r.next);
+    if (r.fork) {
+      const via = course.forks.get(r.fork.from)!.via;
+      while (r.fork.nextVia < via.length && near(tank, via[r.fork.nextVia]!)) r.fork.nextVia++;
+    }
+    while ((!r.fork || r.fork.nextVia === course.forks.get(r.fork.from)!.via.length) &&
+      r.next < course.waypoints.length && near(tank, course.waypoints[r.next]!)) {
+      r.fork = undefined;
+      const from = r.next++;
+      if (course.forks.has(from) && random(field) < course.forks.get(from)!.weight / 100) {
+        r.fork = { from, nextVia: 0 };
+        r.next = course.forks.get(from)!.to;
+      }
+    }
+    r.progress = r.fork ? forkProgress(course, r.fork.from, tank.x / 256, tank.y / 256) : courseProgress(course, tank.x / 256, tank.y / 256, r.next);
     if (r.next === course.waypoints.length && !tank.cell.deck && course.finishArea.has(tank.cell.y * field.grid.width + tank.cell.x)) {
       r.finishedAt = race.frame;
       r.progress = course.length;
       field.tanks.splice(field.tanks.indexOf(tank), 1); // the tank leaves the battlefield
       continue;
     }
-    const to = course.waypoints[r.next] ?? course.finish;
+    const to = r.fork && course.forks.get(r.fork.from)!.via[r.fork.nextVia] || course.waypoints[r.next] || course.finish;
     // ponytail: re-searches every frame while a goal stays unreachable (only after the grid changes, #44).
     if (tank.goal?.x !== to.x || tank.goal.y !== to.y) if (tank.goal || !isDriving(tank)) orderMove(field, tank, to);
   }

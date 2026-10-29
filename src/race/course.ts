@@ -19,6 +19,8 @@ export interface CourseFile {
   /** Ten cells, drivable and off bridges. */
   startGrid: XY[];
   waypoints: XY[];
+  /** Alternate route to a later waypoint. Missing `to`/`weight` in older files mean the next waypoint/50%. */
+  forks?: { from: number; to?: number; via: XY[]; weight?: number }[];
   /** Waypoint index ranges (inclusive), driven `count` times; non-overlapping. */
   laps: { from: number; to: number; count: number }[];
   finish: XY;
@@ -40,6 +42,13 @@ export function isCourseFile(file: unknown): file is CourseFile {
     typeof f.author === 'string' && typeof f.link === 'string' &&
     Array.isArray(f.startGrid) && f.startGrid.length === 10 && Array.isArray(f.waypoints) && Array.isArray(f.laps) && Array.isArray(f.bridges) &&
     [...f.startGrid, ...f.waypoints, f.finish, ...f.bridges].every(cell) &&
+    (f.forks === undefined || (Array.isArray(f.forks) && f.forks.every((fork) => fork && typeof fork === 'object' &&
+      Number.isInteger(fork.from) && fork.from >= 0 &&
+      (fork.to === undefined || Number.isInteger(fork.to)) &&
+      (fork.to ?? fork.from + 1) > fork.from && (fork.to ?? fork.from + 1) < (f.waypoints as unknown[]).length &&
+      (fork.weight === undefined || (Number.isInteger(fork.weight) && fork.weight >= 0 && fork.weight <= 100)) &&
+      Array.isArray(fork.via) && fork.via.length > 0 && fork.via.every(cell)) &&
+      new Set(f.forks.map((fork) => fork.from)).size === f.forks.length)) &&
     f.laps.every((lap) => lap && typeof lap === 'object' && ['from', 'to', 'count'].every((key) => Number.isInteger((lap as Record<string, unknown>)[key])));
 }
 
@@ -58,6 +67,8 @@ export interface Course {
   along: number[];
   /** Distance along the line of each unrolled waypoint. */
   waypointAlong: number[];
+  /** Alternate traced legs, indexed by the unrolled split waypoint. */
+  forks: Map<number, { to: number; weight: number; via: Cell[]; line: { x: number; y: number }[]; along: number[]; length: number }>;
   /** Length of the ideal line in cells. */
   length: number;
   /** Length of the course as drawn (each lap section driven once): chronosphere bands are a share of it. */
@@ -73,26 +84,26 @@ export const mapHash = (bytes: Uint8Array) => `crc32:${crc32(bytes).toString(16)
 const cell = ([x, y]: XY): Cell => ({ x, y });
 
 /** Lap sections repeated into one flat waypoint list. */
-function unroll(file: CourseFile): Cell[] {
-  const out: Cell[] = [];
+function unroll(file: CourseFile): { points: Cell[]; sources: number[] } {
+  const out: Cell[] = [], sources: number[] = [];
   for (let i = 0; i < file.waypoints.length; i++) {
-    out.push(cell(file.waypoints[i]!));
+    out.push(cell(file.waypoints[i]!)); sources.push(i);
     const lap = file.laps.find((l) => l.to === i);
-    if (lap) for (let n = 1; n < lap.count; n++) for (let j = lap.from; j <= lap.to; j++) out.push(cell(file.waypoints[j]!));
+    if (lap) for (let n = 1; n < lap.count; n++) for (let j = lap.from; j <= lap.to; j++) { out.push(cell(file.waypoints[j]!)); sources.push(j); }
   }
-  return out;
+  return { points: out, sources };
 }
 
 /** Loads a course over the grid imported from `mapBytes`. Throws on a hash mismatch or an unreachable leg. */
 export function loadCourse(file: CourseFile, mapBytes: Uint8Array, grid: CellGrid): Course {
   const hash = mapHash(mapBytes);
   if (hash !== file.mapHash) throw new Error(`Course "${file.name}" is for another version of ${file.map}: map hash ${hash}, course expects ${file.mapHash}`);
-  const waypoints = unroll(file), finish = cell(file.finish), startGrid = file.startGrid.map(cell);
+  const { points: waypoints, sources } = unroll(file), finish = cell(file.finish), startGrid = file.startGrid.map(cell);
   // The ideal line through `points`, start grid cell 0 to the finish cell.
-  const trace = (points: Cell[]) => {
-    const line = [{ x: startGrid[0]!.x + 0.5, y: startGrid[0]!.y + 0.5 }], along = [0], waypointAlong: number[] = [];
-    let at: Spot = { ...startGrid[0]!, deck: false };
-    for (const to of [...points, finish]) {
+  const trace = (points: Cell[], start = startGrid[0]!) => {
+    const line = [{ x: start.x + 0.5, y: start.y + 0.5 }], along = [0], waypointAlong: number[] = [];
+    let at: Spot = { ...start, deck: false };
+    for (const to of points) {
       const route = findRoute(grid, at, to);
       if (!route) throw new Error(`Course "${file.name}": ${to.x},${to.y} can't be reached from ${at.x},${at.y}`);
       for (const face of route) {
@@ -103,18 +114,35 @@ export function loadCourse(file: CourseFile, mapBytes: Uint8Array, grid: CellGri
       }
       waypointAlong.push(along[along.length - 1]!);
     }
-    waypointAlong.pop(); // the finish cell
     return { line, along, waypointAlong, length: along[along.length - 1]! };
   };
-  const traced = trace(waypoints);
-  const drawnLength = file.laps.length ? trace(file.waypoints.map(cell)).length : traced.length;
-
-  const finishArea = new Set<number>();
-  const r = Math.ceil(FINISH_RADIUS);
-  for (let y = finish.y - r; y <= finish.y + r; y++) for (let x = finish.x - r; x <= finish.x + r; x++) {
-    if (Math.hypot(x - finish.x, y - finish.y) <= FINISH_RADIUS && drivable(grid, x, y) && grid.deck[y * grid.width + x]! < 0) finishArea.add(y * grid.width + x);
+  const traced = trace([...waypoints, finish]);
+  traced.waypointAlong.pop(); // the finish cell
+  const drawnLength = file.laps.length ? trace([...file.waypoints.map(cell), finish]).length : traced.length;
+  const forks = new Map<number, { to: number; weight: number; via: Cell[]; line: { x: number; y: number }[]; along: number[]; length: number }>();
+  for (let i = 0; i < sources.length - 1; i++) {
+    const fork = file.forks?.find((f) => f.from === sources[i]);
+    if (fork) {
+      const merge = fork.to ?? fork.from + 1;
+      const to = i + merge - fork.from;
+      if (sources[to] !== merge || sources.slice(i, to + 1).some((source, offset) => source !== fork.from + offset)) {
+        throw new Error(`Course "${file.name}": fork from waypoint ${fork.from + 1} crosses a lap boundary`);
+      }
+      const via = fork.via.map(cell);
+      forks.set(i, { to, weight: fork.weight ?? 50, via, ...trace([...via, waypoints[to]!], waypoints[i]!) });
+    }
   }
-  return { file, startGrid, waypoints, finish, finishArea, ...traced, drawnLength };
+
+  return { file, startGrid, waypoints, forks, finish, finishArea: finishAreaOf(grid, finish), ...traced, drawnLength };
+}
+
+/** Ground cell indices of the finish area around `finish`. */
+export function finishAreaOf(grid: CellGrid, finish: Cell): Set<number> {
+  const area = new Set<number>(), r = Math.ceil(FINISH_RADIUS);
+  for (let y = finish.y - r; y <= finish.y + r; y++) for (let x = finish.x - r; x <= finish.x + r; x++) {
+    if (Math.hypot(x - finish.x, y - finish.y) <= FINISH_RADIUS && drivable(grid, x, y) && grid.deck[y * grid.width + x]! < 0) area.add(y * grid.width + x);
+  }
+  return area;
 }
 
 /**
@@ -125,6 +153,17 @@ export function loadCourse(file: CourseFile, mapBytes: Uint8Array, grid: CellGri
 export function courseProgress(course: Course, x: number, y: number, next: number): number {
   const { line, along } = course;
   const from = course.waypointAlong[next - 1] ?? 0, to = course.waypointAlong[next] ?? course.length;
+  return from + projectLine(line, along, x, y, from, to);
+}
+
+/** Progress on the chosen alternate leg, scaled onto the main course for fair standings. */
+export function forkProgress(course: Course, from: number, x: number, y: number): number {
+  const fork = course.forks.get(from)!;
+  const start = course.waypointAlong[from]!, end = course.waypointAlong[fork.to]!;
+  return start + (fork.length ? projectLine(fork.line, fork.along, x, y, 0, fork.length) / fork.length : 0) * (end - start);
+}
+
+function projectLine(line: { x: number; y: number }[], along: number[], x: number, y: number, from: number, to: number): number {
   let best = from, bestD = Infinity;
   for (let i = 1; i < line.length; i++) {
     if (along[i]! <= from || along[i - 1]! >= to) continue;
@@ -133,5 +172,5 @@ export function courseProgress(course: Course, x: number, y: number, next: numbe
     const d = Math.hypot(a.x + dx * t - x, a.y + dy * t - y);
     if (d < bestD) [best, bestD] = [along[i - 1]! + (along[i]! - along[i - 1]!) * t, d];
   }
-  return best;
+  return best - from;
 }
