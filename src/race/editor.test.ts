@@ -37,15 +37,43 @@ it('asks for a finish on a new course instead of placing one', () => {
   expect(inspectCourse(draft, bytes, grid).errors).toEqual(['Place the finish.']);
 });
 
-it('suggests crossed bridges in line order and updates time', () => {
+it('updates time and ignores a low bridge with no water to cross', () => {
   const one = file();
-  grid.bridge[33] = 0; grid.bridges.push({ kind: 'low', cells: [33] });
+  grid.bridge[33] = grid.bridges.length; grid.bridges.push({ kind: 'low', cells: [33] }); // (9, 2) in open ground
   const report = inspectCourse(one, bytes, grid);
   expect(report.errors).toEqual([]);
   expect(report.seconds).toBeGreaterThan(0);
-  expect(report.suggestedBridges).toEqual([[9, 2]]);
+  expect(report.suggestedBridges).toEqual([]);
   one.waypoints = [[2, 3]]; one.laps = [];
   expect(inspectCourse(one, bytes, grid).seconds).toBeLessThan(report.seconds!);
+});
+
+it('suggests low bridges the ideal line crosses water on', () => {
+  // Water along row 5, low bridges at (9, 5) and (2, 5).
+  for (let x = 0; x < 12; x++) grid.speed[60 + x] = 0;
+  const ids = [69, 62].map((i) => { grid.speed[i] = 1; grid.bridge[i] = grid.bridges.length; return grid.bridges.push({ kind: 'low', cells: [i] }) - 1; });
+  try {
+    const one = file();
+    expect(inspectCourse(one, bytes, grid).suggestedBridges).toEqual([[9, 5]]);
+    one.forks = [{ from: 0, to: 1, via: [[2, 5]] }]; // the fork crosses the western bridge
+    expect(inspectCourse(one, bytes, grid).suggestedBridges).toEqual([[9, 5], [2, 5]]);
+  } finally {
+    for (let x = 0; x < 12; x++) { grid.speed[60 + x] = 1; grid.bridge[60 + x] = -1; }
+    grid.bridges.length = ids[0]!;
+  }
+});
+
+it('suggests a high bridge only when the ideal line is on its deck', () => {
+  const id = grid.bridges.length; // (9, 5), between waypoints (9, 2) and (9, 9)
+  grid.bridge[69] = id; grid.bridges.push({ kind: 'high', cells: [69] });
+  try {
+    grid.deck[69] = 4; // overhead: the line drives under it
+    expect(inspectCourse(file(), bytes, grid).suggestedBridges).not.toContainEqual([9, 5]);
+    grid.deck[69] = 0; // level with the ground: the line drives over it
+    expect(inspectCourse(file(), bytes, grid).suggestedBridges).toContainEqual([9, 5]);
+  } finally {
+    grid.bridge[69] = -1; grid.deck[69] = -1; grid.bridges.pop();
+  }
 });
 
 it('validates alternate via cells and traces their route to the merge waypoint', () => {

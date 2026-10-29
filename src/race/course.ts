@@ -61,14 +61,14 @@ export interface Course {
   finish: Cell;
   /** Ground cell indices (`y * width + x`) of the finish area. */
   finishArea: Set<number>;
-  /** Ideal line: cell centres (cell units, centre = x + 0.5) from the start grid through every waypoint to the finish cell. */
-  line: { x: number; y: number }[];
+  /** Ideal line from the start grid through every waypoint to the finish cell. */
+  line: LinePoint[];
   /** Distance along the line (cells) at each line point. */
   along: number[];
   /** Distance along the line of each unrolled waypoint. */
   waypointAlong: number[];
   /** Alternate traced legs, indexed by the unrolled split waypoint. */
-  forks: Map<number, { to: number; weight: number; via: Cell[]; line: { x: number; y: number }[]; along: number[]; length: number }>;
+  forks: Map<number, { to: number; weight: number; via: Cell[]; line: LinePoint[]; along: number[]; length: number }>;
   /** Length of the ideal line in cells. */
   length: number;
   /** Length of the course as drawn (each lap section driven once): chronosphere bands are a share of it. */
@@ -94,6 +94,9 @@ function unroll(file: CourseFile): { points: Cell[]; sources: number[] } {
   return { points: out, sources };
 }
 
+/** A point of a traced line: a cell centre (cell units, centre = x + 0.5), on the deck or the ground. */
+export type LinePoint = { x: number; y: number; deck: boolean };
+
 /** Loads a course over the grid imported from `mapBytes`. Throws on a hash mismatch or an unreachable leg. */
 export function loadCourse(file: CourseFile, mapBytes: Uint8Array, grid: CellGrid): Course {
   const hash = mapHash(mapBytes);
@@ -101,14 +104,14 @@ export function loadCourse(file: CourseFile, mapBytes: Uint8Array, grid: CellGri
   const { points: waypoints, sources } = unroll(file), finish = cell(file.finish), startGrid = file.startGrid.map(cell);
   // The ideal line through `points`, start grid cell 0 to the finish cell.
   const trace = (points: Cell[], start = startGrid[0]!) => {
-    const line = [{ x: start.x + 0.5, y: start.y + 0.5 }], along = [0], waypointAlong: number[] = [];
+    const line = [{ x: start.x + 0.5, y: start.y + 0.5, deck: false }], along = [0], waypointAlong: number[] = [];
     let at: Spot = { ...start, deck: false };
     for (const to of points) {
       const route = findRoute(grid, at, to);
       if (!route) throw new Error(`Course "${file.name}": ${to.x},${to.y} can't be reached from ${at.x},${at.y}`);
       for (const face of route) {
         at = stepTo(grid, at, face)!;
-        const p = { x: at.x + 0.5, y: at.y + 0.5 }, q = line[line.length - 1]!;
+        const p = { x: at.x + 0.5, y: at.y + 0.5, deck: at.deck }, q = line[line.length - 1]!;
         line.push(p);
         along.push(along[along.length - 1]! + Math.hypot(p.x - q.x, p.y - q.y));
       }
@@ -119,7 +122,7 @@ export function loadCourse(file: CourseFile, mapBytes: Uint8Array, grid: CellGri
   const traced = trace([...waypoints, finish]);
   traced.waypointAlong.pop(); // the finish cell
   const drawnLength = file.laps.length ? trace([...file.waypoints.map(cell), finish]).length : traced.length;
-  const forks = new Map<number, { to: number; weight: number; via: Cell[]; line: { x: number; y: number }[]; along: number[]; length: number }>();
+  const forks = new Map<number, { to: number; weight: number; via: Cell[]; line: LinePoint[]; along: number[]; length: number }>();
   for (let i = 0; i < sources.length - 1; i++) {
     const fork = file.forks?.find((f) => f.from === sources[i]);
     if (fork) {
@@ -163,7 +166,7 @@ export function forkProgress(course: Course, from: number, x: number, y: number)
   return start + (fork.length ? projectLine(fork.line, fork.along, x, y, 0, fork.length) / fork.length : 0) * (end - start);
 }
 
-function projectLine(line: { x: number; y: number }[], along: number[], x: number, y: number, from: number, to: number): number {
+function projectLine(line: LinePoint[], along: number[], x: number, y: number, from: number, to: number): number {
   let best = from, bestD = Infinity;
   for (let i = 1; i < line.length; i++) {
     if (along[i]! <= from || along[i - 1]! >= to) continue;

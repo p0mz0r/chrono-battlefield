@@ -6,7 +6,7 @@ import { LEPTONS_PER_CELL, spotLevel, tankCell, TICK_HZ, type Cell } from './mov
 import { loadCourse as loadCourseArt, type Sprite as CachedSprite } from './load.js';
 import { loadSounds } from './audio.js';
 import { facingAngle, projectModelPoint } from './ra2/render/voxelRender.js';
-import { loadCourse, mapHash, type CourseFile } from './race/course.js';
+import { loadCourse, mapHash, type CourseFile, type LinePoint } from './race/course.js';
 import { chat, commandList, createRace, secondsLeft, standings, tickRace, type Race, type Racer } from './race/race.js';
 import { directorShot, type Shot } from './race/camera.js';
 import { mountStreamView, type CameraMode } from './race/view.js';
@@ -232,7 +232,7 @@ async function main() {
   };
   if (import.meta.env.DEV) { // the stream never shows the course line or waypoints
     const overlay = passability(grid, terrain.originX, terrain.originY);
-    const linePoint = (p: { x: number; y: number }) => toScreen(p.x, p.y, level(Math.floor(p.x), Math.floor(p.y)));
+    const linePoint = (p: LinePoint) => toScreen(p.x, p.y, spotLevel(grid, { x: Math.floor(p.x), y: Math.floor(p.y), deck: p.deck }));
     course.line.forEach((p, i) => (i ? overlay.lineTo(linePoint(p).x, linePoint(p).y) : overlay.moveTo(linePoint(p).x, linePoint(p).y)));
     overlay.stroke({ color: 0xffffff, width: 2, alpha: 0.7 });
     for (const fork of course.forks.values()) {
