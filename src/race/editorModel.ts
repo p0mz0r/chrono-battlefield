@@ -1,6 +1,6 @@
 import type { CellGrid } from '../battlefield/grid.js';
-import { drivable, findRoute } from '../movement/index.js';
-import { loadCourse, mapHash, type Course, type CourseFile } from './course.js';
+import { drivable, findRoute, STEPS } from '../movement/index.js';
+import { loadCourse, mapHash, type Course, type CourseFile, type LinePoint } from './course.js';
 
 /** The editor's working copy: a new course has no finish until the course maker places one. */
 export type CourseDraft = Omit<CourseFile, 'finish'> & { finish?: CourseFile['finish'] };
@@ -67,17 +67,14 @@ export function inspectCourse(draft: CourseDraft, bytes: Uint8Array, grid: CellG
     const course = loadCourse(file, bytes, grid);
     const first = file.waypoints[0] ?? file.finish;
     for (const [n, p] of file.startGrid.entries()) if (!findRoute(grid, { ...point(p), deck: false }, point(first))) errors.push(`Start ${n + 1} cannot reach the course.`);
-    const suggestedBridges: [number, number][] = [], visited = new Set<number>();
     let seconds = 0;
     for (let n = 1; n < course.line.length; n++) {
       const a = course.line[n - 1]!, b = course.line[n]!;
-      const x = Math.floor(b.x), y = Math.floor(b.y), i = y * grid.width + x;
-      const id = grid.bridge[i]!;
-      if (id >= 0 && !visited.has(id)) { visited.add(id); suggestedBridges.push([x, y]); }
+      const i = Math.floor(b.y) * grid.width + Math.floor(b.x);
       // Rhino Speed=6, GameSpeedBias=1.6, 30 Hz; add a modest turn allowance.
-      seconds += Math.hypot(b.x - a.x, b.y - a.y) * 256 / (Math.floor(6 * 256 / 100) * 1.6 * 30 * (grid.deck[i]! >= 0 ? 1 : grid.speed[i]!)) * 1.15;
+      seconds += Math.hypot(b.x - a.x, b.y - a.y) * 256 / (Math.floor(6 * 256 / 100) * 1.6 * 30 * (b.deck ? 1 : grid.speed[i]!)) * 1.15;
     }
-    return { errors, course, seconds, suggestedBridges };
+    return { errors, course, seconds, suggestedBridges: crossedBridges(grid, [course.line, ...[...course.forks.values()].map((fork) => fork.line)]) };
   } catch (error) {
     errors.push((error as Error).message);
     return { errors, suggestedBridges: [] };
@@ -111,6 +108,44 @@ export function createHistory(draft: CourseDraft) {
 }
 
 const point = ([x, y]: [number, number]) => ({ x, y });
+
+/**
+ * One cell of each bridge the lines cross, in the order they meet them (the ideal line, then fork routes): a high bridge on its deck, a low one from
+ * one shore to another. Decks overhead and the leftover pieces of a map's broken bridges don't count.
+ */
+function crossedBridges(grid: CellGrid, lines: readonly (readonly LinePoint[])[]): [number, number][] {
+  const crossed: [number, number][] = [], seen = new Set<number>();
+  const at = (p: LinePoint) => Math.floor(p.y) * grid.width + Math.floor(p.x);
+  for (const line of lines) {
+    for (let s = 0, e = 0; s < line.length; s = e + 1) {
+      const id = grid.bridge[at(line[s]!)]!;
+      for (e = s; e + 1 < line.length && grid.bridge[at(line[e + 1]!)] === id; e++);
+      if (id < 0 || seen.has(id)) continue;
+      const bridge = grid.bridges[id]!;
+      const across = bridge.kind === 'high' ? line.slice(s, e + 1).some((p) => p.deck)
+        : s > 0 && e + 1 < line.length && !besideBridge(grid, bridge.cells, at(line[s - 1]!), at(line[e + 1]!));
+      if (across) { seen.add(id); crossed.push([Math.floor(line[s]!.x), Math.floor(line[s]!.y)]); }
+    }
+  }
+  return crossed;
+}
+
+/** Whether cells `from` and `to` connect through drivable ground beside the bridge, i.e. without crossing it. */
+function besideBridge(grid: CellGrid, cells: number[], from: number, to: number): boolean {
+  const w = grid.width, bridge = new Set(cells);
+  const onBridge = (x: number, y: number) => x >= 0 && x < w && bridge.has(y * w + x);
+  const reached = new Set([from]), stack = [from];
+  while (stack.length) {
+    const i = stack.pop()!, x = i % w, y = (i - x) / w;
+    if (i === to) return true;
+    for (const d of STEPS) {
+      const nx = x + d.x, ny = y + d.y, j = ny * w + nx;
+      if (reached.has(j) || onBridge(nx, ny) || !drivable(grid, nx, ny) || !STEPS.some((n) => onBridge(nx + n.x, ny + n.y))) continue;
+      reached.add(j); stack.push(j);
+    }
+  }
+  return false;
+}
 
 /** Index of the closest path segment; also the insertion index for a new via waypoint. */
 export function closestSegment(path: readonly { x: number; y: number }[], at: { x: number; y: number }): number {
