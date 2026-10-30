@@ -8,7 +8,7 @@ Needs Node 24 and an RA2 + YR install. Set `RA2_DIR` to the install folder.
 
 - `npm run dev` serves the page and the install (under `/ra2/`). It loads a bundled course (`?course=<name>`, default the last chosen course) over its battlefield and runs races on it. The **test-chat panel** (bottom right, dev only) has a name and text box to chat as any viewer, "Add N fake viewers" (`!rhino` from random names) and a seeded chaos toggle at a set rate. `?autoopen=1&fake=N&chaos=R&join=S&finish=S&chatSeed=N` does the same from the URL, `?fast=N` runs at N times game speed, `?seed=N` sets the first race's seed (each race logs `Rhino Race seed N` as a console error, which OBS writes to its log; the same seed and chat lines replay that race), e.g. `?seed=1&autoopen=1&fake=5&chaos=2&join=10&fast=3` runs a whole race to results in under a minute. `G` (or `?grid=1`) overlays passability (red impassable or blocked, yellow slow, blue ramp, cyan high-bridge deck), the ideal line and the waypoints. `?zoom=N` follows the leading tank, `?cell=x,y&zoom=1` centres on a cell, and ghosting tanks draw at half alpha. An unsupported map, or a course whose map hash doesn't match, shows why it was refused.
 - `?edit=1&course=hills-bridge-run` opens the dev-only course editor over the battlefield. Choose a tool and click a cell to place starts, finish, waypoints or bridges; drag markers to move them, wheel to zoom, middle-drag to pan. The panel inserts/deletes waypoints, sets lap sections and counts, and reorders suggested bridges. Validation and the ideal-line time update live; Save writes `courses/<name>.json` only when valid. `?edit=1&map=Hills.mmx` starts a new course over an install map. To use a custom `.map`/`.yrm`/`.mpr`, upload it in the editor, then enter its author and source link before saving; it ships in `courses/maps/` beside the course. `courses/hills-sprint.json` was saved in the editor over the real Hills battlefield.
-- `npm test` runs the tests. Tests that read the install skip when `RA2_DIR` is unset.
+- `npm test` runs the tests. Tests that read the install skip when `RA2_DIR` is unset. `npm install` also turns on `.githooks/pre-commit`, which runs the typecheck and tests before each commit.
 - `npm run typecheck`. `npm run build` builds the operator's page to `dist/` without the editor or test-chat panel, then `tools/release.mjs` zips it with the Lua script, the operator README ([`public/README.txt`](public/README.txt), with shipped custom maps credited) and `LICENSE` as `release/rhino-race.zip`. It refuses to zip any EA file type.
 
 ## Operator keys
@@ -33,6 +33,8 @@ An obs-websocket client can send the same page event through `CallVendorRequest`
 | `vite.config.ts` | Includes the dev middleware that serves `RA2_DIR`. |
 | `public/` | Copied into the build: the OBS Lua script and the operator README. |
 | `tools/release.mjs` | Zips the build for operators (`npm run build`). |
+| `tools/shot.mjs` | Screenshots a dev page in headless Chromium for agents (`docs/agents/ra2-install.md`). |
+| `.githooks/` | The pre-commit gate: typecheck and tests, turned on by `npm install`. |
 
 ## Licence and credits
 

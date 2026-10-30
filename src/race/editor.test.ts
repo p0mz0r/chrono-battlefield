@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import type { CellGrid } from '../battlefield/grid.js';
 import { mapHash, type CourseFile } from './course.js';
-import { closestSegment, freeMapName, inspectCourse, mapUpload } from './editorModel.js';
+import { closestSegment, createHistory, freeMapName, inspectCourse, mapUpload, type CourseDraft } from './editorModel.js';
 
 const bytes = new TextEncoder().encode('map');
 const grid: CellGrid = {
@@ -35,6 +35,28 @@ it('reports an empty start grid without exposing a loader error', () => {
 it('asks for a finish on a new course instead of placing one', () => {
   const { finish: _, ...draft } = file();
   expect(inspectCourse(draft, bytes, grid).errors).toEqual(['Place the finish.']);
+});
+
+it('undoes exactly, removing a key the earlier snapshot lacks', () => {
+  const { finish: _, ...rest } = file(), draft: CourseDraft = rest;
+  const history = createHistory(draft);
+  draft.finish = [1, 8]; history.record(draft);
+  expect(history.step(draft, -1)).toBe(true);
+  expect('finish' in draft).toBe(false);
+  expect(history.step(draft, -1)).toBe(false);
+  expect(history.step(draft, 1)).toBe(true);
+  expect(draft.finish).toEqual([1, 8]);
+});
+
+it('records typing in one field as one step', () => {
+  const draft = file(), history = createHistory(draft);
+  for (const name of ['L', 'Lo', 'Loo']) { draft.name = name; history.record(draft, 'name'); }
+  draft.author = 'Me'; history.record(draft, 'author');
+  history.step(draft, -1);
+  expect(draft.name).toBe('Loo');
+  history.step(draft, -1);
+  expect(draft.name).toBe('Loop');
+  expect(history.canUndo).toBe(false);
 });
 
 it('updates time and ignores a low bridge with no water to cross', () => {
