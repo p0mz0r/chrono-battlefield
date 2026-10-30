@@ -113,6 +113,13 @@ export const PX_PER_UNIT_X = 1; // horizontal spread of the ground plane
 export const PX_PER_UNIT_Y = 0.5; // vertical component of the ground plane (2:1 iso)
 export const PX_PER_UNIT_Z = 1.7; // screen rise per world Z unit (RA2 voxel camera pitch)
 
+/**
+ * gamemd's own voxel camera (CNCMaps VxlRenderer @56712d7: RotX(60)·RotZ(-45), one
+ * bounds unit per pixel): a ground unit spans √½ px across and √⅛ down, a height
+ * unit √¾ up. For voxels drawn beside SHP art at its true size (building turrets).
+ */
+export const GAMEMD_CAMERA = { modelScale: Math.SQRT1_2, pxPerUnitZ: Math.sqrt(1.5) } as const;
+
 /** Target on-screen footprint: a vehicle body should read ~this wide (px). */
 export const TARGET_FOOTPRINT_PX = 54;
 
@@ -199,11 +206,11 @@ function rotateZ(x: number, y: number, z: number, angle: number): [number, numbe
  * so BOTH axes are negated. Z uses the RA2 voxel-camera pitch (PX_PER_UNIT_Z). Pure;
  * the ONE place the projection direction lives, so a single test pins Fix 1.
  */
-export function projectModelPoint(px: number, py: number, pz: number): { sx: number; sy: number; depth: number } {
+export function projectModelPoint(px: number, py: number, pz: number, pxPerUnitZ = PX_PER_UNIT_Z): { sx: number; sy: number; depth: number } {
   return {
     sx: (py - px) * PX_PER_UNIT_X,
-    sy: -(px + py) * PX_PER_UNIT_Y - pz * PX_PER_UNIT_Z,
-    depth: -(px + py) * PX_PER_UNIT_Y + pz * PX_PER_UNIT_Z,
+    sy: -(px + py) * PX_PER_UNIT_Y - pz * pxPerUnitZ,
+    depth: -(px + py) * PX_PER_UNIT_Y + pz * pxPerUnitZ,
   };
 }
 
@@ -246,6 +253,10 @@ export interface VoxelRenderOptions {
   readonly hvaFrame?: number;
   /** On-screen body width in px (default TARGET_FOOTPRINT_PX). */
   readonly footprintPx?: number;
+  /** Px per bounds unit, in place of fitting `footprintPx` (see GAMEMD_CAMERA). */
+  readonly modelScale?: number;
+  /** Screen rise per height unit, relative to the ground step (default PX_PER_UNIT_Z). */
+  readonly pxPerUnitZ?: number;
   /**
    * The bounds-space point the model turns about and the sprite's `origin` marks
    * (default: the bounds center of the model's first section, or of the turret).
@@ -269,6 +280,7 @@ function projectFacing(
   ss: number,
   hvaFrame: number,
   pivot: readonly [number, number, number],
+  pxPerUnitZ = PX_PER_UNIT_Z,
 ): { voxels: ProjectedVoxel[]; minX: number; minY: number; maxX: number; maxY: number } {
   const angle = facingAngle(facing);
   const voxels: ProjectedVoxel[] = [];
@@ -280,11 +292,12 @@ function projectFacing(
   for (let si = 0; si < vxl.sections.length; si++) {
     const section = vxl.sections[si]!;
     const table = normalTableFor(section.normalsMode);
-    // HVA(frame, section) with its translation times the tailer scale, in bounds
-    // units (CNCMaps' HVAMultiplier), and the pivot taken off so the model turns about it.
-    const combined = (hva.sectionCount > si ? hva.matrix(si, hvaFrame) : IDENTITY_3X4)
-      .map((m, i) => (i % 4 === 3 ? m * section.scale - pivot[i >> 2]! : m));
+    // HVA(frame, section) with its translation times the tailer scale and the grid
+    // step, in bounds units (CNCMaps' HVAMultiplier * ScaleX), and the pivot taken off
+    // so the model turns about it.
     const step = sectionGridStep(section);
+    const combined = (hva.sectionCount > si ? hva.matrix(si, hvaFrame) : IDENTITY_3X4)
+      .map((m, i) => (i % 4 === 3 ? m * section.scale * step[i >> 2]! - pivot[i >> 2]! : m));
     const [minX0, minY0, minZ0] = section.minBounds;
 
     for (const v of section.voxels) {
@@ -299,7 +312,7 @@ function projectFacing(
 
       // Reflected dimetric projection (SS pixels; y grows downward on screen). See
       // projectModelPoint — model forward (+Y) at facing 0 lands UP-RIGHT (sim north).
-      const proj = projectModelPoint(px, py, pz);
+      const proj = projectModelPoint(px, py, pz, pxPerUnitZ);
       const sx = proj.sx * ss;
       const sy = proj.sy * ss;
       const depth = proj.depth;
@@ -574,10 +587,10 @@ export function renderVoxelToSprite(
   const facingCount = options.facingCount ?? FACING_COUNT;
   const ss = options.supersample ?? SUPERSAMPLE;
   const hvaFrame = options.hvaFrame ?? 0;
-  const modelScale = deriveModelScale(vxl.sections, options.footprintPx);
+  const modelScale = options.modelScale ?? deriveModelScale(vxl.sections, options.footprintPx);
   const pivot = options.pivot ?? sectionBoundsCenter(vxl.sections[0]!);
   return assembleSprite(name, facingCount, ss, palette, (f) =>
-    projectFacing(vxl, hva, f, modelScale, ss, hvaFrame, pivot),
+    projectFacing(vxl, hva, f, modelScale, ss, hvaFrame, pivot, options.pxPerUnitZ),
   );
 }
 
@@ -624,7 +637,7 @@ export function renderTurretToSprite(
   const ss = options.supersample ?? SUPERSAMPLE;
   const hvaFrame = options.hvaFrame ?? 0;
   // Share the BODY's fit-scale so the turret composites at the body's on-tile size.
-  const modelScale = deriveModelScale(bodyVxl.sections, options.footprintPx);
+  const modelScale = options.modelScale ?? deriveModelScale(bodyVxl.sections, options.footprintPx);
 
   // Turret and barrel turn about the turret's bounds center (or options.pivot); the
   // render layer places it by its offset from the body's bounds center, in px.
@@ -633,9 +646,9 @@ export function renderTurretToSprite(
   const pivot = turretPivot.map((p, i) => (p - bodyCenter[i]!) * modelScale) as [number, number, number];
 
   const sprite = assembleSprite(name, facingCount, ss, palette, (f) => {
-    const t = projectFacing(turret, turretHva, f, modelScale, ss, hvaFrame, turretPivot);
+    const t = projectFacing(turret, turretHva, f, modelScale, ss, hvaFrame, turretPivot, options.pxPerUnitZ);
     if (!barrel) return t;
-    const b = projectFacing(barrel, barrelHva ?? turretHva, f, modelScale, ss, hvaFrame, turretPivot);
+    const b = projectFacing(barrel, barrelHva ?? turretHva, f, modelScale, ss, hvaFrame, turretPivot, options.pxPerUnitZ);
     // Composite barrel voxels into the turret's projection (shared z-buffer at
     // rasterization time), and widen the shared screen bounds to include both.
     return {

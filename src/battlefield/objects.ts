@@ -1,6 +1,5 @@
-import { RHINO_FOOTPRINT_PX } from '../assets/rhino.js';
 import { HvaFile, Palette, ShpFile, VxlFile } from '../ra2/index.js';
-import { deriveModelScale, renderTurretToSprite } from '../ra2/render/voxelRender.js';
+import { GAMEMD_CAMERA, renderTurretToSprite } from '../ra2/render/voxelRender.js';
 import type { ConvertedSprite } from '../ra2/render/sprite.js';
 import { foundation, isHighBridge } from './grid.js';
 import type { Stock } from './stock.js';
@@ -67,7 +66,6 @@ export function placeObjects(stock: Stock, originX: number, originY: number): Ob
   const images = new Map<string, number>();
   const ramps = new Map<string, Uint8Array>();
   const turrets = new Map<string, ConvertedSprite>();
-  let rhinoScale: number | undefined;
   // The unit palette in an owner's house colour (rules `Color=` of its country or house, looked up in `[Colors]`), else as filed.
   const unitPalette = (owner: string) => {
     const hsv = map.ini.getSection(owner)?.getString('Color') || stock.rulesOf(owner)?.getString('Color');
@@ -151,7 +149,7 @@ export function placeObjects(stock: Stock, originX: number, originY: number): Ob
       place(part, s.x, s.y, bib ? 0 : stock.art.getSection(part)?.getInt('LoopStart') ?? 0, 'unit', 30, 0, bib ? z - 1 : z + (i + 1) / 8, 'building', s.owner);
     }
     // A voxel turret (the Grand Cannon's gun, with its `<Image>barl` barrel when there is one): its prerender at the
-    // Rhino's scale, facing the map's facing (field 5, 0..255; frame 0 looks along -x, facing 0 along -y), its ground pivot TurretAnimX/Y px from the base's centre.
+    // game's own voxel camera (CNCMaps BuildingDrawable), facing the map's facing (field 5, 0..255; frame 0 looks along -x, facing 0 along -y), its ground pivot TurretAnimX/Y px from the base's centre.
     // The map's own section of the type wins over stock rules.
     const rule = (key: string) => map.ini.getSection(s.type)?.getString(key) || stock.rulesOf(s.type)?.getString(key) || '';
     const tur = rule('TurretAnim').toLowerCase();
@@ -162,10 +160,9 @@ export function placeObjects(stock: Stock, originX: number, originY: number): Ob
       const vxl = VxlFile.parse(stock.need(`${tur}.vxl`)), palette = Palette.parse(new Uint8Array(768));
       const barl = `${(rule('Image') || s.type).toLowerCase()}barl`, hasBarl = stock.vfs.exists(`${barl}.vxl`) && stock.vfs.exists(`${barl}.hva`);
       palette.rgb.set(s.owner ? unitPalette(s.owner) : stock.palette('unit'));
-      rhinoScale ??= deriveModelScale(VxlFile.parse(stock.need('htnk.vxl')).sections, RHINO_FOOTPRINT_PX);
       sprite = renderTurretToSprite(tur, vxl, vxl, HvaFile.parse(stock.need(`${tur}.hva`)), palette,
         hasBarl ? VxlFile.parse(stock.need(`${barl}.vxl`)) : undefined, hasBarl ? HvaFile.parse(stock.need(`${barl}.hva`)) : undefined,
-        { footprintPx: rhinoScale / deriveModelScale(vxl.sections, 1), pivot: [0, 0, 0] }).sprite;
+        { ...GAMEMD_CAMERA, pivot: [0, 0, 0] }).sprite;
       turrets.set(`${tur}:${s.owner}`, sprite);
     }
     // RA2 turns the turret about bounds (0, 0, 0): the sprite's origin.

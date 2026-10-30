@@ -42,7 +42,7 @@ describeInstall('building overlays', () => {
       const [base, ...rest] = objects.filter((o) => o.kind === 'building' && o.cellX === s.x && o.cellY === s.y);
       const turret = rest.at(-1)!, b = images[base!.image]!, t = images[turret.image]!;
       // Before #74 the Gattling Cannon's turret was 453×493 px and the Yuri bust's 652×857.
-      expect(Math.max(t.width, t.height), s.type).toBeLessThan(140);
+      expect(Math.max(t.width, t.height), s.type).toBeLessThan(200);
       expect(Math.min(t.width, t.height), s.type).toBeGreaterThan(10);
       const overlaps = turret.x < base!.x + b.width && base!.x < turret.x + t.width && turret.y < base!.y + b.height && base!.y < turret.y + t.height;
       expect(overlaps, s.type).toBe(true);

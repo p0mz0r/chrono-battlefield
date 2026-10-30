@@ -4,7 +4,7 @@ import { prerenderRocket, prerenderTank } from '../../assets/rhino.js';
 import { HvaFile, Palette, VxlFile, type Vfs, type VxlSection } from '../index.js';
 import { mountTheater } from '../mount.js';
 import type { ConvertedSprite } from './sprite.js';
-import { deriveModelScale, facingAngle, projectModelPoint, renderVoxelToSprite } from './voxelRender.js';
+import { deriveModelScale, facingAngle, GAMEMD_CAMERA, projectModelPoint, renderVoxelToSprite } from './voxelRender.js';
 
 const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0];
 
@@ -59,29 +59,45 @@ describe('voxel renderer units', () => {
     expect(render(model(section({ transform: [0, -1, 0, 50, 1, 0, 0, 20, 0, 0, 1, 30] })))).toEqual(render(model(section())));
   });
 
+  /** One voxel centred on bounds `at`. */
+  const voxelAt = (at: [number, number, number]) => model(section({
+    cx: 1, cy: 1, cz: 1, minBounds: at.map((v) => v - 0.5) as [number, number, number], maxBounds: at.map((v) => v + 0.5) as [number, number, number],
+    voxels: [{ x: 0, y: 0, z: 0, color: 100, normal: 0 }],
+  }));
+  /** Frame `i`'s painted centroid, relative to the sprite origin. */
+  const fromOrigin = (s: ConvertedSprite, i: number) => {
+    const f = s.frames[i]!;
+    let n = 0, x = 0, y = 0;
+    for (let py = 0; py < f.h; py++) for (let px = 0; px < f.w; px++) {
+      const a = s.colorRgba[((f.y + py) * s.atlasWidth + f.x + px) * 4 + 3]!;
+      n += a; x += a * (px + 0.5); y += a * (py + 0.5);
+    }
+    return [x / n - s.origin![0], y / n - s.origin![1]] as const;
+  };
+
   it('turns about the pivot, which the sprite origin marks', () => {
     // One voxel at bounds (10, 0, 0), drawn at 1 px per bounds unit.
-    const voxel = section({ cx: 1, cy: 1, cz: 1, minBounds: [9.5, -0.5, -0.5], maxBounds: [10.5, 0.5, 0.5], voxels: [{ x: 0, y: 0, z: 0, color: 100, normal: 0 }] });
-    const centroid = (s: ConvertedSprite, i: number) => {
-      const f = s.frames[i]!;
-      let n = 0, x = 0, y = 0;
-      for (let py = 0; py < f.h; py++) for (let px = 0; px < f.w; px++) {
-        const a = s.colorRgba[((f.y + py) * s.atlasWidth + f.x + px) * 4 + 3]!;
-        n += a; x += a * (px + 0.5); y += a * (py + 0.5);
-      }
-      return [x / n, y / n];
-    };
+    const voxel = voxelAt([10, 0, 0]);
     const opts = { facingCount: 8, footprintPx: 2 };
-    const about0 = renderVoxelToSprite('t', model(voxel), hva([[IDENTITY]]), palette, { ...opts, pivot: [0, 0, 0] });
-    const aboutItself = renderVoxelToSprite('t', model(voxel), hva([[IDENTITY]]), palette, opts);
+    const about0 = renderVoxelToSprite('t', voxel, hva([[IDENTITY]]), palette, { ...opts, pivot: [0, 0, 0] });
+    const aboutItself = renderVoxelToSprite('t', voxel, hva([[IDENTITY]]), palette, opts);
     for (let i = 0; i < 8; i++) {
       const a = facingAngle(i), p = projectModelPoint(10 * Math.cos(a), 10 * Math.sin(a), 0);
-      const [x, y] = centroid(about0, i);
-      expect(Math.abs(x! - about0.origin![0] - p.sx)).toBeLessThan(1);
-      expect(Math.abs(y! - about0.origin![1] - p.sy)).toBeLessThan(1);
-      const [x2, y2] = centroid(aboutItself, i);
-      expect(Math.hypot(x2! - aboutItself.origin![0], y2! - aboutItself.origin![1])).toBeLessThan(1);
+      const [x, y] = fromOrigin(about0, i);
+      expect(Math.abs(x - p.sx)).toBeLessThan(1);
+      expect(Math.abs(y - p.sy)).toBeLessThan(1);
+      expect(Math.hypot(...fromOrigin(aboutItself, i))).toBeLessThan(1);
     }
+  });
+
+  it("draws at gamemd's scale with its camera: a ground unit √½ px across, a height unit √¾ px up", () => {
+    const at = (p: [number, number, number]) =>
+      fromOrigin(renderVoxelToSprite('t', voxelAt(p), hva([[IDENTITY]]), palette, { ...GAMEMD_CAMERA, facingCount: 1, pivot: [0, 0, 0] }), 0);
+    const [x, y] = at([20, 0, 0]), [x2, y2] = at([0, 0, 20]);
+    expect(Math.abs(x + 20 * Math.SQRT1_2)).toBeLessThan(1);
+    expect(Math.abs(y + 10 * Math.SQRT1_2)).toBeLessThan(1);
+    expect(Math.abs(x2)).toBeLessThan(1);
+    expect(Math.abs(y2 + 20 * Math.sqrt(0.75))).toBeLessThan(1);
   });
 });
 
