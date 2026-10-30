@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
 import { describeInstall, readFromDir } from '../../test/install.js';
+import { ObjectEntry } from '../ra2/index.js';
 import { loadMap, mountTheater } from '../ra2/mount.js';
 import { placeObjects } from './objects.js';
 import { Stock } from './stock.js';
@@ -29,6 +30,24 @@ describeInstall('building overlays', () => {
     const placed = placeObjects(stock, 0, 0).objects.filter((o) => o.kind === 'building' && o.cellX === outpost.x && o.cellY === outpost.y);
     expect(placed).toHaveLength(5); // base, CAOUTP_F, CAOUTP_D, CAOUTPBB, the OUTP voxel gun
   }, 30_000);
+
+  it('draws every stock voxel-turret building\'s turret at a plausible size on its base', async () => {
+    const map = await loadMap(readFromDir, 'Carville.mmx');
+    const types = ['GTGCAN', 'CAOUTP', 'NALASR', 'NAFLAK', 'NASAM', 'YAREFN', 'YAGGUN', 'CAEAST02'];
+    const structures = types.map((type, i) => new ObjectEntry(String(i), ['Neutral', type, '256', String(40 + 10 * i), '60', '64']));
+    Object.defineProperty(map, 'structures', { value: structures });
+    const { images, objects, missingOverlays } = placeObjects(new Stock(map, await mountTheater(readFromDir, map.theater)), 0, 0);
+    expect(missingOverlays.size).toBe(0);
+    for (const s of structures) {
+      const [base, ...rest] = objects.filter((o) => o.kind === 'building' && o.cellX === s.x && o.cellY === s.y);
+      const turret = rest.at(-1)!, b = images[base!.image]!, t = images[turret.image]!;
+      // Before #74 the Gattling Cannon's turret was 453×493 px and the Yuri bust's 652×857.
+      expect(Math.max(t.width, t.height), s.type).toBeLessThan(200);
+      expect(Math.min(t.width, t.height), s.type).toBeGreaterThan(10);
+      const overlaps = turret.x < base!.x + b.width && base!.x < turret.x + t.width && turret.y < base!.y + b.height && base!.y < turret.y + t.height;
+      expect(overlaps, s.type).toBe(true);
+    }
+  }, 60_000);
 });
 
 describeInstall('house colour', () => {
