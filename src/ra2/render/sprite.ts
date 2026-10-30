@@ -74,7 +74,7 @@ export interface ConvertedSprite {
    * atlas (turret + barrel composited) plus the rotation pivot in the body's render
    * frame. Present only on a body atlas whose model ships a `*tur.vxl`. The render
    * layer draws this atlas by the entity's turretFacing, offset by the pivot, over
-   * the body. See voxelRender.ts renderTurretToSprite / turretPivotInBodyFrame.
+   * the body. See voxelRender.ts renderTurretToSprite.
    */
   readonly turret?: TurretPart;
 }

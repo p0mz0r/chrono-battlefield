@@ -15,13 +15,14 @@
 //
 //   sectionCount * 16-byte section name (parallel to the VXL section order)
 //
-//   per-frame, per-section 3x4 float matrices, ordered [section][frame]:
-//     matrix[12*(frameCount*i + j) + x + 4*y]  for section i, frame j
-//     i.e. every frame's matrix for section 0, then all of section 1, ...
+//   per-frame, per-section 3x4 float matrices, ordered [frame][section]:
+//     matrix[12*(sectionCount*j + i) + x + 4*y]  for section i, frame j
+//     i.e. every section's matrix for frame 0, then all of frame 1, ... (OpenRA's
+//     HvaReader, not XCC's order; yaggun.hva's two frames only line up with its VXL tailers this way).
 //   Each matrix is a row-major 3x4 (12 floats): three rows of
 //     [m00 m01 m02 m03][m10 m11 m12 m13][m20 m21 m22 m23]
-//   the last column being translation (in VXL voxel units; scale by the section
-//   tailer's scale + bounds to get world coordinates, as the retail renderer does).
+//   the last column being translation (times the section tailer's scale, it is in
+//   the section's bounds units).
 //
 // XCC's is_valid() checks the exact size identity
 //   sizeof(header) + (48*frameCount + 16) * sectionCount == fileSize
@@ -48,7 +49,7 @@ export class HvaFile {
     readonly sectionNames: readonly string[],
     /**
      * Flat matrix store: `matrices[section][frame]` is a length-12 row-major 3x4
-     * matrix. Indexed `[section]` then `[frame]` to match the file's ordering.
+     * matrix (the file stores them frame by frame).
      */
     private readonly matrices: readonly (readonly (readonly number[])[])[],
   ) {}
@@ -93,13 +94,13 @@ export class HvaFile {
       sectionNames[i] = decodeCString(bytes.subarray(p, p + HVA_SECTION_NAME_SIZE));
     }
 
-    // Matrices, ordered [section][frame] (matching XCC get_transform_matrix).
+    // Matrices, stored [frame][section]; kept [section][frame].
     const matricesStart = namesStart + sectionCount * HVA_SECTION_NAME_SIZE;
     const matrices: number[][][] = new Array<number[][]>(sectionCount);
     for (let i = 0; i < sectionCount; i++) {
       const perFrame: number[][] = new Array<number[]>(frameCount);
       for (let j = 0; j < frameCount; j++) {
-        const base = matricesStart + (frameCount * i + j) * HVA_MATRIX_SIZE;
+        const base = matricesStart + (sectionCount * j + i) * HVA_MATRIX_SIZE;
         const m: number[] = new Array<number>(12);
         for (let k = 0; k < 12; k++) m[k] = dv.getFloat32(base + k * 4, true);
         perFrame[j] = m;

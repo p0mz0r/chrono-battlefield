@@ -9,15 +9,15 @@
 //
 // COORDINATE SPACES
 // -----------------
-// A VXL section's voxels live on a grid (X right, Y forward/depth, Z up). The
-// section TAILER carries a scale + a 3x4 transform; the HVA carries a per-frame
-// 3x4 matrix. The retail pipeline is: for each voxel, take its grid-centre point,
-// apply the section transform, apply the HVA frame matrix, then the model is
-// oriented for the unit's facing by rotating about the vertical (Z) axis, and
-// finally projected with the RA2 dimetric camera.
+// A VXL section's voxels live on a grid (X right, Y forward/depth, Z up). RA2 sizes
+// and places a section by its bounds: voxel `v`'s centre is `minBounds + (v+0.5)*step`
+// (sectionGridStep, ~1.0), in bounds units shared by every part of a model. The
+// HVA carries a per-frame 3x4 matrix whose translation, times the section's tailer
+// `scale`, is in those bounds units too. The tailer's own 3x4 transform is a copy
+// of HVA frame 0 (yaggun) or identity, so like OpenRA we ignore it.
 //
-// We fold this into: worldPoint = HVA * (sectionTransform * (scale * gridPoint)),
-// then rotate that point about Z by the facing angle, then project.
+// worldPoint = HVA * boundsPoint, minus the model's pivot, rotated about Z by the
+// facing angle, times the model-fit scale (px per bounds unit), then projected.
 //
 // RA2 DIMETRIC PROJECTION
 // -----------------------
@@ -68,10 +68,8 @@ export const FACING_COUNT = 32;
  * The bounds-space center of a VXL section: the midpoint of its `[minBounds,
  * maxBounds]` box. RA2 positions a model's parts (body / turret / barrel) in a
  * SHARED world space via those bounds — one voxel grid step is ~1.0 bounds unit
- * (verified against retail htnk*.vxl: (maxBounds-minBounds)/c ≈ 0.98). The section
- * `scale` is a separate DISPLAY scale applied on top. So the correct way to place
- * two parts in one frame is by their bounds boxes, and a part's rotation pivot is
- * its bounds-box center. Pure — no game data needed.
+ * (verified against retail htnk*.vxl: (maxBounds-minBounds)/c ≈ 0.98). A vehicle's
+ * part turns about its bounds-box center. Pure — no game data needed.
  */
 export function sectionBoundsCenter(section: VxlSection): [number, number, number] {
   return [
@@ -93,41 +91,6 @@ export function sectionGridStep(section: VxlSection): [number, number, number] {
     (section.maxBounds[1] - section.minBounds[1]) / Math.max(1, section.cy),
     (section.maxBounds[2] - section.minBounds[2]) / Math.max(1, section.cz),
   ];
-}
-
-/**
- * The turret's rotation PIVOT, expressed in the BODY's local render frame (the
- * same centered, `scale`-scaled space the body atlas is rendered in), as a 3D
- * vector (x right, y forward, z up). Derivation (documented, no rules needed):
- *
- *   * Retail HTNK has an EMPTY rules `TurretOffset=`, so the pivot is taken from
- *     the model transforms — specifically the parts' bounds boxes, which is where
- *     RA2 stores each part's placement in the shared world space.
- *   * The body atlas renders voxel `v` at `(v - (cBody-1)/2)*scaleBody`, i.e.
- *     centered on the body grid center and scaled by the body's display `scale`.
- *     That center corresponds to the body's BOUNDS center in world space.
- *   * A world (bounds-space) point `w` therefore maps into the body frame as
- *     `(w - bodyBoundsCenter) * (scaleBody / bodyStep)` where `bodyStep` is the
- *     body's bounds-units-per-grid-step — this converts the ~1.0/step bounds space
- *     into the body's `scale`/step display space so the pivot is in the SAME units
- *     as the body atlas geometry.
- *
- * The turret pivot is the turret bounds center mapped through that transform. The
- * render layer rotates this vector by the BODY facing (the pivot is fixed on the
- * hull) and projects it to place the turret quad; the vertical (z) component lifts
- * straight up on screen (turret sits atop the hull). Pure function.
- */
-export function turretPivotInBodyFrame(body: VxlSection, turret: VxlSection): [number, number, number] {
-  const bodyCenter = sectionBoundsCenter(body);
-  const turretCenter = sectionBoundsCenter(turret);
-  const bodyStep = sectionGridStep(body);
-  // Convert bounds-space delta to the body's display frame. Use each axis' own
-  // body step so a non-uniform grid maps correctly; guard tiny/zero steps.
-  const conv = (i: number): number => {
-    const step = Math.abs(bodyStep[i]!) > 1e-6 ? bodyStep[i]! : 1;
-    return ((turretCenter[i]! - bodyCenter[i]!) / step) * body.scale;
-  };
-  return [conv(0), conv(1), conv(2)];
 }
 
 /** Supersample factor: render at SS x, then box-downsample to the frame. */
@@ -201,19 +164,6 @@ function transformDir(m: readonly number[], x: number, y: number, z: number): [n
   ];
 }
 
-/** Compose 3x4 matrices a∘b (apply b first, then a), returning row-major 3x4. */
-function composeMatrix(a: readonly number[], b: readonly number[]): number[] {
-  const out = new Array<number>(12);
-  for (let r = 0; r < 3; r++) {
-    for (let c = 0; c < 4; c++) {
-      let s = c === 3 ? a[r * 4 + 3]! : 0;
-      for (let k = 0; k < 3; k++) s += a[r * 4 + k]! * b[k * 4 + c]!;
-      out[r * 4 + c] = s;
-    }
-  }
-  return out;
-}
-
 /** Normalize a 3-vector (returns [0,1,0] for a zero vector). */
 function normalizeVec(v: readonly [number, number, number]): NormalVec {
   const len = Math.hypot(v[0], v[1], v[2]);
@@ -258,15 +208,15 @@ export function projectModelPoint(px: number, py: number, pz: number): { sx: num
 }
 
 /**
- * Compute the per-voxel model scale so the model's XY footprint projects to about
- * {@link TARGET_FOOTPRINT_PX}. Derived from the section grid + tailer scale so all
- * three vehicles read at a consistent on-tile size regardless of grid resolution.
+ * Compute the model scale (px per bounds unit) so the model's XY footprint projects
+ * to about {@link TARGET_FOOTPRINT_PX}. Measured from the bounds, the size RA2
+ * draws, so all vehicles read at a consistent on-tile size whatever their grid.
  */
 export function deriveModelScale(sections: readonly VxlSection[], footprintPx = TARGET_FOOTPRINT_PX): number {
-  // The world-space XY extent after the section scale: use the largest grid span.
+  // The largest XY bounds span of any section.
   let maxSpan = 1;
   for (const s of sections) {
-    const span = Math.max(s.cx, s.cy) * s.scale;
+    const span = Math.max(s.maxBounds[0] - s.minBounds[0], s.maxBounds[1] - s.minBounds[1]);
     if (span > maxSpan) maxSpan = span;
   }
   // The projected ground width of `maxSpan` world units is maxSpan*PX_PER_UNIT_X*2
@@ -296,29 +246,20 @@ export interface VoxelRenderOptions {
   readonly hvaFrame?: number;
   /** On-screen body width in px (default TARGET_FOOTPRINT_PX). */
   readonly footprintPx?: number;
+  /**
+   * The bounds-space point the model turns about and the sprite's `origin` marks
+   * (default: the bounds center of the model's first section, or of the turret).
+   * Buildings pass RA2's pivot `[0, 0, 0]`.
+   */
+  readonly pivot?: readonly [number, number, number];
 }
-
-/**
- * Per-section local-frame origin: the grid coordinate subtracted from each voxel
- * before the tailer scale, so a section rotates about that point. Returns the grid
- * coordinate of the origin (grid units, pre-scale).
- */
-type SectionOrigin = (section: VxlSection) => readonly [number, number, number];
-
-/**
- * The DEFAULT origin used by the body atlas: the section grid center `(c-1)/2` on
- * every axis, so the model rotates about its own centre. Keeping this the default
- * makes the body render path byte-for-byte identical to before turret support.
- */
-const GRID_CENTER_ORIGIN: SectionOrigin = (s) => [(s.cx - 1) / 2, (s.cy - 1) / 2, (s.cz - 1) / 2];
 
 /**
  * Render every voxel of a facing into supersampled screen space, returning the
  * projected voxels plus the screen bounds. Pure geometry — no rasterization yet.
  *
- * `origin` selects the per-section grid point voxels are centered on before the
- * tailer scale + facing rotation (default: the grid center — the body path). The
- * turret path passes a shared origin so a multi-part model composites in one frame.
+ * Every section is placed in bounds units and turned about the shared bounds-space
+ * `pivot`, so a multi-part model (or turret + barrel) composites in one frame.
  */
 function projectFacing(
   vxl: VxlFile,
@@ -327,7 +268,7 @@ function projectFacing(
   modelScale: number,
   ss: number,
   hvaFrame: number,
-  origin: SectionOrigin = GRID_CENTER_ORIGIN,
+  pivot: readonly [number, number, number],
 ): { voxels: ProjectedVoxel[]; minX: number; minY: number; maxX: number; maxY: number } {
   const angle = facingAngle(facing);
   const voxels: ProjectedVoxel[] = [];
@@ -339,21 +280,17 @@ function projectFacing(
   for (let si = 0; si < vxl.sections.length; si++) {
     const section = vxl.sections[si]!;
     const table = normalTableFor(section.normalsMode);
-    // Combined per-voxel transform: HVA(frame,section) ∘ sectionTransform, with
-    // the section grid pre-scaled by the tailer scale and the model-fit scale.
-    // HVA translations are in bounds units; RA2 scales them by the section scale like the voxels (CNCMaps' HVAMultiplier).
-    const hvaM = (hva.sectionCount > si ? hva.matrix(si, hvaFrame) : IDENTITY_3X4).map((m, i) => (i % 4 === 3 ? m * section.scale : m));
-    const combined = composeMatrix(hvaM, section.transform);
-    // The grid point voxels are centered on (rotation pivot), grid units.
-    const [halfX, halfY, halfZ] = origin(section);
+    // HVA(frame, section) with its translation times the tailer scale, in bounds
+    // units (CNCMaps' HVAMultiplier), and the pivot taken off so the model turns about it.
+    const combined = (hva.sectionCount > si ? hva.matrix(si, hvaFrame) : IDENTITY_3X4)
+      .map((m, i) => (i % 4 === 3 ? m * section.scale - pivot[i >> 2]! : m));
+    const step = sectionGridStep(section);
+    const [minX0, minY0, minZ0] = section.minBounds;
 
     for (const v of section.voxels) {
-      // Grid point -> local (centered, tailer-scaled) coords.
-      const lx = (v.x - halfX) * section.scale;
-      const ly = (v.y - halfY) * section.scale;
-      const lz = (v.z - halfZ) * section.scale;
-      // Section + HVA transform.
-      const [wx, wy, wz] = transformPoint(combined, lx, ly, lz);
+      // Grid voxel -> its centre in bounds units, then the HVA transform.
+      const [wx, wy, wz] = transformPoint(combined,
+        minX0 + (v.x + 0.5) * step[0], minY0 + (v.y + 0.5) * step[1], minZ0 + (v.z + 0.5) * step[2]);
       // Facing rotation about Z, then model-fit scale.
       const [rx, ry, rz] = rotateZ(wx, wy, wz, angle);
       const px = rx * modelScale;
@@ -638,8 +575,9 @@ export function renderVoxelToSprite(
   const ss = options.supersample ?? SUPERSAMPLE;
   const hvaFrame = options.hvaFrame ?? 0;
   const modelScale = deriveModelScale(vxl.sections, options.footprintPx);
+  const pivot = options.pivot ?? sectionBoundsCenter(vxl.sections[0]!);
   return assembleSprite(name, facingCount, ss, palette, (f) =>
-    projectFacing(vxl, hva, f, modelScale, ss, hvaFrame),
+    projectFacing(vxl, hva, f, modelScale, ss, hvaFrame, pivot),
   );
 }
 
@@ -649,9 +587,9 @@ export interface TurretRender {
   readonly sprite: ConvertedSprite;
   /**
    * The turret rotation pivot in the BODY's render frame (x right, y forward, z
-   * up), same units/scale as the body atlas. The render layer rotates (x,y) by the
-   * BODY facing and projects it (with z lifting straight up) to place the turret
-   * quad over the hull. See {@link turretPivotInBodyFrame}.
+   * up), in px like the body atlas: its offset from the body's bounds center. The
+   * render layer rotates (x,y) by the BODY facing and projects it (with z lifting
+   * straight up) to place the turret quad over the hull.
    */
   readonly pivot: readonly [number, number, number];
 }
@@ -668,9 +606,9 @@ export interface TurretRender {
  * facing `i*(360/32)`, matching the 32-facing body layout.
  *
  * Uses the BODY's `modelScale` so body and turret composite at one on-tile size,
- * and centers each part on the TURRET bounds center (mapped into the body frame) so
- * the atlas frames are centered on the pivot — the render layer then just offsets
- * by the projected pivot. Deterministic: same inputs, byte-identical output.
+ * and turns every part about the TURRET bounds center (or `options.pivot`) so the
+ * atlas frames are centered on the pivot — the render layer then just offsets by
+ * the projected pivot. Deterministic: same inputs, byte-identical output.
  */
 export function renderTurretToSprite(
   name: string,
@@ -688,38 +626,16 @@ export function renderTurretToSprite(
   // Share the BODY's fit-scale so the turret composites at the body's on-tile size.
   const modelScale = deriveModelScale(bodyVxl.sections, options.footprintPx);
 
-  const bodySec = bodyVxl.sections[0]!;
-  const turretSec = turret.sections[0]!;
-  // Pivot in the body render frame (world units), then scaled by the body's
-  // model-fit scale so it is in the SAME pixel units as the atlas frames. The
-  // render layer rotates (x,y) by the body facing and applies the dimetric
-  // projection (screenX=(x-y)*PX_X, screenY=(x+y)*PX_Y - z*PX_Z) — see PIVOT_* below.
-  const rawPivot = turretPivotInBodyFrame(bodySec, turretSec);
-  const pivot: [number, number, number] = [
-    rawPivot[0] * modelScale,
-    rawPivot[1] * modelScale,
-    rawPivot[2] * modelScale,
-  ];
-
-  // Convert a section's bounds-space point into the body's display frame, then to
-  // the GRID coordinate the projector subtracts as the rotation origin. We want the
-  // turret (and barrel) centered on the TURRET bounds center so the atlas rotates
-  // about the pivot. For a section `s`, the grid origin that places its bounds
-  // center at the shared pivot is: gridOrigin = (turretBoundsCenter - s.minBounds)/s.step.
-  const turretCenter = sectionBoundsCenter(turretSec);
-  const originForSharedCenter: SectionOrigin = (s) => {
-    const step = sectionGridStep(s);
-    return [
-      (turretCenter[0]! - s.minBounds[0]!) / (Math.abs(step[0]!) > 1e-6 ? step[0]! : 1),
-      (turretCenter[1]! - s.minBounds[1]!) / (Math.abs(step[1]!) > 1e-6 ? step[1]! : 1),
-      (turretCenter[2]! - s.minBounds[2]!) / (Math.abs(step[2]!) > 1e-6 ? step[2]! : 1),
-    ];
-  };
+  // Turret and barrel turn about the turret's bounds center (or options.pivot); the
+  // render layer places it by its offset from the body's bounds center, in px.
+  const turretPivot = options.pivot ?? sectionBoundsCenter(turret.sections[0]!);
+  const bodyCenter = sectionBoundsCenter(bodyVxl.sections[0]!);
+  const pivot = turretPivot.map((p, i) => (p - bodyCenter[i]!) * modelScale) as [number, number, number];
 
   const sprite = assembleSprite(name, facingCount, ss, palette, (f) => {
-    const t = projectFacing(turret, turretHva, f, modelScale, ss, hvaFrame, originForSharedCenter);
+    const t = projectFacing(turret, turretHva, f, modelScale, ss, hvaFrame, turretPivot);
     if (!barrel) return t;
-    const b = projectFacing(barrel, barrelHva ?? turretHva, f, modelScale, ss, hvaFrame, originForSharedCenter);
+    const b = projectFacing(barrel, barrelHva ?? turretHva, f, modelScale, ss, hvaFrame, turretPivot);
     // Composite barrel voxels into the turret's projection (shared z-buffer at
     // rasterization time), and widen the shared screen bounds to include both.
     return {
