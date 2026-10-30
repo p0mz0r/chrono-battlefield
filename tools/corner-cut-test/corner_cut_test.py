@@ -116,39 +116,7 @@ def build_map():
         tf, sc, tm, tr, tg = (f"0100{i}{k}00" for k in "12345")
         taskforces.append((tf, f"[{tf}]\nName=Rhino {name}\n0=1,HTNK\nGroup=-1"))
         scripts.append((sc, f"[{sc}]\nName=Drive {name}\n0=3,{goal}"))
-        teams.append((tm, f"""[{tm}]
-Name=Lane {name}
-House=<Player @ A>
-TaskForce={tf}
-Script={sc}
-Waypoint={waypoint_letters(start)}
-VeteranLevel=1
-MindControlDecision=0
-Loadable=no
-Full=no
-Annoyance=no
-GuardSlower=no
-Recruiter=no
-Autocreate=no
-Prebuild=no
-Reinforce=no
-Droppod=no
-UseTransportOrigin=no
-Whiner=no
-LooseRecruit=no
-Aggressive=no
-Suicide=no
-Priority=5
-Max=1
-TechLevel=0
-Group=-1
-OnTransOnly=no
-AvoidThreats=no
-IonImmune=no
-TransportsReturnOnUnload=no
-AreTeamMembersRecruitable=no
-IsBaseDefense=no
-OnlyTargetHouseEnemy=no"""))
+        teams.append((tm, team_type(tm, f"Lane {name}", tf, sc, start)))
         # Event 13 = elapsed time; action 80 = reinforcement at waypoint, 112 = jump camera to waypoint.
         triggers.append(f"{tr}=Neutral,<none>,Lane {name},0,1,1,1,0")
         events.append(f"{tr}=1,13,0,{DRIVE_AT}")
@@ -237,6 +205,43 @@ Level=0.000000
 """
 
 
+def team_type(tm, name, tf, sc, start):
+    """A one-shot team for the player at start A that runs script sc from waypoint start."""
+    return f"""[{tm}]
+Name={name}
+House=<Player @ A>
+TaskForce={tf}
+Script={sc}
+Waypoint={waypoint_letters(start)}
+VeteranLevel=1
+MindControlDecision=0
+Loadable=no
+Full=no
+Annoyance=no
+GuardSlower=no
+Recruiter=no
+Autocreate=no
+Prebuild=no
+Reinforce=no
+Droppod=no
+UseTransportOrigin=no
+Whiner=no
+LooseRecruit=no
+Aggressive=no
+Suicide=no
+Priority=5
+Max=1
+TechLevel=0
+Group=-1
+OnTransOnly=no
+AvoidThreats=no
+IonImmune=no
+TransportsReturnOnUnload=no
+AreTeamMembersRecruitable=no
+IsBaseDefense=no
+OnlyTargetHouseEnemy=no"""
+
+
 def waypoint_letters(n):
     """FA2 waypoint letters: A=0 ... Z=25, AA=26 ..."""
     s = chr(ord("A") + n % 26)
@@ -288,10 +293,10 @@ Multi2=3
 """
 
 
-def run(video):
+def run(video, map_text=None, record_s=RECORD_S):
     ra2 = os.environ["RA2_DIR"]
     # The CnCNet client owns these; put them back after the game exits.
-    touched = {"spawn.ini": SPAWN_INI, "spawnmap.ini": build_map()}
+    touched = {"spawn.ini": SPAWN_INI, "spawnmap.ini": map_text or build_map()}
     backups = {}
     for name, text in touched.items():
         path = os.path.join(ra2, name)
@@ -320,7 +325,7 @@ def run(video):
         # window rect with user32 if it ever opens elsewhere.
         subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "gdigrab", "-framerate", "10",
                         "-offset_x", "0", "-offset_y", "0", "-video_size", "1926x1108", "-i", "desktop",
-                        "-t", str(RECORD_S), "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+                        "-t", str(record_s), "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
                         os.path.abspath(video)])
         subprocess.run(["taskkill", "/IM", "gamemd-spawn.exe", "/F"])
         game.wait()

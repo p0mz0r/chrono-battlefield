@@ -129,6 +129,7 @@ Chrono Divide, the browser RA2 reimplementation, publishes no implementation not
   - **[TS]** A unit on the deck is tested at deck height. The terrain figure is skipped and `[Road]` speed is used, which is how a Track unit crosses water on a bridge. Under the bridge, the cell is tested as normal ground.
   - **[TS]** A destination under a bridge must be reached at deck height ("A destination spanned by a bridge must be reached at deck height"). This is a known source of odd routing.
   - **[YR]** Bridges link zones that the ground would otherwise split.
+  - **[Inf]** The deck is wider than the one overlay line FA2 places (three cells, as the art shows): in one run of YR with Ares and Phobos injected, tanks passed each other on it and stopped on the side cells at deck height ([ra2-bridge-deck-width.md](ra2-bridge-deck-width.md), #66).
 - **Units cannot stop under a high bridge.** **[YR]** Phobos `Fixed-or-Improved-Logics.md`: "Technos are still not allowed to stop moving under the elevated bridge". In vanilla, units also could not stop on top of one; Phobos fixed only that half.
 - **`TooBigToFitUnderBridge=true`** is set on the Rhino and most tanks, but **[TS]** it is drawing-only. It splits the voxel image for depth sorting and does not restrict movement (OpenTS `keys/toobigtofitunderbridge`).
 - **Low bridges (`LOBRDG*`).** **[YR]** These are ground-level overlays with `Land=Road` over water. No over/under.
