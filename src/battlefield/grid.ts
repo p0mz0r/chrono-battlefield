@@ -55,6 +55,7 @@ const CLIFF_BACK_OFFSETS = [[0, -1], [-1, 0], [1, -1], [-1, 1], [1, 1], [2, 2]] 
 export const isHighBridge = (type: string) => /^BRIDGEB?[12]$/i.test(type);
 export const isLowBridge = (type: string) => /^LOBRD/i.test(type);
 
+// A change to the grid this builds needs IMPORT_VERSION bumped in src/install/cache.ts.
 export function buildGrid(stock: Stock, tileAt: (t: IsoTile) => TmpTile | undefined): CellGrid {
   const { map, rules } = stock;
   let width = 0, height = 0;

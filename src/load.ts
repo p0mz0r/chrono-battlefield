@@ -44,6 +44,7 @@ const sprite = async (s: ConvertedSprite): Promise<Sprite> =>
 /**
  * Imports the course's battlefield and prerenders the Rhino, or takes both from the cache when this install
  * and map file were imported before. A miss reads only the MIX entries the import needs; a hit reads none.
+ * A change to the prerendered art needs `IMPORT_VERSION` bumped in `src/install/cache.ts`.
  */
 export async function loadCourse(read: ReadFile, mapPath: string): Promise<{ map: MapFile; mapBytes: Uint8Array; art: CourseArt; cached: boolean }> {
   const mapBytes = await read(mapPath);

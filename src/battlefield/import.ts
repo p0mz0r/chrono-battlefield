@@ -31,6 +31,7 @@ const HONOURED = new Set(['terraintypes', 'buildingtypes', 'overlaytypes']);
 /**
  * Imports a map file from stock files only, applying the support rule: a known theater, and art in that theater
  * for every tile, overlay, tree and building. Throws UnsupportedMapError with the reasons otherwise.
+ * Any change to what this returns (grid, objects, terrain) needs `IMPORT_VERSION` bumped in `src/install/cache.ts`, or browsers keep the old import.
  */
 export async function importBattlefield(read: ReadFile, path: string, mounted?: Vfs): Promise<Battlefield> {
   const map = await loadMap(read, path);
