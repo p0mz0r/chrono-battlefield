@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { describeInstall, readFromDir } from '../../test/install.js';
 import { ObjectEntry } from '../ra2/index.js';
 import { loadMap, mountTheater } from '../ra2/mount.js';
-import { placeObjects } from './objects.js';
+import { overlayDy, placeObjects } from './objects.js';
 import { Stock } from './stock.js';
 
 describeInstall('building overlays', () => {
@@ -63,5 +63,20 @@ describeInstall('house colour', () => {
     // The voxel gun and barrel stand on the base: a second, wider image at the same cell.
     const gun = objects.filter((o) => o.cellX === 75 && o.cellY === 112)[1]!;
     expect(images[gun.image]!.width).toBeGreaterThan(images[cannon.image]!.width);
+  }, 30_000);
+});
+
+describeInstall('overlay offset', () => {
+  it('draws overlay at gamemd\'s offset, not CNCMaps\' plain 0 (#67)', async () => {
+    const map = await loadMap(readFromDir, 'Oceansid.mmx');
+    const stock = new Stock(map, await mountTheater(readFromDir, map.theater));
+    const dy = (type: string) => overlayDy(stock.rulesOf(type), stock.overlayTypes.indexOf(type));
+    expect(dy('LOBRDG01')).toBe(15);
+    expect(dy('SROCK01')).toBe(15);
+    expect(dy('TRACKS01')).toBe(14);
+    expect(dy('CRATE')).toBe(3);
+    expect(dy('GEM01')).toBe(3);
+    expect(dy('GASAND')).toBe(3);
+    expect(dy('RUBBLE_OVERLAY')).toBe(0);
   }, 30_000);
 });
