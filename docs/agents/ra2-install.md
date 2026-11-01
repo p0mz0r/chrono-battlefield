@@ -6,6 +6,13 @@
 
 A battlefield plus a Rhino needs `ra2.mix`, `ra2md.mix`, `expandmd01.mix` and one loose map (`Maps\Yuri's Revenge\*.map`). The YR theater tile MIXes nested in `ra2md.mix` are `desert`/`isodes`, `urbann`/`isoubn` and `lunar`/`isolun` (no `md` suffix, verified on the owner's install).
 
+## Tests that need the install
+
+Tests inside `describeInstall` (`test/install.ts`) read `RA2_DIR` and skip when it is unset, as in CI. The pre-commit hook runs them on a machine with the install. Two of them answer common questions:
+
+- **Shipped courses:** `bundled courses` in `src/race/race.test.ts` loads every `courses/*.json` over its battlefield.
+- **Bridges on a real map:** `src/battlefield/import.test.ts` checks Hills' bridge decks. `src/battlefield/grid.test.ts` covers the same grid rules on a synthetic map, without the install.
+
 ## Checking a render
 
 Most maps in `Maps\Yuri's Revenge` have a CNCMaps render beside them: `<map>.png`. Compare against it for layout. It also highlights ore/gems and applies map lighting, so those differences are expected until we draw them.
