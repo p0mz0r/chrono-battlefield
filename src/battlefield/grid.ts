@@ -137,6 +137,7 @@ export function buildGrid(stock: Stock, tileAt: (t: IsoTile) => TmpTile | undefi
       }
     }
     // A high deck is its overlay line ±1 cell across, end cells included; each side cell is deck at its own level + 4 (#80).
+    // ponytail: a side cell two bridges share goes to the first one scanned (RA2: last placed); no shipped map has one.
     if (kind === 'high') for (const i of [...cells]) for (const j of [i - across[i]!, i + across[i]!]) {
       const x = j % width;
       if (j < 0 || j >= n || !covered[j] || Math.abs(x - i % width) > 1 || bridgeKind[j] || grid.bridge[j] !== -1) continue;

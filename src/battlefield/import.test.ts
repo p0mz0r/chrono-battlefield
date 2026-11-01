@@ -39,7 +39,7 @@ describeInstall('importBattlefield on the install', () => {
     }
     expect(under).toEqual({ x: 85, y: 76, deck: false });
 
-    // #80: the deck is the overlay line ±1 across it, end cells included, owned by the same bridge (research/ra2-bridge-deck-sides.md).
+    // #80: the deck is the overlay line ±1 across it, end cells included, owned by the same bridge (docs/research/ra2-bridge-deck-sides.md).
     const at = (x: number, y: number) => y * grid.width + x;
     const id = grid.bridge[at(86, 75)]!;
     for (const [x, y] of [[86, 74], [86, 76], [76, 74], [97, 76]] as const) {
