@@ -94,13 +94,14 @@ export function buildGrid(stock: Stock, tileAt: (t: IsoTile) => TmpTile | undefi
   }
 
   const bridgeKind: ('high' | 'low' | undefined)[] = new Array(n);
+  const across: number[] = []; // per high overlay cell: index step across its line (`*1` runs along x, `*2` along y)
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
     const id = map.overlay[y * 512 + x]!;
     if (id === 0xff) continue;
     const type = stock.overlayTypes[id];
     if (!type) continue;
     const i = y * width + x, sec = rules.getSection(type);
-    if (isHighBridge(type)) { bridgeKind[i] = 'high'; grid.deck[i] = grid.level[i]! + 4; continue; }
+    if (isHighBridge(type)) { bridgeKind[i] = 'high'; grid.deck[i] = grid.level[i]! + 4; across[i] = type.endsWith('1') ? width : 1; continue; }
     if (isLowBridge(type)) bridgeKind[i] = 'low';
     if (sec?.getBool('Wall')) grid.blocked[i] = true;
     const land = sec?.getString('Land');
@@ -134,6 +135,14 @@ export function buildGrid(stock: Stock, tileAt: (t: IsoTile) => TmpTile | undefi
         const j = (y + dy) * width + x + dx;
         if (inside(x + dx, y + dy) && bridgeKind[j] === kind && grid.bridge[j] === -1) { grid.bridge[j] = id; stack.push(j); }
       }
+    }
+    // A high deck is its overlay line ±1 cell across, end cells included; each side cell is deck at its own level + 4 (#80).
+    if (kind === 'high') for (const i of [...cells]) for (const j of [i - across[i]!, i + across[i]!]) {
+      const x = j % width;
+      if (j < 0 || j >= n || !covered[j] || Math.abs(x - i % width) > 1 || bridgeKind[j] || grid.bridge[j] !== -1) continue;
+      grid.deck[j] = grid.level[j]! + 4;
+      grid.bridge[j] = id;
+      cells.push(j);
     }
     grid.bridges.push({ kind, cells: cells.sort((a, b) => a - b) });
   }
