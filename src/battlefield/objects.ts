@@ -1,4 +1,4 @@
-import { HvaFile, Palette, ShpFile, VxlFile } from '../ra2/index.js';
+import { HvaFile, Palette, ShpFile, VxlFile, type IniSection } from '../ra2/index.js';
 import { GAMEMD_CAMERA, renderTurretToSprite } from '../ra2/render/voxelRender.js';
 import type { ConvertedSprite } from '../ra2/render/sprite.js';
 import { foundation, isHighBridge } from './grid.js';
@@ -41,6 +41,18 @@ const BUILDING_PARTS = ['ActiveAnim', 'ActiveAnimTwo', 'ActiveAnimThree', 'Activ
 const BRIDGE_VARIATION = [0, 1, 2, 3, 3, 2, 1, 0, 2, 3, 0, 1, 1, 0, 3, 2];
 
 /**
+ * gamemd's Y offset for an overlay off a high-bridge deck (0x5FDCC0 plus 0x480110), plus 15 for our tile-top anchor.
+ * CNCMaps drew the plain case at 0, 15 px too high (docs/research/ra2-low-bridge-offset.md).
+ */
+export function overlayDy(rules: IniSection | undefined, id: number): number {
+  let y = rules?.getBool('Tiberium') || rules?.getBool('Wall') || rules?.getBool('Crate') || id === 126 ? -12 : 0;
+  if (rules?.getString('Land')?.toLowerCase() === 'railroad') y--;
+  if (id === 126) y--;
+  if (id === 239) y -= 15; // RUBBLE_OVERLAY
+  return y + 15;
+}
+
+/**
  * The unit palette with its remap ramp (16..31, pure red in the file) recoloured to a `[Colors]` entry (H,S,V, 0-255 each).
  * ponytail: ramp brightness is the red ramp's own, scaled onto the colour's V; CNCMaps' exact ramp is not read.
  */
@@ -55,7 +67,7 @@ function remapped(rgb: Uint8Array, hsv: number[]): Uint8Array {
 
 /**
  * Places overlay, trees and buildings the way CNCMaps draws them: the SHP canvas centred on the cell's tile
- * top-left plus (30, 0) for overlay and buildings, (30, 15) for trees. `originX/Y` is the terrain's origin.
+ * top-left plus (30, 0) for buildings, (30, 15) for trees, and (30, `overlayDy`) for overlay. `originX/Y` is the terrain's origin.
  */
 export function placeObjects(stock: Stock, originX: number, originY: number): Objects {
   const { map } = stock;
@@ -115,12 +127,12 @@ export function placeObjects(stock: Stock, originX: number, originY: number): Ob
     const rules = stock.rulesOf(type);
     let frame = map.overlayData[cy * 512 + cx]!;
     const depth = (cx + cy + 1) * 15;
-    if (rules?.getBool('Tiberium')) place(type, cx, cy, frame, 'theater', 30, 3, -1, 'overlay');
-    else if (rules?.getBool('Wall')) place(type, cx, cy, frame, 'unit', 30, 3, depth, 'overlay');
+    if (rules?.getBool('Tiberium')) place(type, cx, cy, frame, 'theater', 30, overlayDy(rules, id), -1, 'overlay');
+    else if (rules?.getBool('Wall')) place(type, cx, cy, frame, 'unit', 30, overlayDy(rules, id), depth, 'overlay');
     else if (isHighBridge(type)) {
       if (frame === 0 || frame === 9) frame += BRIDGE_VARIATION[(cx & 3) | ((cy & 3) << 2)]!;
       place(type, cx, cy, frame, 'iso', 30, frame <= 8 ? -1 : -16, (cx + cy + 4) * 15, 'overlay');
-    } else place(type, cx, cy, frame, 'iso', 30, 0, depth, 'overlay');
+    } else place(type, cx, cy, frame, 'iso', 30, overlayDy(rules, id), depth, 'overlay');
   }
 
   const trees = new Set(stock.typeList('TerrainTypes'));
