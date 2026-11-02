@@ -7,7 +7,7 @@ A browser stream mini game: viewers join a race, each gets a tank, and the tanks
 ### People
 
 **Viewer**:
-Anyone in the stream's chat.
+Anyone in the stream's chat. The same person on two platforms counts as two viewers.
 _Avoid_: User, chatter
 
 **Racer**:
@@ -125,6 +125,18 @@ _Avoid_: Superweapon, command, power
 **Chat command**:
 A chat line that is exactly one listed verb, such as `!rhino` or `!missile`, plus at most its one argument; case and extra spaces don't matter, and every other line is ignored silently.
 _Avoid_: Message, redemption
+
+**Chat source**:
+Where the game hears chat, redemptions and cheers from: **Streamer.bot**, which can bring in several platforms, or **Twitch direct** after the operator logs in. The operator picks exactly one.
+_Avoid_: Integration, connector, bot
+
+**Redemption**:
+A viewer spending channel points on one of the game's rewards to set off an audience interaction; it is fulfilled when the interaction lands and refunded when it fails. Never a chat command, and not held to the viewer cooldown.
+_Avoid_: Reward, purchase, chat command
+
+**Cheer**:
+A viewer spending bits to set off an audience interaction; bits are never refunded, so a cheer's interaction cannot fail during a race.
+_Avoid_: Bits, donation, redemption
 
 **Command list**:
 The subtle on-screen list of the chat commands available right now, such as `!rhino` during the join window; a chat command not on it is ignored silently.
