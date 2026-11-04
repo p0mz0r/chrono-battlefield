@@ -73,7 +73,7 @@ A delay in which a tank stops and burns for a few seconds, then drives on unharm
 _Avoid_: Damage, breakdown, health
 
 **Stun immunity**:
-A short, visible spell after a stun ends during which no delay can hit the tank again, so chat cannot freeze one tank forever; moves still apply.
+A short, visible spell after a stun ends during which no stun can hit the tank again, so chat cannot freeze one tank forever; moves and radiation still apply.
 _Avoid_: Shield, invulnerability
 
 **Target protection**:
@@ -102,7 +102,15 @@ _Avoid_: Area strike, nuke, artillery
 
 **Chronosphere**:
 An audience interaction that moves one tank a random distance back along the course, or sometimes, as a misfire, a shorter random distance forward.
-_Avoid_: Chrono swap, teleport
+_Avoid_: Teleport
+
+**Knockback**:
+A move a few cells back along the course that comes with a stun from a big event, for every tank caught in it, intended target or not; personal interactions never knock back.
+_Avoid_: Pushback, recoil
+
+**Radiation**:
+A glowing patch on the ground that slows every tank driving through it, the more the closer to its centre, but never stops one, until it fades; a shield keeps a tank unharmed, stun immunity does not.
+_Avoid_: Slow field, poison
 
 **Viewer cooldown**:
 The wait after a viewer uses any audience interaction before they may use another; its length depends on the interaction used.
@@ -119,6 +127,38 @@ _Avoid_: Noclip, unstuck
 **Audience interaction**:
 Any chat-triggered effect on the race, such as a homing missile, the chronosphere, or a boost. Harmful ones delay or move a tank; boost and shield help one.
 _Avoid_: Superweapon, command, power
+
+**Personal interaction**:
+An audience interaction any viewer sets off alone with a chat command, held to the viewer cooldown; small, and may name its target.
+_Avoid_: Basic attack, command
+
+**Big event**:
+A paid event or chat-wide event: a spectacle that hits the leading tank, a random tank or the whole field, never a tank by name. Only one plays at a time; others wait their turn in a visible queue.
+_Avoid_: Superweapon, ultimate
+
+**Paid event**:
+A big event one viewer sets off with a redemption or, for the strongest few, a cheer; never with a chat command.
+_Avoid_: Channel-point event, bits event
+
+**Chat-wide event**:
+A big event that chat builds up together and then unleashes; at most two a race.
+_Avoid_: Global event, raid
+
+**Nuke**:
+The chat-wide event: after a warning and a countdown of ten seconds or more, it stuns every tank on the field for longer than a normal stun, longer still the further along the course a tank is, each ending at its own random moment so the field restarts in a new order; only a shield still up at the moment of impact saves a tank.
+_Avoid_: Nuclear strike, bomb
+
+**Kirov airship**:
+A paid event: an airship flies slowly in from behind the leading tank and bombs it; every tank in the blast is stunned and knocked back.
+_Avoid_: Zeppelin, blimp, airstrike
+
+**Desolator**:
+A paid event that leaves radiation on the course just ahead of the leading tank.
+_Avoid_: Rad cannon, slow trap
+
+**Chrono swap**:
+A paid event, also set off by a cheer, that swaps the places of two random tanks, one from the front half of the standings and one from the back half.
+_Avoid_: Chronosphere, teleport, switch
 
 ### Chat
 
