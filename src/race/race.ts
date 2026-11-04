@@ -183,8 +183,9 @@ export function chat(race: Race, line: ChatLine): ChatResult {
     const result = toggleBridge(race, words[1]);
     if (!result.ok) return reject(result.reason);
     race.cooldowns.set(line.viewerId, race.frame + COMMANDS.bridge.cooldown * TICK_HZ);
-    race.sounds.push(result.reason.endsWith('destroyed') ? 'bridgeCollapse' : 'bridgeRepair');
-    post(race, `${line.name} ▸ bridge ▸ ${words[1]!.toUpperCase()}`);
+    const destroyed = result.reason.endsWith('destroyed');
+    race.sounds.push(destroyed ? 'bridgeCollapse' : 'bridgeRepair');
+    post(race, `${line.name} ${destroyed ? 'destroyed' : 'repaired'} bridge ${words[1]!.toUpperCase()}`);
     return result;
   }
   let target: Racer | undefined;
