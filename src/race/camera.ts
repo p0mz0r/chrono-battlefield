@@ -45,7 +45,7 @@ export function directorShot(race: Race, prev: Shot | undefined): Shot {
   const since = prev ? race.frame - prev.cutAt : Infinity;
   const hitSeen = prev?.hitSeen ?? -1;
   if (hit && race.lastHitFrame > hitSeen && hit.finishedAt === undefined && since >= HIT_GAP) {
-    return { racer: hit, reason: 'Just hit', cutAt: race.frame, hitSeen: race.lastHitFrame };
+    return { racer: hit, reason: `Hit by ${race.lastHitBy}`, cutAt: race.frame, hitSeen: race.lastHitFrame };
   }
   if (prev && prev.racer.finishedAt === undefined && since < HOLD) return prev;
   const order = standings(race);

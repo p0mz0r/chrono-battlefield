@@ -85,16 +85,18 @@ export interface Race {
   /** Interactions enabled for this race; setup can select a subset. */
   enabled: Set<Interaction>;
   cooldowns: Map<string, number>;
-  /** Visible failures, newest last. */
+  /** Visible lines, newest last: who did what to which tank, and failures with their reason. */
   feed: string[];
   feedUntil: Map<string, number>;
   sounds: string[];
-  missiles: { target: Racer; named: boolean; launched: number; arrives: number; x: number; y: number }[];
+  missiles: { by: string; target: Racer; named: boolean; launched: number; arrives: number; x: number; y: number }[];
   lastHit: Racer | undefined;
+  /** Who set off the interaction behind `lastHit`. */
+  lastHitBy: string | undefined;
   lastHitFrame: number;
   v3s: { firer: Racer; x: number; y: number; dx: number; dy: number; travelled: number }[];
   /** Tesla strikes charging: the Tesla tank stays beside `target` (x, y in cells) until it goes off. */
-  teslas: { target: Racer; named: boolean; x: number; y: number; arrives: number }[];
+  teslas: { by: string; target: Racer; named: boolean; x: number; y: number; arrives: number }[];
   bridgeGrid: BridgeGrid | undefined;
 }
 
@@ -109,7 +111,7 @@ export interface Standing {
 
 export function createRace(course: Course, grid: CellGrid, seed: number): Race {
   const bridgeGrid = 'bridge' in grid && 'bridges' in grid ? grid as BridgeGrid : undefined;
-  return { course, field: createField(grid, seed), seed, phase: 'idle', paused: false, racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions.filter((verb) => verb !== 'bridge' || (bridgeGrid && course.file.bridges.length))), cooldowns: new Map(), feed: [], feedUntil: new Map(), sounds: [], missiles: [], v3s: [], teslas: [], lastHit: undefined, lastHitFrame: -1, bridgeGrid };
+  return { course, field: createField(grid, seed), seed, phase: 'idle', paused: false, racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions.filter((verb) => verb !== 'bridge' || (bridgeGrid && course.file.bridges.length))), cooldowns: new Map(), feed: [], feedUntil: new Map(), sounds: [], missiles: [], v3s: [], teslas: [], lastHit: undefined, lastHitBy: undefined, lastHitFrame: -1, bridgeGrid };
 }
 
 export function commandList(race: Race): string[] {
@@ -134,6 +136,7 @@ export function openJoinWindow(race: Race, { joinSeconds = 90, finishSeconds = 6
   race.feedUntil.clear();
   race.missiles.length = 0;
   race.lastHit = undefined;
+  race.lastHitBy = undefined;
   race.lastHitFrame = -1;
   race.v3s.length = 0;
   race.teslas.length = 0;
@@ -169,9 +172,8 @@ export function chat(race: Race, line: ChatLine): ChatResult {
   if ((verb === 'shield' && words.length !== 1) || (verb === 'bridge' && words.length !== 2) || (verb === 'v3' && words[1] && !['back', 'fwd'].includes(words[1])) || (verb !== 'shield' && words.length > 2)) return IGNORED;
   const reject = (reason: string): ChatResult => {
     if ((race.feedUntil.get(line.viewerId) ?? 0) <= race.frame) {
-      race.feed.push(`${line.name}: ${reason}`);
+      post(race, `${line.name}: ${reason}`);
       race.feedUntil.set(line.viewerId, race.frame + 3 * TICK_HZ);
-      if (race.feed.length > 5) race.feed.shift();
     }
     return { ok: false, reason };
   };
@@ -181,7 +183,9 @@ export function chat(race: Race, line: ChatLine): ChatResult {
     const result = toggleBridge(race, words[1]);
     if (!result.ok) return reject(result.reason);
     race.cooldowns.set(line.viewerId, race.frame + COMMANDS.bridge.cooldown * TICK_HZ);
-    race.sounds.push(result.reason.endsWith('destroyed') ? 'bridgeCollapse' : 'bridgeRepair');
+    const destroyed = result.reason.endsWith('destroyed');
+    race.sounds.push(destroyed ? 'bridgeCollapse' : 'bridgeRepair');
+    post(race, `${line.name} ${destroyed ? 'destroyed' : 'repaired'} bridge ${words[1]!.toUpperCase()}`);
     return result;
   }
   let target: Racer | undefined;
@@ -219,12 +223,13 @@ export function chat(race: Race, line: ChatLine): ChatResult {
     target.boostUntil = race.frame + 5 * TICK_HZ;
     target.tank!.speedFactor = 1.5;
     race.sounds.push('boost');
-  } else if (verb === 'shield') { target.shieldUntil = race.frame + 6 * TICK_HZ; race.sounds.push('shield'); }
+    post(race, `${line.name} ▸ boost ▸ ${target.name}`);
+  } else if (verb === 'shield') shield(race, target, line.name);
   else if (verb === 'v3') {
     const back = words[1] === 'back' || (!words[1] && standings(race).find((s) => s.finishTime === undefined)?.name === target.name);
     launchV3(race, target, back);
-  } else if (verb === 'tesla') { race.teslas.push({ target, named, x: target.tank!.x / 256, y: target.tank!.y / 256, arrives: race.frame + 2 * TICK_HZ }); race.sounds.push('teslaCharge'); }
-  else if (verb === 'missile') { race.missiles.push({ target, named, launched: race.frame, arrives: race.frame + Math.round(1.5 * TICK_HZ), x: target.tank!.x / 256 - 6, y: target.tank!.y / 256 - 6 }); race.sounds.push('missileLaunch'); }
+  } else if (verb === 'tesla') { race.teslas.push({ by: line.name, target, named, x: target.tank!.x / 256, y: target.tank!.y / 256, arrives: race.frame + 2 * TICK_HZ }); race.sounds.push('teslaCharge'); }
+  else if (verb === 'missile') { race.missiles.push({ by: line.name, target, named, launched: race.frame, arrives: race.frame + Math.round(1.5 * TICK_HZ), x: target.tank!.x / 256 - 6, y: target.tank!.y / 256 - 6 }); race.sounds.push('missileLaunch'); }
   else if (verb === 'chrono') {
     // A move: the tank drives on from its new cell towards the waypoint after it (re-pathed next frame).
     target.warp = { from: { x: target.tank!.cell.x, y: target.tank!.cell.y }, to: { x: shift!.landing.x, y: shift!.landing.y }, at: race.frame };
@@ -234,6 +239,7 @@ export function chat(race: Race, line: ChatLine): ChatResult {
     target.progress = courseProgress(race.course, shift!.landing.x + 0.5, shift!.landing.y + 0.5, target.next);
     if (named) target.protectedUntil = race.frame + 15 * TICK_HZ;
     race.sounds.push('chrono');
+    post(race, `${line.name} ▸ chrono ▸ ${target.name}`);
   }
   return { ok: true, reason: `${verb} ${target.name}` };
 }
@@ -270,15 +276,30 @@ function launchV3(race: Race, firer: Racer, back: boolean): void {
     dx: Math.sin(facing) * sign, dy: -Math.cos(facing) * sign, travelled: 0 });
 }
 
-function hit(race: Race, r: Racer, named: boolean): void {
+/** A feed line; the feed keeps the newest 5. */
+function post(race: Race, text: string): void {
+  race.feed.push(text);
+  if (race.feed.length > 5) race.feed.shift();
+}
+
+function shield(race: Race, r: Racer, by: string): void {
+  r.shieldUntil = race.frame + 6 * TICK_HZ;
+  race.sounds.push('shield');
+  post(race, `${by} ▸ shield ▸ ${r.name}`);
+}
+
+/** Stuns `r` unless it is shielded, immune or finished; the feed names who stunned it and with what. */
+function hit(race: Race, r: Racer, verb: Interaction, named: boolean, by: string): void {
   if (r.finishedAt !== undefined || r.shieldUntil > race.frame || r.immunityUntil > race.frame) return;
   r.stunUntil = race.frame + 3 * TICK_HZ;
   r.immunityUntil = r.stunUntil + 3 * TICK_HZ;
   r.tank!.stunnedUntil = race.field.frame + 3 * TICK_HZ;
   race.lastHit = r;
+  race.lastHitBy = by;
   race.lastHitFrame = race.frame;
   if (named) r.protectedUntil = race.frame + 15 * TICK_HZ;
   race.sounds.push('hit');
+  post(race, `${by} ▸ ${verb} ▸ ${r.name}`);
 }
 
 /** Closes the join window: bots fill to 8, tanks go on random start cells facing the first waypoint, 3-2-1. */
@@ -340,7 +361,7 @@ function drive(race: Race) {
   race.frame++;
   for (const r of race.racers) if (r.bot && r.finishedAt === undefined && race.frame >= r.botNext) {
     if (r.botV3Next && race.enabled.has('v3')) launchV3(race, r, random(field) < 0.5);
-    else if (!r.botV3Next && race.enabled.has('shield')) { r.shieldUntil = race.frame + 6 * TICK_HZ; race.sounds.push('shield'); }
+    else if (!r.botV3Next && race.enabled.has('shield')) shield(race, r, r.name);
     r.botV3Next = !r.botV3Next;
     r.botNext = race.frame + (5 + Math.floor(random(field) * 5)) * TICK_HZ;
   }
@@ -350,8 +371,7 @@ function drive(race: Race) {
     if (missile.arrives > race.frame) continue;
     race.missiles.splice(i, 1);
     race.sounds.push('missileImpact');
-    const r = missile.target;
-    hit(race, r, missile.named);
+    hit(race, missile.target, 'missile', missile.named, missile.by);
   }
   for (let i = race.v3s.length - 1; i >= 0; i--) {
     const v3 = race.v3s[i]!, px = v3.x, py = v3.y;
@@ -363,7 +383,7 @@ function drive(race: Race) {
         return { r, along: x * v3.dx + y * v3.dy, aside: Math.abs(x * v3.dy - y * v3.dx) };
       }).filter(({ along, aside }) => along >= 0 && along <= 12 / (1.5 * TICK_HZ) && aside <= 0.55)
       .sort((a, b) => a.along - b.along)[0];
-    if (hits) { hit(race, hits.r, false); race.v3s.splice(i, 1); race.sounds.push('v3Impact'); }
+    if (hits) { hit(race, hits.r, 'v3', false, v3.firer.name); race.v3s.splice(i, 1); race.sounds.push('v3Impact'); }
     else if (v3.travelled >= 12) { race.v3s.splice(i, 1); race.sounds.push('v3Impact'); }
   }
   for (let i = race.teslas.length - 1; i >= 0; i--) {
@@ -372,7 +392,7 @@ function drive(race: Race) {
     if (strike.arrives > race.frame) continue;
     race.teslas.splice(i, 1);
     race.sounds.push('teslaStrike');
-    for (const r of race.racers) if (r.finishedAt === undefined && r.tank && Math.hypot(r.tank.x / 256 - strike.x, r.tank.y / 256 - strike.y) <= 3) hit(race, r, strike.named && r === t);
+    for (const r of race.racers) if (r.finishedAt === undefined && r.tank && Math.hypot(r.tank.x / 256 - strike.x, r.tank.y / 256 - strike.y) <= 3) hit(race, r, 'tesla', strike.named && r === t, strike.by);
   }
   tick(field);
   const anyFinished = race.racers.some((r) => r.finishedAt !== undefined);

@@ -358,6 +358,56 @@ describe('audience interactions', () => {
     expect(race.feed).toHaveLength(1);
   });
 
+  it('names the viewer, the interaction and the tank in the feed when an interaction lands', () => {
+    const race = racing();
+    for (const r of race.racers) if (r.bot) r.botNext = Infinity;
+    expect(say(race, 'v', '!boost Kane', 'Vera').ok).toBe(true);
+    expect(say(race, 'b', '!shield', 'Kara').ok).toBe(true);
+    expect(say(race, 'w', '!chrono Bot1', 'Wes').ok).toBe(true);
+    expect(race.feed).toEqual(['Vera ▸ boost ▸ Kane', 'Kara ▸ shield ▸ Kara', 'Wes ▸ chrono ▸ Bot1']);
+    expect(say(race, 'x', '!missile Bot2', 'Xan').ok).toBe(true);
+    expect(race.feed).toHaveLength(3); // a missile lands on impact
+    ticks(race, Math.round(1.5 * TICK_HZ));
+    expect(race.feed.at(-1)).toBe('Xan ▸ missile ▸ Bot2');
+    expect(say(race, 'z', '!boost missing', 'Zed').ok).toBe(false);
+    expect(race.feed).toEqual(['Vera ▸ boost ▸ Kane', 'Kara ▸ shield ▸ Kara', 'Wes ▸ chrono ▸ Bot1', 'Xan ▸ missile ▸ Bot2', 'Zed: unknown name']);
+    expect(say(race, 'y', '!missile Kara', 'Yan').ok).toBe(true);
+    ticks(race, Math.round(1.5 * TICK_HZ));
+    expect(race.feed.at(-1)).toBe('Zed: unknown name'); // Kara's shield stopped it: nothing landed
+  });
+
+  it('names every tank a Tesla strike stuns', () => {
+    const race = racing();
+    for (const r of race.racers) { r.botNext = Infinity; r.tank!.stunnedUntil = 1000; }
+    const [kane, kara, near, far] = race.racers as [Racer, Racer, Racer, Racer];
+    for (const [r, x, y] of [[kane, 10, 14], [kara, 12, 14], [near, 10, 16], [far, 20, 16]] as const) {
+      r.tank!.x = (x + 0.5) * 256; r.tank!.y = (y + 0.5) * 256;
+      r.tank!.cell = { x, y, deck: false };
+    }
+    expect(say(race, 'y', '!tesla Kane', 'Yan').ok).toBe(true);
+    ticks(race, 2 * TICK_HZ);
+    expect(race.feed).toEqual(expect.arrayContaining(['Yan ▸ tesla ▸ Kane', 'Yan ▸ tesla ▸ Kara', `Yan ▸ tesla ▸ ${near.name}`]));
+    expect(race.feed.join()).not.toContain(far.name);
+  });
+
+  it('names the tank a V3 strikes, and a bot shielding itself', () => {
+    const race = racing();
+    const firer = race.racers[0]!, near = race.racers[1]!, bot = race.racers[2]!;
+    for (const r of race.racers) { r.botNext = Infinity; r.tank!.stunnedUntil = 1000; }
+    for (const [r, x, y] of [[firer, 10, 14], [near, 10, 16]] as const) {
+      r.tank!.x = (x + 0.5) * 256; r.tank!.y = (y + 0.5) * 256;
+      r.tank!.cell = { x, y, deck: false };
+    }
+    firer.tank!.facing = 0;
+    expect(say(race, 'a', '!v3 back', 'Kane').ok).toBe(true);
+    expect(race.feed).toEqual([]);
+    ticks(race, TICK_HZ);
+    expect(race.feed).toEqual(['Kane ▸ v3 ▸ Kara']);
+    bot.botV3Next = false; bot.botNext = race.frame + 1;
+    tickRace(race);
+    expect(race.feed.at(-1)).toBe(`${bot.name} ▸ shield ▸ ${bot.name}`);
+  });
+
   it('holds a stunned tank mid-step and excludes it from another random stun until immunity ends', () => {
     const race = racing();
     expect(say(race, 'v', '!missile').ok).toBe(true);

@@ -48,7 +48,7 @@ describe('director camera', () => {
       reasons.add(shot.reason.split(' ')[0]!);
       if (!before) return expect(shot).toMatchObject({ cutAt: 0, reason: 'Leader' });
       const held = r.frame - before.cutAt;
-      if (shot.reason === 'Just hit') {
+      if (shot.reason.startsWith('Hit by ')) {
         expect(shot.racer).toBe(r.lastHit);
         expect(held).toBeGreaterThanOrEqual(2.5 * TICK_HZ);
         return;
@@ -75,19 +75,30 @@ describe('director camera', () => {
     const opened = shot!.cutAt;
     for (let i = 1; i < TICK_HZ / 2; i++) step(); // 0.5 s into the leader shot
     const target = standings(r).at(-1)!.name;
-    expect(chat(r, { viewerId: 'v', name: 'v', text: `!missile ${target}` }).ok).toBe(true);
+    expect(chat(r, { viewerId: 'v', name: 'Vera', text: `!missile ${target}` }).ok).toBe(true);
     for (let i = 0; i < 1.5 * TICK_HZ; i++) step(); // the hit lands 1.5 s after launch, 2 s into the shot
     expect(r.lastHit?.name).toBe(target);
     expect(shot!.reason).toBe('Leader'); // too soon after the last cut
     for (let i = 0; i < TICK_HZ; i++) step();
-    expect(shot).toMatchObject({ reason: 'Just hit', cutAt: opened + 2.5 * TICK_HZ });
+    expect(shot).toMatchObject({ reason: 'Hit by Vera', cutAt: opened + 2.5 * TICK_HZ });
     expect(shot!.racer.name).toBe(target);
     const hitShot = shot;
     for (let i = 0; i < 7 * TICK_HZ; i++) {
       step();
-      if (shot !== hitShot) expect(shot!.hitSeen === hitShot!.hitSeen && shot!.reason === 'Just hit').toBe(false); // never the same hit twice
+      if (shot !== hitShot) expect(shot!.hitSeen === hitShot!.hitSeen && shot!.reason.startsWith('Hit by ')).toBe(false); // never the same hit twice
     }
     expect(shot).not.toBe(hitShot); // a hit shot is held 7 s like any other
+  });
+
+  it('names the viewer behind a random hit too', () => {
+    const r = race(1);
+    let shot: Shot | undefined;
+    while (r.phase !== 'racing') tickRace(r);
+    for (const x of r.racers) x.botNext = Infinity; // no bot shield to block the missile
+    shot = directorShot(r, shot);
+    expect(chat(r, { viewerId: 'w', name: 'Wes', text: '!missile' }).ok).toBe(true);
+    for (let i = 0; i < 3 * TICK_HZ; i++) { tickRace(r); shot = directorShot(r, shot); }
+    expect(shot).toMatchObject({ reason: 'Hit by Wes', racer: r.lastHit });
   });
 });
 
