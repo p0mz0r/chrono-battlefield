@@ -191,7 +191,7 @@ The subtle on-screen list of the chat commands available right now, such as `!rh
 _Avoid_: Help, menu
 
 **Interaction feed**:
-The short on-stream lines telling a viewer why an available chat command failed, such as a cooldown or an unknown name; the game posts nothing to chat itself.
+The short on-stream lines naming who did what: each audience interaction that lands, with the viewer who used it and the tank it hit or helped, and each available chat command that failed, with the reason, such as a cooldown or an unknown name; the game posts nothing to chat itself.
 _Avoid_: Log, chat reply, toast
 
 ### On stream
@@ -205,12 +205,20 @@ The camera mode that holds the whole course in one still frame; tanks are small,
 _Avoid_: Map view, wide shot
 
 **Director**:
-The camera mode that zooms in and cuts between the leading tank, the closest fight for a place and the tank last hit, captioning the tank on screen with its name and place; labels show names.
+The camera mode that zooms in and cuts between the leading tank, the closest fight for a place and the tank last hit, captioning the tank on screen with its name, its place and, after a hit, who hit it; labels show names. When a big event's turn comes it cuts to the event's target and holds there until a few seconds after it lands.
 _Avoid_: Chase cam, spectator, auto-cam
 
 **Standings**:
-The live table of every tank in the race, in order of finish then course progress, each with its status and course progress as a % of the whole race; shown in both camera modes, never cut to the top few.
+The live table of every tank in the race, in order of finish then course progress, each with its course progress as a % of the whole race; shown in both camera modes, never cut to the top few.
 _Avoid_: Leaderboard, rankings, top 5
+
+**Event banner**:
+The headline shown from the moment a big event's turn comes until it lands, naming the event and who set it off: the viewer for a paid event, chat and the viewers who called for it for a chat-wide event. Personal interactions never get one.
+_Avoid_: Toast, alert, popup
+
+**Event queue**:
+The row of chips beside the hype meter showing the big event playing now and the ones waiting, in order, each with who set it off; a cheer carried over to the next race keeps its chip, marked "next race", through race setup and the join window.
+_Avoid_: Queue bar, timeline
 
 **Results**:
 The screen after a race listing every tank's placing with its finish time, or DNF if unfinished.
