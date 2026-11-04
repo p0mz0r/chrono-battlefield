@@ -672,14 +672,36 @@ describe('paid events', () => {
     expect(race.settlements).toEqual([{ reference: 'r1', outcome: 'fulfilled' }, { reference: 'r2', outcome: 'fulfilled' }]);
   });
 
-  it('replaces a pick that can no longer be swapped with another from its half', () => {
+  it('keeps the 10 s gap after a swap that fizzles on landing', () => {
+    const race = calm();
+    redeem(race, 'v', 'Vera', 'r1');
+    redeem(race, 'w', 'Wes', 'r2');
+    tickRace(race); // r1's turn comes
+    const turn = race.frame;
+    for (const r of race.racers) r.shieldUntil = race.frame + 4 * TICK_HZ; // up at landing, gone soon after
+    let next: number | undefined;
+    for (let i = 0; i < 20 * TICK_HZ && next === undefined; i++) {
+      race.sounds.length = 0;
+      tickRace(race);
+      if (race.sounds.includes('chronoSelect')) next = race.frame;
+    }
+    expect(race.settlements[0]).toEqual({ reference: 'r1', outcome: 'refunded' });
+    expect(next! - turn).toBe(13 * TICK_HZ);
+  });
+
+  it('replaces a pick that finishes before landing with another from its half', () => {
     const race = calm();
     redeem(race, 'v', 'Vera', 'r1');
     tickRace(race);
-    const front = standings(race).slice(0, 4).map((s) => s.name);
-    for (const r of race.racers) if (front.slice(1).includes(r.name)) r.shieldUntil = Infinity;
+    const order = standings(race).map((s) => s.name);
+    const [front, back] = race.queue[0]!.picks;
+    front!.finishedAt = race.frame;
+    race.timer = race.finishFrames; // as a real first finish starts the finish timer
     ticks(race, 3 * TICK_HZ);
-    expect(race.feed.at(-1)).toMatch(new RegExp(`▸ (${front[0]} ⇄ \\S+|\\S+ ⇄ ${front[0]})$`));
+    const [, a, b] = race.feed.at(-1)!.match(/^Vera ▸ CHRONO SWAP ▸ (\S+) ⇄ (\S+)$/)!;
+    expect(b).toBe(back!.name);
+    expect(a).not.toBe(front!.name);
+    expect(order.indexOf(a!)).toBeLessThan(order.length / 2);
   });
 
   it('refunds a redemption that fizzles, is still queued at race end, or comes outside a race', () => {

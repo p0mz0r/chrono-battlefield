@@ -318,6 +318,8 @@ const settle = (race: Race, reference: string, outcome: Settlement['outcome']) =
 
 function fizzle(race: Race): void {
   const turn = race.queue.shift()!;
+  // One that played its build-up still takes the gap before the next turn.
+  if (turn.lands !== undefined) race.nextEventAt = race.frame + EVENT_GAP;
   settle(race, turn.reference, 'refunded');
   postThrottled(race, turn.viewerId, `${turn.by} ▸ ${BIG_EVENTS[turn.event].label} · refunded`);
 }
