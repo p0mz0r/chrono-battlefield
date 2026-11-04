@@ -39,6 +39,41 @@ export interface ChatResult {
   reason: string;
 }
 
+/** Big events (#101): one plays at a time from the event queue; `buildUp` is seconds from its turn to landing. */
+export const BIG_EVENTS = { chronoSwap: { label: 'CHRONO SWAP', buildUp: 3 } } as const;
+export type BigEvent = keyof typeof BIG_EVENTS;
+/** Frames from one big event landing to the next one's turn. */
+const EVENT_GAP = 10 * TICK_HZ;
+
+/** A redemption or cheer from a chat source: the paid entry beside `chat`. */
+export interface PaidLine {
+  viewerId: string;
+  name: string;
+  event: BigEvent;
+  via: 'redemption' | 'cheer';
+  /** The cheer's bit amount. */
+  bits?: number;
+  /** The source's opaque redemption reference, handed back in a settlement. */
+  reference: string;
+}
+
+/** What the chat source tells the platform about a redemption. */
+export interface Settlement {
+  reference: string;
+  outcome: 'fulfilled' | 'refunded';
+}
+
+/** A big event in the event queue; `lands` is set once its turn comes. */
+export interface Turn {
+  event: BigEvent;
+  viewerId: string;
+  by: string;
+  reference: string;
+  lands: number | undefined;
+  /** Chrono swap: the front-half and back-half tanks. */
+  picks: Racer[];
+}
+
 export interface Racer {
   /** Undefined for bots. */
   viewerId: string | undefined;
@@ -98,6 +133,12 @@ export interface Race {
   /** Tesla strikes charging: the Tesla tank stays beside `target` (x, y in cells) until it goes off. */
   teslas: { by: string; target: Racer; named: boolean; x: number; y: number; arrives: number }[];
   bridgeGrid: BridgeGrid | undefined;
+  /** The event queue, playing turn first. */
+  queue: Turn[];
+  /** Race frame the next big event's turn may come on. */
+  nextEventAt: number;
+  /** Drained by the chat source, as the view drains `sounds`; kept across races until drained. */
+  settlements: Settlement[];
 }
 
 export interface Standing {
@@ -111,7 +152,7 @@ export interface Standing {
 
 export function createRace(course: Course, grid: CellGrid, seed: number): Race {
   const bridgeGrid = 'bridge' in grid && 'bridges' in grid ? grid as BridgeGrid : undefined;
-  return { course, field: createField(grid, seed), seed, phase: 'idle', paused: false, racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions.filter((verb) => verb !== 'bridge' || (bridgeGrid && course.file.bridges.length))), cooldowns: new Map(), feed: [], feedUntil: new Map(), sounds: [], missiles: [], v3s: [], teslas: [], lastHit: undefined, lastHitBy: undefined, lastHitFrame: -1, bridgeGrid };
+  return { course, field: createField(grid, seed), seed, phase: 'idle', paused: false, racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions.filter((verb) => verb !== 'bridge' || (bridgeGrid && course.file.bridges.length))), cooldowns: new Map(), feed: [], feedUntil: new Map(), sounds: [], missiles: [], v3s: [], teslas: [], lastHit: undefined, lastHitBy: undefined, lastHitFrame: -1, bridgeGrid, queue: [], nextEventAt: 0, settlements: [] };
 }
 
 export function commandList(race: Race): string[] {
@@ -140,6 +181,8 @@ export function openJoinWindow(race: Race, { joinSeconds = 90, finishSeconds = 6
   race.lastHitFrame = -1;
   race.v3s.length = 0;
   race.teslas.length = 0;
+  race.queue.length = 0;
+  race.nextEventAt = 0;
   for (const [id, bridge] of race.bridgeGrid?.bridges.entries() ?? []) {
     if (bridge.destroyed) repairBridge(race.bridgeGrid!, id);
     bridge.changedAt = undefined;
@@ -171,10 +214,7 @@ export function chat(race: Race, line: ChatLine): ChatResult {
   if (race.phase !== 'racing' || !race.enabled.has(verb)) return IGNORED;
   if ((verb === 'shield' && words.length !== 1) || (verb === 'bridge' && words.length !== 2) || (verb === 'v3' && words[1] && !['back', 'fwd'].includes(words[1])) || (verb !== 'shield' && words.length > 2)) return IGNORED;
   const reject = (reason: string): ChatResult => {
-    if ((race.feedUntil.get(line.viewerId) ?? 0) <= race.frame) {
-      post(race, `${line.name}: ${reason}`);
-      race.feedUntil.set(line.viewerId, race.frame + 3 * TICK_HZ);
-    }
+    postThrottled(race, line.viewerId, `${line.name}: ${reason}`);
     return { ok: false, reason };
   };
   const left = (race.cooldowns.get(line.viewerId) ?? 0) - race.frame;
@@ -244,6 +284,80 @@ export function chat(race: Race, line: ChatLine): ChatResult {
   return { ok: true, reason: `${verb} ${target.name}` };
 }
 
+/** The paid entry: queues a redemption during a race, refunds it outside one. */
+export function paid(race: Race, line: PaidLine): ChatResult {
+  // ponytail: cheers wait for #111 (exact price, carry-over to the next race).
+  if (line.via !== 'redemption') return IGNORED;
+  if (race.phase !== 'racing') {
+    settle(race, line.reference, 'refunded');
+    return { ok: false, reason: 'not racing' };
+  }
+  race.queue.push({ event: line.event, viewerId: line.viewerId, by: line.name, reference: line.reference, lands: undefined, picks: [] });
+  return { ok: true, reason: 'queued' };
+}
+
+/** The next big event's turn comes, the playing one lands, or it fizzles; the next waits `EVENT_GAP` after a landing. */
+function playEvents(race: Race): void {
+  const turn = race.queue[0];
+  if (!turn || race.frame < race.nextEventAt) return;
+  if (turn.lands === undefined) {
+    if (!swapPicks(race, turn)) return fizzle(race);
+    turn.lands = race.frame + BIG_EVENTS[turn.event].buildUp * TICK_HZ;
+    race.sounds.push('chronoSelect');
+  } else if (race.frame >= turn.lands) {
+    if (!swapPicks(race, turn) || !chronoSwap(race, turn.picks[0]!, turn.picks[1]!)) return fizzle(race);
+    race.queue.shift();
+    race.nextEventAt = race.frame + EVENT_GAP;
+    settle(race, turn.reference, 'fulfilled');
+    race.sounds.push('chrono');
+    post(race, `${turn.by} ▸ ${BIG_EVENTS[turn.event].label} ▸ ${turn.picks[0]!.name} ⇄ ${turn.picks[1]!.name}`);
+  }
+}
+
+const settle = (race: Race, reference: string, outcome: Settlement['outcome']) => race.settlements.push({ reference, outcome });
+
+function fizzle(race: Race): void {
+  const turn = race.queue.shift()!;
+  settle(race, turn.reference, 'refunded');
+  postThrottled(race, turn.viewerId, `${turn.by} ▸ ${BIG_EVENTS[turn.event].label} · refunded`);
+}
+
+/** Keeps each Chrono swap pick that is still racing unshielded, else picks again from its half; false with no valid pair. */
+function swapPicks(race: Race, turn: Turn): boolean {
+  const order = ranked(race), half = Math.floor(order.length / 2);
+  const ok = (r: Racer | undefined) => r !== undefined && r.finishedAt === undefined && r.shieldUntil <= race.frame;
+  for (const [i, side] of [order.slice(0, half), order.slice(half)].entries()) {
+    if (ok(turn.picks[i])) continue;
+    const candidates = side.filter((r) => ok(r) && r !== turn.picks[1 - i]);
+    turn.picks[i] = candidates[Math.floor(random(race.field) * candidates.length)]!;
+  }
+  return ok(turn.picks[0]) && ok(turn.picks[1]);
+}
+
+/** Two moves: each tank lands on (or beside) the other's cell and drives on with its waypoints. False if one can't land. */
+function chronoSwap(race: Race, a: Racer, b: Racer): boolean {
+  const { field, course } = race;
+  const goal = (r: Racer) => r.fork && course.forks.get(r.fork.from)!.via[r.fork.nextVia] || course.waypoints[r.next] || course.finish;
+  const reaches = (r: Racer) => (s: Spot) => findRoute(field.grid, s, goal(r)) !== undefined;
+  const cellA = { ...a.tank!.cell }, from = { x: cellA.x, y: cellA.y }, to = { x: b.tank!.cell.x, y: b.tank!.cell.y };
+  const landA = findLanding(field, a.tank!, to, reaches(b));
+  if (!landA) return false;
+  moveTank(field, a.tank!, landA);
+  // A's cell is free now, so B lands on it exactly.
+  const landB = findLanding(field, b.tank!, from, reaches(a));
+  if (!landB) {
+    moveTank(field, a.tank!, cellA);
+    return false;
+  }
+  moveTank(field, b.tank!, landB);
+  a.warp = { from, to: { x: landA.x, y: landA.y }, at: race.frame };
+  b.warp = { from: to, to: { x: landB.x, y: landB.y }, at: race.frame };
+  const place = { next: a.next, fork: a.fork, progress: a.progress };
+  Object.assign(a, { next: b.next, fork: b.fork, progress: b.progress });
+  Object.assign(b, place);
+  return true;
+}
+
 type Shift = { landing: Spot; next: number };
 
 /**
@@ -274,6 +388,13 @@ function launchV3(race: Race, firer: Racer, back: boolean): void {
   const sign = back ? -1 : 1;
   race.v3s.push({ firer, x: firer.tank!.x / 256, y: firer.tank!.y / 256,
     dx: Math.sin(facing) * sign, dy: -Math.cos(facing) * sign, travelled: 0 });
+}
+
+/** A feed line for a viewer at most every 3 s: failures and refunds. */
+function postThrottled(race: Race, viewerId: string, text: string): void {
+  if ((race.feedUntil.get(viewerId) ?? 0) > race.frame) return;
+  post(race, text);
+  race.feedUntil.set(viewerId, race.frame + 3 * TICK_HZ);
 }
 
 /** A feed line; the feed keeps the newest 5. */
@@ -344,6 +465,12 @@ export function endRace(race: Race): void {
   race.phase = race.phase === 'racing' && progress >= 0.5 ? 'results' : 'cancelled';
   race.paused = false;
   race.results = race.phase === 'results' ? standings(race) : [];
+  refundQueue(race);
+}
+
+/** At race end every big event still queued or playing is refunded. */
+function refundQueue(race: Race): void {
+  for (const turn of race.queue.splice(0)) settle(race, turn.reference, 'refunded');
 }
 
 /** One frame (1 / TICK_HZ s). */
@@ -394,6 +521,7 @@ function drive(race: Race) {
     race.sounds.push('teslaStrike');
     for (const r of race.racers) if (r.finishedAt === undefined && r.tank && Math.hypot(r.tank.x / 256 - strike.x, r.tank.y / 256 - strike.y) <= 3) hit(race, r, 'tesla', strike.named && r === t, strike.by);
   }
+  playEvents(race);
   tick(field);
   const anyFinished = race.racers.some((r) => r.finishedAt !== undefined);
   for (const r of race.racers) {
@@ -429,13 +557,16 @@ function drive(race: Race) {
   if (race.racers.every((r) => r.finishedAt !== undefined) || (anyFinished && race.timer <= 0)) {
     race.phase = 'results';
     race.results = standings(race);
+    refundQueue(race);
   }
 }
+
+/** Racers in standings order. */
+const ranked = (race: Race) => [...race.racers]
+  .sort((a, b) => (a.finishedAt ?? Infinity) - (b.finishedAt ?? Infinity) || b.progress - a.progress || a.tie - b.tie);
 
 /** Every tank: finished ones in finish order, then by course progress; ties broken by seed. */
 export function standings(race: Race): Standing[] {
   const len = race.course.length || 1;
-  return [...race.racers]
-    .sort((a, b) => (a.finishedAt ?? Infinity) - (b.finishedAt ?? Infinity) || b.progress - a.progress || a.tie - b.tie)
-    .map((r) => ({ name: r.name, bot: r.bot, progress: r.finishedAt === undefined ? Math.min(r.progress / len, 1) : 1, finishTime: r.finishedAt === undefined ? undefined : r.finishedAt / TICK_HZ }));
+  return ranked(race).map((r) => ({ name: r.name, bot: r.bot, progress: r.finishedAt === undefined ? Math.min(r.progress / len, 1) : 1, finishTime: r.finishedAt === undefined ? undefined : r.finishedAt / TICK_HZ }));
 }

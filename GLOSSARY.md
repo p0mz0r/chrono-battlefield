@@ -182,6 +182,10 @@ _Avoid_: Integration, connector, bot
 A viewer spending channel points on one of the game's rewards to set off an audience interaction; it is fulfilled when the interaction lands and refunded when it fails. Never a chat command, and not held to the viewer cooldown.
 _Avoid_: Reward, purchase, chat command
 
+**Settlement**:
+The race's word back to the chat source on a redemption: fulfilled when its event lands, refunded when it fizzles, is still waiting at race end or arrives outside a race. Cheers are never settled.
+_Avoid_: Ack, receipt
+
 **Cheer**:
 A viewer spending bits to set off an audience interaction; bits are never refunded, so a cheer's interaction cannot fail during a race.
 _Avoid_: Bits, donation, redemption

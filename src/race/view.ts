@@ -1,11 +1,11 @@
 import { currentLap, type Shot } from './camera.js';
-import { commandList, secondsLeft, standings, type Race } from './race.js';
+import { BIG_EVENTS, commandList, secondsLeft, standings, type Race } from './race.js';
 
 export type CameraMode = 'overview' | 'director';
 
 const esc = (value: string) => value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
-/** Fixed screen overlay: standings, phase, commands, feed, results, and the director shot's lower third. Tank labels stay in Pixi. */
+/** Fixed screen overlay: standings, phase, event queue, commands, feed, results, and the director shot's lower third. Tank labels stay in Pixi. */
 export function mountStreamView(): (race: Race, shot?: Shot) => void {
   const root = document.createElement('div');
   root.id = 'stream-view';
@@ -28,6 +28,7 @@ export function mountStreamView(): (race: Race, shot?: Shot) => void {
       <div class="phase">${headline}</div>
       ${race.paused ? '<div class="pause-banner">PAUSED</div>' : ''}
       ${race.phase === 'racing' && focus ? `<div class="lower-third"><strong>${order.findIndex((s) => s.name === focus.name) + 1}</strong><div>${esc(focus.name)}<small>${esc(shot!.reason)}</small></div></div>` : ''}
+      ${race.phase === 'racing' && race.queue.length ? `<div class="queue">${race.queue.map((t) => `<span${t.lands === undefined ? '' : ' class="playing"'}>${esc(`${BIG_EVENTS[t.event].label} · ${t.by}`)}</span>`).join('')}</div>` : ''}
       ${commands.length ? `<div class="commands">${commands.map(esc).join(' &nbsp; ')}</div>` : ''}
       ${race.phase === 'racing' && race.feed.length ? `<div class="feed">${race.feed.map((line) => `<div>${esc(line)}</div>`).join('')}</div>` : ''}
       ${resultRows}`;
