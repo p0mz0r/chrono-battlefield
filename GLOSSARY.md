@@ -141,11 +141,19 @@ A big event one viewer sets off with a redemption or, for the strongest few, a c
 _Avoid_: Channel-point event, bits event
 
 **Chat-wide event**:
-A big event that chat builds up together and then unleashes; at most two a race.
+A big event that chat builds up together and then unleashes: chat fills the hype meter, then enough different viewers call for it, and it takes the next turn in the queue, ahead of waiting paid events and cheers. At most two a race; nothing carries over to the next race.
 _Avoid_: Global event, raid
 
+**Hype meter**:
+The on-stream meter chat fills during a race for the next chat-wide event: every accepted audience interaction from a viewer adds to it, a cheer or anything else paid with money most, a redemption less, a chat command least; failed commands, plain chat lines and bots add nothing. EVA warns when it first passes half full. It drains once nobody has added for a moment, empties when a chat-wide event is set off, and is gone for the rest of the race after the second.
+_Avoid_: Hype train, chaos meter, bar
+
+**Armed**:
+The hype meter's state once full: it holds without draining for a short spell, its chat-wide event's command (`!nuke`) appears on the command list, and the event is set off once enough different viewers type it; if the spell runs out first, the meter drains again.
+_Avoid_: Ready, charged, primed
+
 **Nuke**:
-The chat-wide event: after a warning and a countdown of ten seconds or more, it stuns every tank on the field for longer than a normal stun, longer still the further along the course a tank is, each ending at its own random moment so the field restarts in a new order; only a shield still up at the moment of impact saves a tank.
+The chat-wide event: a few seconds after EVA announces the launch, with the nuke siren sounding as the missile falls on the leading tank and no on-screen countdown, it stuns every tank on the field for longer than a normal stun, longer still the further along the course a tank is, each ending at its own random moment so the field restarts in a new order; only a shield still up at the moment of impact saves a tank.
 _Avoid_: Nuclear strike, bomb
 
 **Kirov airship**:
