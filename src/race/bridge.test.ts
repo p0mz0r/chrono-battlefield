@@ -79,6 +79,7 @@ describe('bridges in play', () => {
     expect(race.phase).toBe('racing');
     const say = (viewerId: string) => chat(race, { viewerId, name: viewerId, text: '!bridge B1' });
     expect(say('a')).toEqual({ ok: true, reason: 'bridge B1 destroyed' });
+    expect(race.feed).toEqual(['a ▸ bridge ▸ B1']);
     expect(g.speed[17]).toBe(0);
     expect(say('b')).toEqual({ ok: false, reason: 'bridge cooldown 10 s' });
     expect(race.cooldowns.has('b')).toBe(false);
