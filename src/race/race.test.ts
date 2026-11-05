@@ -689,6 +689,19 @@ describe('paid events', () => {
     expect(next! - turn).toBe(13 * TICK_HZ);
   });
 
+  it('splits only the tanks still racing into front and back half', () => {
+    const race = calm();
+    const order = standings(race).map((s) => s.name);
+    for (const r of race.racers) if (order.indexOf(r.name) < 4) r.finishedAt = race.frame;
+    race.timer = race.finishFrames; // as a real first finish starts the finish timer
+    redeem(race, 'v', 'Vera', 'r1');
+    ticks(race, 3 * TICK_HZ + 1);
+    expect(race.settlements).toEqual([{ reference: 'r1', outcome: 'fulfilled' }]);
+    const [, a, b] = race.feed.at(-1)!.match(/^Vera ▸ CHRONO SWAP ▸ (\S+) ⇄ (\S+)$/)!;
+    expect([4, 5]).toContain(order.indexOf(a!));
+    expect([6, 7]).toContain(order.indexOf(b!));
+  });
+
   it('replaces a pick that finishes before landing with another from its half', () => {
     const race = calm();
     redeem(race, 'v', 'Vera', 'r1');

@@ -324,9 +324,12 @@ function fizzle(race: Race): void {
   postThrottled(race, turn.viewerId, `${turn.by} ▸ ${BIG_EVENTS[turn.event].label} · refunded`);
 }
 
-/** Keeps each Chrono swap pick that is still racing unshielded, else picks again from its half; false with no valid pair. */
+/**
+ * Keeps each Chrono swap pick that is still racing unshielded, else picks again from its half of the tanks still
+ * racing; false with no valid pair.
+ */
 function swapPicks(race: Race, turn: Turn): boolean {
-  const order = ranked(race), half = Math.floor(order.length / 2);
+  const order = ranked(race).filter((r) => r.finishedAt === undefined), half = Math.floor(order.length / 2);
   const ok = (r: Racer | undefined) => r !== undefined && r.finishedAt === undefined && r.shieldUntil <= race.frame;
   for (const [i, side] of [order.slice(0, half), order.slice(half)].entries()) {
     if (ok(turn.picks[i])) continue;
