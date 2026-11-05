@@ -97,7 +97,7 @@ describeInstall('RA2 readers', () => {
     const yr = MixFile.parse(await readNested(readFromDir, 'langmd.mix', ['audiomd.mix']));
     const banks = [yr, base].map(mix => AudioBank.parse(mix.read('audio.idx')!, mix.read('audio.bag')!));
     const inis = [IniFile.parse(await readNested(readFromDir, 'expandmd01.mix', ['soundmd.ini'])), IniFile.parse(await readNested(readFromDir, 'ra2.mix', ['local.mix', 'sound.ini']))];
-    for (const event of ['GenSovVehicleSelect', 'RhinoTankAttack', 'Explosion06', 'V3Attack', 'Explosion12', 'DreadnoughtAttack', 'TeslaCoilPowerUp', 'TeslaTankAttack', 'ChronosphereMove', 'Explosion11', 'BridgeRepaired', 'CrateSpeed', 'ForceShieldStarting']) {
+    for (const event of ['GenSovVehicleSelect', 'RhinoTankAttack', 'Explosion06', 'V3Attack', 'Explosion12', 'DreadnoughtAttack', 'TeslaCoilPowerUp', 'TeslaTankAttack', 'ChronosphereMove', 'ChronosphereSelect', 'Explosion11', 'BridgeRepaired', 'CrateSpeed', 'ForceShieldStarting']) {
       const sample = inis.map(ini => ini.getSection(event)).find(Boolean)?.getString('Sounds').split(/\s+/)[0]?.replace(/^\$/, '');
       expect(sample, event).toBeTruthy();
       expect(banks.some(bank => bank.has(sample!)), event + ': ' + sample).toBe(true);

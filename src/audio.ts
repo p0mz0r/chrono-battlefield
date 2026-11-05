@@ -8,7 +8,7 @@ const EVENTS = {
   v3Launch: 'V3Attack', v3Impact: 'Explosion12',
   missileLaunch: 'DreadnoughtAttack', missileImpact: 'Explosion06',
   teslaCharge: 'TeslaCoilPowerUp', teslaStrike: 'TeslaTankAttack',
-  chrono: 'ChronosphereMove', bridgeCollapse: 'Explosion11', bridgeRepair: 'BridgeRepaired',
+  chrono: 'ChronosphereMove', chronoSelect: 'ChronosphereSelect', bridgeCollapse: 'Explosion11', bridgeRepair: 'BridgeRepaired',
   boost: 'CrateSpeed', shield: 'ForceShieldStarting',
 } as const;
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CellGrid } from '../movement/index.js';
 import { loadCourse, mapHash, type CourseFile } from './course.js';
-import { chat, commandList, createRace, endRace, openJoinWindow, simulateRace, standings, tickRace, type Race, type Racer } from './race.js';
+import { chat, commandList, createRace, endRace, openJoinWindow, paid, simulateRace, standings, tickRace, type Race, type Racer } from './race.js';
 import { TICK_HZ } from '../movement/index.js';
 import { readdirSync, readFileSync } from 'node:fs';
 import { describeInstall, readFromDir } from '../../test/install.js';
@@ -623,6 +623,133 @@ describe('course progress', () => {
     };
     expect(run(7)).toBe(run(7));
     expect(run(7)).not.toBe(run(8));
+  });
+});
+
+describe('paid events', () => {
+  const redeem = (race: Race, viewerId: string, name: string, reference: string) =>
+    paid(race, { viewerId, name, event: 'chronoSwap', via: 'redemption', reference });
+  const calm = (seed = 1) => {
+    const race = racing(seed);
+    for (const r of race.racers) if (r.bot) r.botNext = Infinity;
+    ticks(race, 5 * TICK_HZ); // the field spreads out
+    race.sounds.length = 0;
+    return race;
+  };
+
+  it('plays a Chrono swap redemption in its turn and settles it fulfilled when it lands', () => {
+    const race = calm();
+    const before = standings(race).map((s) => s.name);
+    expect(redeem(race, 'v', 'Vera', 'r1')).toEqual({ ok: true, reason: 'queued' });
+    tickRace(race);
+    expect(race.sounds).toContain('chronoSelect');
+    ticks(race, 3 * TICK_HZ - 1);
+    expect(race.settlements).toEqual([]);
+    const at = new Map(race.racers.map((r) => [r.name, { x: r.tank!.x, y: r.tank!.y }]));
+    tickRace(race);
+    expect(race.sounds).toContain('chrono');
+    expect(race.settlements).toEqual([{ reference: 'r1', outcome: 'fulfilled' }]);
+    const line = race.feed.at(-1)!;
+    const [, a, b] = line.match(/^Vera ▸ CHRONO SWAP ▸ (\S+) ⇄ (\S+)$/)!;
+    const half = before.length / 2;
+    expect([before.indexOf(a!) < half, before.indexOf(b!) < half].sort()).toEqual([false, true]);
+    const ra = race.racers.find((r) => r.name === a)!;
+    expect(Math.hypot(ra.tank!.x - at.get(b!)!.x, ra.tank!.y - at.get(b!)!.y) / 256).toBeLessThan(3);
+  });
+
+  it('plays one big event at a time in arrival order, 10 s apart', () => {
+    const race = calm();
+    redeem(race, 'v', 'Vera', 'r1');
+    redeem(race, 'w', 'Wes', 'r2');
+    const turns: number[] = [];
+    for (let i = 0; i < 20 * TICK_HZ; i++) {
+      tickRace(race);
+      if (race.sounds.splice(0).includes('chronoSelect')) turns.push(race.frame);
+    }
+    expect(turns).toHaveLength(2);
+    expect(turns[1]! - turns[0]!).toBe(13 * TICK_HZ); // 3 s build-up, then the 10 s gap
+    expect(race.feed.filter((l) => l.includes('CHRONO SWAP')).map((l) => l.split(' ')[0])).toEqual(['Vera', 'Wes']);
+    expect(race.settlements).toEqual([{ reference: 'r1', outcome: 'fulfilled' }, { reference: 'r2', outcome: 'fulfilled' }]);
+  });
+
+  it('keeps the 10 s gap after a swap that fizzles on landing', () => {
+    const race = calm();
+    redeem(race, 'v', 'Vera', 'r1');
+    redeem(race, 'w', 'Wes', 'r2');
+    tickRace(race); // r1's turn comes
+    const turn = race.frame;
+    for (const r of race.racers) r.shieldUntil = race.frame + 4 * TICK_HZ; // up at landing, gone soon after
+    let next: number | undefined;
+    for (let i = 0; i < 20 * TICK_HZ && next === undefined; i++) {
+      race.sounds.length = 0;
+      tickRace(race);
+      if (race.sounds.includes('chronoSelect')) next = race.frame;
+    }
+    expect(race.settlements[0]).toEqual({ reference: 'r1', outcome: 'refunded' });
+    expect(next! - turn).toBe(13 * TICK_HZ);
+  });
+
+  it('splits only the tanks still racing into front and back half', () => {
+    const race = calm();
+    const order = standings(race).map((s) => s.name);
+    for (const r of race.racers) if (order.indexOf(r.name) < 4) r.finishedAt = race.frame;
+    race.timer = race.finishFrames; // as a real first finish starts the finish timer
+    redeem(race, 'v', 'Vera', 'r1');
+    ticks(race, 3 * TICK_HZ + 1);
+    expect(race.settlements).toEqual([{ reference: 'r1', outcome: 'fulfilled' }]);
+    const [, a, b] = race.feed.at(-1)!.match(/^Vera ▸ CHRONO SWAP ▸ (\S+) ⇄ (\S+)$/)!;
+    expect([4, 5]).toContain(order.indexOf(a!));
+    expect([6, 7]).toContain(order.indexOf(b!));
+  });
+
+  it('replaces a pick that finishes before landing with another from its half', () => {
+    const race = calm();
+    redeem(race, 'v', 'Vera', 'r1');
+    tickRace(race);
+    const order = standings(race).map((s) => s.name);
+    const [front, back] = race.queue[0]!.picks;
+    front!.finishedAt = race.frame;
+    race.timer = race.finishFrames; // as a real first finish starts the finish timer
+    ticks(race, 3 * TICK_HZ);
+    const [, a, b] = race.feed.at(-1)!.match(/^Vera ▸ CHRONO SWAP ▸ (\S+) ⇄ (\S+)$/)!;
+    expect(b).toBe(back!.name);
+    expect(a).not.toBe(front!.name);
+    expect(order.indexOf(a!)).toBeLessThan(order.length / 2);
+  });
+
+  it('refunds a redemption that fizzles, is still queued at race end, or comes outside a race', () => {
+    const race = calm();
+    for (const r of race.racers) r.shieldUntil = Infinity;
+    redeem(race, 'v', 'Vera', 'r1');
+    tickRace(race);
+    expect(race.settlements).toEqual([{ reference: 'r1', outcome: 'refunded' }]);
+    expect(race.feed.at(-1)).toBe('Vera ▸ CHRONO SWAP · refunded');
+    expect(say(race, 'w', '!boost nobody', 'Wes').ok).toBe(false);
+    redeem(race, 'w', 'Wes', 'r2');
+    tickRace(race);
+    expect(race.settlements.at(-1)).toEqual({ reference: 'r2', outcome: 'refunded' });
+    expect(race.feed.at(-1)).toBe('Wes: unknown name'); // the refund tag waits out the viewer's throttle
+
+    for (const r of race.racers) r.shieldUntil = 0;
+    race.settlements.length = 0;
+    redeem(race, 'v', 'Vera', 'r3');
+    redeem(race, 'w', 'Wes', 'r4');
+    tickRace(race); // r3's turn comes
+    endRace(race);
+    expect(race.settlements).toEqual([{ reference: 'r3', outcome: 'refunded' }, { reference: 'r4', outcome: 'refunded' }]);
+    expect(redeem(race, 'v', 'Vera', 'r5')).toEqual({ ok: false, reason: 'not racing' });
+    openJoinWindow(race);
+    expect(redeem(race, 'v', 'Vera', 'r6').ok).toBe(false);
+    expect(race.settlements.slice(2)).toEqual([{ reference: 'r5', outcome: 'refunded' }, { reference: 'r6', outcome: 'refunded' }]);
+  });
+
+  it.each([1, 2, 3])('lets every tank still finish after Chrono swaps (seed %i)', (seed) => {
+    const race = calm(seed);
+    race.finishFrames = Infinity;
+    for (let n = 0; n < 3; n++) redeem(race, `v${n}`, `V${n}`, `r${n}`);
+    for (let i = 0; i < 400 * TICK_HZ && race.phase === 'racing'; i++) tickRace(race);
+    expect(race.settlements.map((s) => s.outcome)).toEqual(['fulfilled', 'fulfilled', 'fulfilled']);
+    expect(race.racers.every((r) => r.finishedAt !== undefined)).toBe(true);
   });
 });
 
