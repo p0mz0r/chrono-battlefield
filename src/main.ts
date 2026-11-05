@@ -393,6 +393,7 @@ async function main() {
       const fall = 1 - (playing.lands! - race.frame - a) / (NUKE_FALL * TICK_HZ), p = viewOf(playing.picks[0]!).view.position;
       if (fall >= 0) put(nukeTex[0]!, p.x, p.y - 300 * (1 - fall));
     }
+    if (!race.landed) blast = undefined;
     if (race.landed?.event === 'nuke' && blast?.turn !== race.landed) {
       const { x, y } = viewOf(race.landed.picks[0]!).view.position;
       blast = { turn: race.landed, x, y };
