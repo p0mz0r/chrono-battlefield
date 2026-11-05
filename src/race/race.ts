@@ -45,6 +45,22 @@ export type BigEvent = keyof typeof BIG_EVENTS;
 /** Frames from one big event landing to the next one's turn. */
 const EVENT_GAP = 10 * TICK_HZ;
 
+/** Hype meter tuning (#107): points per accepted interaction, grace and drain in seconds, full, the armed spell. */
+export const HYPE = { command: 1, redemption: 2, cheer: 3, grace: 5, drain: 2, full: 30, armed: 30, calls: 5 } as const;
+
+/** The hype meter: `drainAt` is the race frame it next loses a point; `armedUntil` the frame its armed spell ends. */
+export interface Hype {
+  points: number;
+  drainAt: number;
+  /** EVA has warned at half during this filling. */
+  warned: boolean;
+  armedUntil: number | undefined;
+  /** Viewers who typed `!nuke` during this armed spell. */
+  calls: Set<string>;
+}
+
+const emptyHype = (): Hype => ({ points: 0, drainAt: 0, warned: false, armedUntil: undefined, calls: new Set() });
+
 /** A redemption or cheer from a chat source: the paid entry beside `chat`. */
 export interface PaidLine {
   viewerId: string;
@@ -141,6 +157,7 @@ export interface Race {
   landed: Turn | undefined;
   /** Drained by the chat source, as the view drains `sounds`; kept across races until drained. */
   settlements: Settlement[];
+  hype: Hype;
 }
 
 export interface Standing {
@@ -154,15 +171,15 @@ export interface Standing {
 
 export function createRace(course: Course, grid: CellGrid, seed: number): Race {
   const bridgeGrid = 'bridge' in grid && 'bridges' in grid ? grid as BridgeGrid : undefined;
-  return { course, field: createField(grid, seed), seed, phase: 'idle', paused: false, racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions.filter((verb) => verb !== 'bridge' || (bridgeGrid && course.file.bridges.length))), cooldowns: new Map(), feed: [], feedUntil: new Map(), sounds: [], missiles: [], v3s: [], teslas: [], lastHit: undefined, lastHitBy: undefined, lastHitFrame: -1, bridgeGrid, queue: [], nextEventAt: 0, landed: undefined, settlements: [] };
+  return { course, field: createField(grid, seed), seed, phase: 'idle', paused: false, racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions.filter((verb) => verb !== 'bridge' || (bridgeGrid && course.file.bridges.length))), cooldowns: new Map(), feed: [], feedUntil: new Map(), sounds: [], missiles: [], v3s: [], teslas: [], lastHit: undefined, lastHitBy: undefined, lastHitFrame: -1, bridgeGrid, queue: [], nextEventAt: 0, landed: undefined, settlements: [], hype: emptyHype() };
 }
 
 export function commandList(race: Race): string[] {
   if (race.paused) return [];
   if (race.phase === 'join') return [`!rhino${COMMANDS.rhino.hint}`];
   if (race.phase !== 'racing') return [];
-  return interactions.filter((verb) => race.enabled.has(verb))
-    .map((verb) => `!${verb}${COMMANDS[verb].hint}${COMMANDS[verb].racers ? ' (racers)' : ''}`);
+  return [...interactions.filter((verb) => race.enabled.has(verb))
+    .map((verb) => `!${verb}${COMMANDS[verb].hint}${COMMANDS[verb].racers ? ' (racers)' : ''}`), ...armed(race) ? ['!nuke'] : []];
 }
 
 /** Operator: opens the join window (default 90 s); the finish timer (default 60 s) starts at the first finish. */
@@ -186,6 +203,7 @@ export function openJoinWindow(race: Race, { joinSeconds = 90, finishSeconds = 6
   race.queue.length = 0;
   race.nextEventAt = 0;
   race.landed = undefined;
+  race.hype = emptyHype();
   for (const [id, bridge] of race.bridgeGrid?.bridges.entries() ?? []) {
     if (bridge.destroyed) repairBridge(race.bridgeGrid!, id);
     bridge.changedAt = undefined;
@@ -201,6 +219,7 @@ export function chat(race: Race, line: ChatLine): ChatResult {
   if (words.length > 2) return IGNORED;
   const word = words[0] ?? '';
   if (!word.startsWith('!')) return IGNORED;
+  if (word === '!nuke') return words.length === 1 ? callNuke(race, line) : IGNORED;
   const verb = word.slice(1) as keyof typeof COMMANDS;
   if (!Object.hasOwn(COMMANDS, verb)) return IGNORED;
   if (verb === 'rhino') {
@@ -229,6 +248,7 @@ export function chat(race: Race, line: ChatLine): ChatResult {
     const destroyed = result.reason.endsWith('destroyed');
     race.sounds.push(destroyed ? 'bridgeCollapse' : 'bridgeRepair');
     post(race, `${line.name} ${destroyed ? 'destroyed' : 'repaired'} bridge ${words[1]!.toUpperCase()}`);
+    addHype(race, HYPE.command);
     return result;
   }
   let target: Racer | undefined;
@@ -284,7 +304,19 @@ export function chat(race: Race, line: ChatLine): ChatResult {
     race.sounds.push('chrono');
     post(race, `${line.name} ▸ chrono ▸ ${target.name}`);
   }
+  addHype(race, HYPE.command);
   return { ok: true, reason: `${verb} ${target.name}` };
+}
+
+/** `!nuke` while armed: free, and each viewer counts once per armed spell. */
+function callNuke(race: Race, line: ChatLine): ChatResult {
+  const { hype } = race;
+  if (!armed(race) || hype.calls.has(line.viewerId)) return IGNORED;
+  hype.calls.add(line.viewerId);
+  post(race, `${line.name} ▸ NUKE ${hype.calls.size}/${HYPE.calls}`);
+  // ponytail: a full count only empties the meter until the nuke itself lands (#108).
+  if (hype.calls.size === HYPE.calls) race.hype = emptyHype();
+  return { ok: true, reason: `nuke ${hype.calls.size}/${HYPE.calls}` };
 }
 
 /** The paid entry: queues a redemption during a race, refunds it outside one. */
@@ -296,8 +328,42 @@ export function paid(race: Race, line: PaidLine): ChatResult {
     return { ok: false, reason: 'not racing' };
   }
   race.queue.push({ event: line.event, viewerId: line.viewerId, by: line.name, reference: line.reference, lands: undefined, picks: [] });
+  addHype(race, HYPE[line.via]);
   return { ok: true, reason: 'queued' };
 }
+
+/** An accepted interaction from a viewer fills the hype meter and restarts the grace before it drains. */
+function addHype(race: Race, points: number): void {
+  const { hype } = race;
+  if (hype.armedUntil !== undefined) return;
+  hype.points = Math.min(HYPE.full, hype.points + points);
+  hype.drainAt = race.frame + (HYPE.grace + HYPE.drain) * TICK_HZ;
+  if (!hype.warned && hype.points >= HYPE.full / 2) {
+    hype.warned = true;
+    race.sounds.push('nukeDetected');
+  }
+  if (hype.points === HYPE.full) {
+    hype.armedUntil = race.frame + HYPE.armed * TICK_HZ;
+    hype.calls.clear();
+    race.sounds.push('nukeReady');
+  }
+}
+
+/** The armed spell runs out into a drain from full; an empty meter starts a new filling. */
+function drainHype(race: Race): void {
+  const { hype } = race;
+  if (hype.armedUntil !== undefined) {
+    if (race.frame < hype.armedUntil) return;
+    hype.armedUntil = undefined;
+    hype.drainAt = race.frame + HYPE.drain * TICK_HZ;
+  }
+  if (!hype.points || race.frame < hype.drainAt) return;
+  if (!--hype.points) hype.warned = false;
+  hype.drainAt = race.frame + HYPE.drain * TICK_HZ;
+}
+
+/** The hype meter is armed: `!nuke` counts. */
+export const armed = (race: Race) => race.phase === 'racing' && race.hype.armedUntil !== undefined;
 
 /** The next big event's turn comes, the playing one lands, or it fizzles; the next waits `EVENT_GAP` after a landing. */
 function playEvents(race: Race): void {
@@ -537,6 +603,7 @@ function drive(race: Race) {
     for (const r of race.racers) if (r.finishedAt === undefined && r.tank && Math.hypot(r.tank.x / 256 - strike.x, r.tank.y / 256 - strike.y) <= 3) hit(race, r, 'tesla', strike.named && r === t, strike.by);
   }
   playEvents(race);
+  drainHype(race);
   tick(field);
   const anyFinished = race.racers.some((r) => r.finishedAt !== undefined);
   for (const r of race.racers) {
