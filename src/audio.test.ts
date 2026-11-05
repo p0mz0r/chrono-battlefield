@@ -36,6 +36,8 @@ it.skipIf(!process.env.RA2_DIR)('plays stock cues with duplicate, Limit and mute
     expect(last!.gain.value).toBe(0.85); // GenSovVehicleSelect Volume=85 is a percentage
     for (let n = 0; n < 4; n++) { context!.currentTime += 0.11; sound.play('cannon'); }
     expect(started).toBe(4); // RhinoTankAttack Limit=3
+    for (const cue of ['nukeDetected', 'nukeReady', 'nukeLaunch']) sound.play(cue);
+    expect(started).toBe(7);
     sound.mute();
     expect(master!.gain.value).toBe(0);
     expect(storage.get('rhino-mute')).toBe('1');
