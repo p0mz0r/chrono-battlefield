@@ -1,5 +1,5 @@
 import { cachedImport, importStore, type Store } from './install/cache.js';
-import { AudioBank, IniFile } from './ra2/index.js';
+import { AudioBank, decodeWav, IniFile } from './ra2/index.js';
 import { locateNested, readNested, type ReadFile } from './ra2/mount.js';
 
 // Stock sound events. The Rhino ready sample is a voice, not an EVA announcement.
@@ -12,14 +12,19 @@ const EVENTS = {
   boost: 'CrateSpeed', shield: 'ForceShieldStarting',
 } as const;
 
-type Cue = keyof typeof EVENTS;
+const EVA_EVENTS = {
+  nukeDetected: 'EVA_NuclearSiloDetected', nukeReady: 'EVA_NuclearMissileReady', nukeLaunch: 'EVA_NuclearMissileLaunched',
+} as const;
+
+type Cue = keyof typeof EVENTS | keyof typeof EVA_EVENTS;
 type Sound = { buffer: AudioBuffer; limit: number; volume: number };
 type Decoded = { samples: Int16Array; sampleRate: number; limit: number; volume: number };
 
 /** Each cue's PCM and INI settings, read from the install. */
 async function decodeSounds(read: ReadFile): Promise<Record<Cue, Decoded>> {
-  const [baseIni, yrIni] = await Promise.all([
+  const [baseIni, yrIni, evaIni] = await Promise.all([
     readNested(read, 'ra2.mix', ['local.mix', 'sound.ini']), readNested(read, 'expandmd01.mix', ['soundmd.ini']),
+    readNested(read, 'ra2md.mix', ['localmd.mix', 'evamd.ini']),
   ]);
   const banks = await Promise.all([
     { path: 'langmd.mix', nested: 'audiomd.mix' }, { path: 'language.mix', nested: 'audio.mix' },
@@ -31,7 +36,7 @@ async function decodeSounds(read: ReadFile): Promise<Record<Cue, Decoded>> {
   }));
   const ini = [IniFile.parse(yrIni), IniFile.parse(baseIni)];
   const decoded = {} as Record<Cue, Decoded>;
-  const selections = (Object.entries(EVENTS) as [Cue, string][]).map(([cue, event]) => {
+  const selections = (Object.entries(EVENTS) as [keyof typeof EVENTS, string][]).map(([cue, event]) => {
     const section = ini.map(file => file.getSection(event)).find(Boolean);
     const name = section?.getString('Sounds').split(/\s+/)[0]?.replace(/^\$/, '').toLowerCase();
     if (!name) throw new Error(`Missing sound event ${event}`);
@@ -51,6 +56,13 @@ async function decodeSounds(read: ReadFile): Promise<Record<Cue, Decoded>> {
       decoded[cue] = { samples, sampleRate, limit: limit > 0 ? limit : Infinity, volume: Number(section.getString('Volume', '100')) / 100 };
     });
   }
+  const eva = IniFile.parse(evaIni);
+  await Promise.all((Object.entries(EVA_EVENTS) as [keyof typeof EVA_EVENTS, string][]).map(async ([cue, event]) => {
+    const name = eva.getSection(event)?.getString('Allied');
+    if (!name) throw new Error(`Missing EVA announcement ${event}`);
+    const { samples, sampleRate } = decodeWav(await readNested(read, 'langmd.mix', ['audiomd.mix', `${name}.wav`]));
+    decoded[cue] = { samples, sampleRate, limit: 1, volume: 1 };
+  }));
   return decoded;
 }
 
@@ -74,7 +86,7 @@ export async function loadSounds(read: ReadFile, store: Store = importStore): Pr
   const last = new Map<Cue, number>();
   return {
     play(value) {
-      if (!(value in EVENTS)) return;
+      if (!loaded.has(value as Cue)) return;
       const cue = value as Cue, sound = loaded.get(cue)!;
       const now = context.currentTime;
       if (now - (last.get(cue) ?? -1) < 0.1 || (active.get(cue) ?? 0) >= sound.limit) return;

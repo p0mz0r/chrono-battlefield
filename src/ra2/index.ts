@@ -20,3 +20,4 @@ export * from './map/overlayPack.js';
 export * from './map/lcw.js';
 export * from './map/lzo.js';
 export * from './aud/audioBank.js';
+export * from './aud/wav.js';
