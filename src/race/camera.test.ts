@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { TICK_HZ, type CellGrid } from '../movement/index.js';
 import { currentLap, directorShot, lapOf, type Shot } from './camera.js';
 import { loadCourse, mapHash, type CourseFile } from './course.js';
-import { chat, createRace, openJoinWindow, standings, tickRace, type Race } from './race.js';
+import { chat, createRace, openJoinWindow, paid, standings, tickRace, type Race } from './race.js';
 
 const MAP = new TextEncoder().encode('[Map]\nTheater=TEMPERATE\n');
 
@@ -99,6 +99,43 @@ describe('director camera', () => {
     expect(chat(r, { viewerId: 'w', name: 'Wes', text: '!missile' }).ok).toBe(true);
     for (let i = 0; i < 3 * TICK_HZ; i++) { tickRace(r); shot = directorShot(r, shot); }
     expect(shot).toMatchObject({ reason: 'Hit by Wes', racer: r.lastHit });
+  });
+
+  /** A race 5 s in with no bot actions, shot by the director every tick. */
+  function calm() {
+    const r = race(1);
+    while (r.phase !== 'racing') tickRace(r);
+    for (const x of r.racers) x.botNext = Infinity;
+    let shot: Shot | undefined;
+    const step = (n = 1) => { for (let i = 0; i < n; i++) { tickRace(r); shot = directorShot(r, shot); } return shot!; };
+    step(5 * TICK_HZ);
+    return { r, step };
+  }
+
+  it('shows a Chrono swap as the back tank first, then cuts to it landing up front and holds 3 s', () => {
+    const { r, step } = calm();
+    expect(paid(r, { viewerId: 'v', name: 'Vera', event: 'chronoSwap', via: 'redemption', reference: 'r1' }).ok).toBe(true);
+    const turn = step();
+    const back = r.queue[0]!.picks[1]!;
+    expect(turn).toMatchObject({ racer: back, reason: 'Chrono swap by Vera', cutAt: r.frame });
+    expect(step(3 * TICK_HZ - 1)).toBe(turn); // held through the build-up
+    const landing = step();
+    expect(landing).toMatchObject({ racer: back, reason: 'Swapped up front by Vera', cutAt: r.frame });
+    expect(standings(r).findIndex((s) => s.name === back.name)).toBeLessThan(r.racers.length / 2);
+    expect(step(3 * TICK_HZ - 1)).toBe(landing);
+    expect(step()).toMatchObject({ reason: 'Leader', cutAt: r.frame }); // 3 s after landing
+  });
+
+  it('holds back hit cuts while an event plays, and drops the hits it held back', () => {
+    const { r, step } = calm();
+    paid(r, { viewerId: 'v', name: 'Vera', event: 'chronoSwap', via: 'redemption', reference: 'r1' });
+    const held = step();
+    const target = standings(r).find((s) => s.name !== held.racer.name)!.name;
+    expect(chat(r, { viewerId: 'w', name: 'Wes', text: `!missile ${target}` }).ok).toBe(true);
+    step(2 * TICK_HZ); // the missile lands in the build-up
+    expect(r.lastHit?.name).toBe(target);
+    expect(step(TICK_HZ + 3 * TICK_HZ - 1).reason).toBe('Swapped up front by Vera');
+    for (let i = 0; i < 8 * TICK_HZ; i++) expect(step().reason).not.toMatch(/^Hit by/);
   });
 });
 

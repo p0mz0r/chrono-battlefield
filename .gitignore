@@ -15,3 +15,6 @@ courses/maps/2_arctic_circle.map
 
 # Dev server output, for agents to read
 .vite.log
+
+# Agent scratch files (screenshot step modules, one-off scripts)
+.scratch/

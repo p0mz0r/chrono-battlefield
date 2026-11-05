@@ -7,7 +7,7 @@ import { loadCourse as loadCourseArt, type Sprite as CachedSprite } from './load
 import { loadSounds } from './audio.js';
 import { facingAngle, projectModelPoint } from './ra2/render/voxelRender.js';
 import { loadCourse, mapHash, type CourseFile, type LinePoint } from './race/course.js';
-import { chat, commandList, createRace, secondsLeft, standings, tickRace, type Race, type Racer } from './race/race.js';
+import { chat, commandList, createRace, playingEvent, secondsLeft, standings, tickRace, type Race, type Racer } from './race/race.js';
 import { directorShot, type Shot } from './race/camera.js';
 import { mountStreamView, type CameraMode } from './race/view.js';
 import { mountOperator, readChoices } from './race/operator.js';
@@ -180,7 +180,9 @@ async function main() {
       bridgeSprites.get(bridge)!.push(sprite);
     }
   }
-  world.addChild(things);
+  // The target ring sits on the ground, under the tanks.
+  const targetRing = new Graphics();
+  world.addChild(targetRing, things);
   const bridgeEffects = course.file.bridges.map(([x, y]) => {
     const id = grid.bridge[y * grid.width + x]!, bridge = grid.bridges[id]!;
     const flash = new Graphics();
@@ -355,6 +357,15 @@ async function main() {
       const age = race.frame - effect.changedAt;
       effect.flash.visible = age >= 0 && age < TICK_HZ;
       if (effect.flash.visible) effect.flash.alpha = 0.7 * (1 - age / TICK_HZ);
+    }
+    // A pulsing red ring under a big event's target through its build-up; Chrono swap joins its two tanks by a line.
+    targetRing.clear();
+    const playing = playingEvent(race);
+    if (playing) {
+      const pulse = 0.5 + 0.5 * Math.sin((race.frame + a) * 3 * Math.PI / TICK_HZ);
+      const [p, q] = playing.picks.map((r) => viewOf(r).view.position);
+      targetRing.moveTo(p!.x, p!.y).lineTo(q!.x, q!.y).stroke({ color: 0xff3030, width: 3, alpha: 0.35 + 0.3 * pulse });
+      for (const { x, y } of [p!, q!]) targetRing.ellipse(x, y, 32 + 6 * pulse, 16 + 3 * pulse).stroke({ color: 0xff2020, width: 4, alpha: 0.5 + 0.5 * pulse });
     }
     missiles.clear();
     fxUsed = 0;
