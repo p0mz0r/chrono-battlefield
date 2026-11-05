@@ -1,6 +1,6 @@
 import { TICK_HZ } from '../movement/index.js';
 import type { CourseFile } from './course.js';
-import { standings, type Race, type Racer } from './race.js';
+import { playingEvent, standings, type Race, type Racer, type Turn } from './race.js';
 
 /** The leader's lap of the course's lap section, for the standings header; undefined without a lap section. */
 export function currentLap(race: Race): { lap: number; count: number } | undefined {
@@ -31,23 +31,41 @@ export interface Shot {
   cutAt: number;
   /** `race.lastHitFrame` already cut to (or skipped). */
   hitSeen: number;
+  /** The big event the shot holds on. */
+  event?: Turn;
 }
 
-const HOLD = 7 * TICK_HZ, HIT_GAP = 2.5 * TICK_HZ;
+const HOLD = 7 * TICK_HZ, HIT_GAP = 2.5 * TICK_HZ, EVENT_HOLD = 3 * TICK_HZ;
+
+/** The big event the director holds on: the one playing, or the last one until 3 s after it lands. */
+function heldEvent(race: Race): Turn | undefined {
+  const landed = race.landed;
+  return playingEvent(race) ?? (landed && race.frame < landed.lands! + EVENT_HOLD ? landed : undefined);
+}
 
 /**
- * The director's next shot (the same object while it holds): a new hit cuts to the tank hit, once at least 2.5 s
+ * The director's next shot (the same object while it holds). A big event's turn cuts to its target and holds until
+ * 3 s after it lands; a Chrono swap shows the back tank, then cuts to it landing up front. Hits meanwhile are never
+ * cut to. Otherwise a new hit cuts to the tank hit, once at least 2.5 s
  * have passed since the last cut; otherwise each shot holds 7 s (less if its tank finishes), alternating the leader
  * with the chaser in the closest fight for a place. Only unfinished tanks are shown.
  */
 export function directorShot(race: Race, prev: Shot | undefined): Shot {
+  const event = heldEvent(race);
+  const back = event?.picks[1];
+  if (event && back && back.finishedAt === undefined) {
+    const reason = event === race.landed ? `Swapped up front by ${event.by}` : `Chrono swap by ${event.by}`;
+    if (prev?.event === event && prev.racer === back && prev.reason === reason) return prev;
+    return { racer: back, reason, cutAt: race.frame, hitSeen: race.lastHitFrame, event };
+  }
   const hit = race.lastHit;
   const since = prev ? race.frame - prev.cutAt : Infinity;
-  const hitSeen = prev?.hitSeen ?? -1;
+  // Hits held back during an event are dropped.
+  const hitSeen = prev?.event ? race.lastHitFrame : prev?.hitSeen ?? -1;
   if (hit && race.lastHitFrame > hitSeen && hit.finishedAt === undefined && since >= HIT_GAP) {
     return { racer: hit, reason: `Hit by ${race.lastHitBy}`, cutAt: race.frame, hitSeen: race.lastHitFrame };
   }
-  if (prev && prev.racer.finishedAt === undefined && since < HOLD) return prev;
+  if (prev && !prev.event && prev.racer.finishedAt === undefined && since < HOLD) return prev;
   const order = standings(race);
   const live = order.filter((s) => s.finishTime === undefined).map((s) => race.racers.find((r) => r.name === s.name)!);
   if (!live.length) return prev ?? { racer: race.racers[0]!, reason: 'Leader', cutAt: race.frame, hitSeen };

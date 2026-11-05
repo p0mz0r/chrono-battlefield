@@ -710,7 +710,9 @@ describe('paid events', () => {
     const [front, back] = race.queue[0]!.picks;
     front!.finishedAt = race.frame;
     race.timer = race.finishFrames; // as a real first finish starts the finish timer
-    ticks(race, 3 * TICK_HZ);
+    tickRace(race);
+    expect(race.queue[0]!.picks[0]).not.toBe(front); // at once, so the target ring follows
+    ticks(race, 3 * TICK_HZ - 1);
     const [, a, b] = race.feed.at(-1)!.match(/^Vera ▸ CHRONO SWAP ▸ (\S+) ⇄ (\S+)$/)!;
     expect(b).toBe(back!.name);
     expect(a).not.toBe(front!.name);

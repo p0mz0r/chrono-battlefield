@@ -220,6 +220,9 @@ _Avoid_: Leaderboard, rankings, top 5
 The headline shown from the moment a big event's turn comes until it lands, naming the event and who set it off: the viewer for a paid event, chat and the viewers who called for it for a chat-wide event. Personal interactions never get one.
 _Avoid_: Toast, alert, popup
 
+**Target ring**:
+The pulsing red ring under a big event's target from its turn until it lands, in both camera modes: on the leading tank, on a cell, or on both Chrono swap tanks joined by a line. It moves to whoever the event will hit instead when its target finishes.
+
 **Event queue**:
 The row of chips beside the hype meter showing the big event playing now and the ones waiting, in order, each with who set it off; a cheer carried over to the next race keeps its chip, marked "next race", through race setup and the join window.
 _Avoid_: Queue bar, timeline

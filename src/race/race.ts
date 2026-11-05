@@ -137,6 +137,8 @@ export interface Race {
   queue: Turn[];
   /** Race frame the next big event's turn may come on. */
   nextEventAt: number;
+  /** The big event that landed last this race. */
+  landed: Turn | undefined;
   /** Drained by the chat source, as the view drains `sounds`; kept across races until drained. */
   settlements: Settlement[];
 }
@@ -152,7 +154,7 @@ export interface Standing {
 
 export function createRace(course: Course, grid: CellGrid, seed: number): Race {
   const bridgeGrid = 'bridge' in grid && 'bridges' in grid ? grid as BridgeGrid : undefined;
-  return { course, field: createField(grid, seed), seed, phase: 'idle', paused: false, racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions.filter((verb) => verb !== 'bridge' || (bridgeGrid && course.file.bridges.length))), cooldowns: new Map(), feed: [], feedUntil: new Map(), sounds: [], missiles: [], v3s: [], teslas: [], lastHit: undefined, lastHitBy: undefined, lastHitFrame: -1, bridgeGrid, queue: [], nextEventAt: 0, settlements: [] };
+  return { course, field: createField(grid, seed), seed, phase: 'idle', paused: false, racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions.filter((verb) => verb !== 'bridge' || (bridgeGrid && course.file.bridges.length))), cooldowns: new Map(), feed: [], feedUntil: new Map(), sounds: [], missiles: [], v3s: [], teslas: [], lastHit: undefined, lastHitBy: undefined, lastHitFrame: -1, bridgeGrid, queue: [], nextEventAt: 0, landed: undefined, settlements: [] };
 }
 
 export function commandList(race: Race): string[] {
@@ -183,6 +185,7 @@ export function openJoinWindow(race: Race, { joinSeconds = 90, finishSeconds = 6
   race.teslas.length = 0;
   race.queue.length = 0;
   race.nextEventAt = 0;
+  race.landed = undefined;
   for (const [id, bridge] of race.bridgeGrid?.bridges.entries() ?? []) {
     if (bridge.destroyed) repairBridge(race.bridgeGrid!, id);
     bridge.changedAt = undefined;
@@ -304,15 +307,22 @@ function playEvents(race: Race): void {
     if (!swapPicks(race, turn)) return fizzle(race);
     turn.lands = race.frame + BIG_EVENTS[turn.event].buildUp * TICK_HZ;
     race.sounds.push('chronoSelect');
-  } else if (race.frame >= turn.lands) {
+  } else if (race.frame < turn.lands) {
+    // A pick that finishes is replaced at once, so the target ring and the director follow the new one.
+    if (turn.picks.some((r) => r.finishedAt !== undefined) && !swapPicks(race, turn)) fizzle(race);
+  } else {
     if (!swapPicks(race, turn) || !chronoSwap(race, turn.picks[0]!, turn.picks[1]!)) return fizzle(race);
     race.queue.shift();
+    race.landed = turn;
     race.nextEventAt = race.frame + EVENT_GAP;
     settle(race, turn.reference, 'fulfilled');
     race.sounds.push('chrono');
     post(race, `${turn.by} ▸ ${BIG_EVENTS[turn.event].label} ▸ ${turn.picks[0]!.name} ⇄ ${turn.picks[1]!.name}`);
   }
 }
+
+/** The big event playing now: its turn has come and it hasn't landed yet. */
+export const playingEvent = (race: Race): Turn | undefined => race.queue[0]?.lands === undefined ? undefined : race.queue[0];
 
 const settle = (race: Race, reference: string, outcome: Settlement['outcome']) => race.settlements.push({ reference, outcome });
 
