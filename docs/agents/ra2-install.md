@@ -23,7 +23,7 @@ Use headless Chromium through `tools/shot.mjs`; the owner's own Chrome windows a
 
 1. Start the dev server as a background task with its output in `.vite.log`: `npx vite --port 5173 --strictPort > .vite.log 2>&1`. Read the log when a request fails or the server stops.
 2. Shoot: `node tools/shot.mjs "http://localhost:5173/?edit=1&map=DeepFrze.yro" --out <file>.png`. It prints page errors, failed requests and dialogs; a clean run prints only the shot path. The default size, 2560x1270, is the owner's maximised window.
-3. To interact first, pass `--steps steps.mjs`, a module whose default export `async (page) => {}` drives the page with the Playwright API (click, keyboard, `page.evaluate`). Keep step files in a scratch folder.
+3. To interact first, pass `--steps steps.mjs`, a module whose default export `async (page) => {}` drives the page with the Playwright API (click, keyboard, `page.evaluate`). Keep step files in `.scratch/` (gitignored).
 
 If launch fails with "Executable doesn't exist", run `npx playwright-core install chromium-headless-shell` once.
 

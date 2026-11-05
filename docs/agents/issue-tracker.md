@@ -23,7 +23,7 @@ Create a GitHub issue in `p0mz0r/chrono-battlefield`.
 
 ## When a skill says "fetch the relevant ticket"
 
-Read it with `gh issue view <number>`.
+Read it with `gh issue view <number> --json number,title,body,labels,comments`. The human view with `--comments` prints nothing on an issue with no comments.
 
 ## Wayfinding operations
 
