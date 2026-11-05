@@ -1,11 +1,11 @@
 import { currentLap, type Shot } from './camera.js';
-import { BIG_EVENTS, commandList, playingEvent, secondsLeft, standings, type Race } from './race.js';
+import { armed, BIG_EVENTS, commandList, HYPE, playingEvent, secondsLeft, standings, type Race } from './race.js';
 
 export type CameraMode = 'overview' | 'director';
 
 const esc = (value: string) => value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
-/** Fixed screen overlay: standings, phase or event banner, event queue, commands, feed, results, and the director shot's lower third. Tank labels stay in Pixi. */
+/** Fixed screen overlay: standings, phase or event banner, hype meter and event queue, commands, feed, results, and the director shot's lower third. Tank labels stay in Pixi. */
 export function mountStreamView(): (race: Race, shot?: Shot) => void {
   const root = document.createElement('div');
   root.id = 'stream-view';
@@ -26,12 +26,14 @@ export function mountStreamView(): (race: Race, shot?: Shot) => void {
     const resultRows = race.phase === 'results' ? `<section class="results"><h1>RESULTS</h1><h2>${esc(race.course.file.name)}</h2>${order.map((s, i) => `<div class="result"><strong>${i + 1}</strong><span>${esc(s.name)}${s.bot ? ' <small>BOT</small>' : ''}</span><b>${s.finishTime === undefined ? 'DNF' : `${s.finishTime.toFixed(1)} s`}</b></div>`).join('')}<p class="next"><kbd>Enter</kbd> next race &nbsp; <kbd>S</kbd> race setup</p></section>` : '';
     // The event banner replaces the headline from a big event's turn until it lands.
     const playing = playingEvent(race);
+    const hype = armed(race) ? `<span class="hype armed">NUKE ${race.hype.calls.size}/${HYPE.calls}</span>`
+      : `<span class="hype" style="--fill:${Math.round(race.hype.points / HYPE.full * 100)}%">HYPE</span>`;
     const timer = race.racers.some((r) => r.finishedAt !== undefined) ? `<small>FINISH TIMER · ${secondsLeft(race)} s</small>` : '';
     const html = `${race.phase === 'results' ? '' : `<section class="standings"><header>${esc(race.course.file.name)}${lapLabel}</header><div class="standings-head">POS <span>RACER</span><b>PROGRESS</b></div>${rows}</section>`}
       ${playing ? `<div class="phase event-banner">${esc(`${BIG_EVENTS[playing.event].label} · ${playing.by}`)}${timer}</div>` : `<div class="phase">${headline}</div>`}
       ${race.paused ? '<div class="pause-banner">PAUSED</div>' : ''}
       ${race.phase === 'racing' && focus ? `<div class="lower-third"><strong>${order.findIndex((s) => s.name === focus.name) + 1}</strong><div>${esc(focus.name)}<small>${esc(shot!.reason)}</small></div></div>` : ''}
-      ${race.phase === 'racing' && race.queue.length ? `<div class="queue">${race.queue.map((t) => `<span${t.lands === undefined ? '' : ' class="playing"'}>${esc(`${BIG_EVENTS[t.event].label} · ${t.by}`)}</span>`).join('')}</div>` : ''}
+      ${race.phase === 'racing' ? `<div class="queue">${hype}${race.queue.map((t) => `<span${t.lands === undefined ? '' : ' class="playing"'}>${esc(`${BIG_EVENTS[t.event].label} · ${t.by}`)}</span>`).join('')}</div>` : ''}
       ${commands.length ? `<div class="commands">${commands.map(esc).join(' &nbsp; ')}</div>` : ''}
       ${race.phase === 'racing' && race.feed.length ? `<div class="feed">${race.feed.map((line) => `<div>${esc(line)}</div>`).join('')}</div>` : ''}
       ${resultRows}`;

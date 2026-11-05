@@ -774,3 +774,117 @@ describe('editor simulation', () => {
     expect(race.phase).toBe('racing');
   });
 });
+
+describe('hype meter', () => {
+  const redeem = (race: Race, viewerId: string) => paid(race, { viewerId, name: viewerId, event: 'chronoSwap', via: 'redemption', reference: viewerId });
+  const calm = () => {
+    const race = racing();
+    for (const r of race.racers) if (r.bot) r.botNext = Infinity;
+    race.sounds.length = 0;
+    return race;
+  };
+
+  it('adds 1 per accepted chat command and 2 per redemption; failed commands, plain chat and bots add nothing', () => {
+    const bots = racing();
+    ticks(bots, 15 * TICK_HZ);
+    expect(bots.feed.some((line) => /shield/.test(line))).toBe(true);
+    expect(bots.hype.points).toBe(0);
+    const race = calm();
+    say(race, 'v', '!boost');
+    say(race, 'v', '!boost'); // cooldown
+    say(race, 'w', 'gg !boost');
+    say(race, 'w', '!missile Nobody');
+    redeem(race, 'x');
+    expect(race.hype.points).toBe(3);
+  });
+
+  it('drains 1 point per 2 s once nobody has added for 5 s', () => {
+    const race = calm();
+    for (const v of ['a', 'b', 'c']) say(race, v, '!boost');
+    ticks(race, 7 * TICK_HZ - 1);
+    expect(race.hype.points).toBe(3);
+    tickRace(race);
+    expect(race.hype.points).toBe(2);
+    ticks(race, 4 * TICK_HZ);
+    expect(race.hype.points).toBe(0);
+    ticks(race, 4 * TICK_HZ);
+    expect(race.hype.points).toBe(0);
+  });
+
+  let fans = 0;
+  const fill = (race: Race, points: number) => { for (let i = 0; i < points; i++) say(race, `fan${fans++}`, '!boost'); };
+  const count = (race: Race, cue: string) => race.sounds.filter((s) => s === cue).length;
+
+  it('plays EVA "Nuclear silo detected" once per filling, the first time the meter reaches half', () => {
+    const race = calm();
+    fill(race, 14);
+    expect(count(race, 'nukeDetected')).toBe(0);
+    fill(race, 1);
+    expect(count(race, 'nukeDetected')).toBe(1);
+    ticks(race, 7 * TICK_HZ); // drains below half
+    fill(race, 1);
+    expect(race.hype.points).toBe(15);
+    expect(count(race, 'nukeDetected')).toBe(1);
+    ticks(race, 40 * TICK_HZ); // empty: the next filling warns again
+    fill(race, 15);
+    expect(count(race, 'nukeDetected')).toBe(2);
+  });
+
+  it('arms at full for 30 s with !nuke on the command list, then drains from full and can arm again', () => {
+    const race = calm();
+    fill(race, 30);
+    expect(count(race, 'nukeReady')).toBe(1);
+    expect(commandList(race)).toContain('!nuke');
+    ticks(race, 30 * TICK_HZ - 1);
+    fill(race, 3);
+    expect(race.hype.points).toBe(30);
+    expect(commandList(race)).toContain('!nuke');
+    tickRace(race);
+    expect(commandList(race)).not.toContain('!nuke');
+    ticks(race, 2 * TICK_HZ);
+    expect(race.hype.points).toBe(29);
+    fill(race, 1);
+    expect(count(race, 'nukeReady')).toBe(2);
+  });
+
+  it('ignores !nuke silently outside an armed meter', () => {
+    const race = calm();
+    expect(say(race, 'a', '!nuke')).toEqual({ ok: false, reason: 'ignored' });
+    expect(race.feed).toEqual([]);
+  });
+
+  it('counts each viewer once per arming for free, posts each call, and empties the meter at 5 calls', () => {
+    const race = calm();
+    say(race, 'a', '!boost', 'Kane');
+    fill(race, 29);
+    expect(say(race, 'a', '!nuke', 'Kane').ok).toBe(true); // on cooldown from the boost
+    expect(say(race, 'a', '!nuke', 'Kane').ok).toBe(false);
+    expect(say(race, 'b', '!nuke', 'Kara').ok).toBe(true);
+    expect(say(race, 'b', '!boost', 'Kara').ok).toBe(true); // no cooldown started
+    expect(race.feed.slice(-3, -1)).toEqual(['Kane ▸ NUKE 1/5', 'Kara ▸ NUKE 2/5']);
+    for (const v of ['c', 'd']) say(race, v, '!nuke');
+    expect(race.hype.points).toBe(30);
+    say(race, 'e', '!nuke');
+    expect(race.feed.at(-1)).toBe('e ▸ NUKE 5/5');
+    expect(race.hype.points).toBe(0);
+    expect(commandList(race)).not.toContain('!nuke');
+    fill(race, 15);
+    expect(count(race, 'nukeDetected')).toBe(2);
+  });
+
+  it('starts empty each race, with nothing carried over', () => {
+    const race = calm();
+    fill(race, 30);
+    say(race, 'a', '!nuke');
+    endRace(race);
+    expect(commandList(race)).not.toContain('!nuke');
+    openJoinWindow(race, { joinSeconds: 1 });
+    say(race, 'a', '!rhino');
+    ticks(race, 4 * TICK_HZ);
+    expect(race.hype.points).toBe(0);
+    expect(say(race, 'a', '!nuke').ok).toBe(false);
+    fill(race, 30);
+    expect(say(race, 'a', '!nuke').ok).toBe(true);
+    expect(race.feed.at(-1)).toBe('a ▸ NUKE 1/5');
+  });
+});

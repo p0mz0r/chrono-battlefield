@@ -149,7 +149,7 @@ The on-stream meter chat fills during a race for the next chat-wide event: every
 _Avoid_: Hype train, chaos meter, bar
 
 **Armed**:
-The hype meter's state once full: it holds without draining for a short spell, its chat-wide event's command (`!nuke`) appears on the command list, and the event is set off once enough different viewers type it; if the spell runs out first, the meter drains again.
+The hype meter's state once full: it holds without draining for a short spell, its chat-wide event's command (`!nuke`) appears on the command list, and the event is set off once enough different viewers type it; `!nuke` is free of the viewer cooldown, each viewer counts once per spell, and a repeat is ignored silently. Nothing adds to an armed meter; if the spell runs out first, the meter drains again from full.
 _Avoid_: Ready, charged, primed
 
 **Nuke**:
