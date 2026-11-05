@@ -126,6 +126,22 @@ describe('director camera', () => {
     expect(step()).toMatchObject({ reason: 'Leader', cutAt: r.frame }); // 3 s after landing
   });
 
+  it('holds on the nuke\'s target until the first stun ends, then cuts to that tank captioned "First away" for 3 s', () => {
+    const { r, step } = calm();
+    for (let i = 0; i < 30; i++) chat(r, { viewerId: `fan${i}`, name: `fan${i}`, text: '!boost' });
+    for (let i = 0; i < 5; i++) chat(r, { viewerId: `n${i}`, name: `n${i}`, text: '!nuke' });
+    const turn = step();
+    const leading = r.racers.find((x) => x.name === standings(r)[0]!.name)!;
+    expect(turn).toMatchObject({ racer: leading, reason: 'Nuke by CHAT', cutAt: r.frame });
+    step(3 * TICK_HZ); // impact
+    const away = r.racers.reduce((a, b) => (b.stunUntil < a.stunUntil ? b : a));
+    expect(step(away.stunUntil - r.frame - 1)).toBe(turn); // through impact while every tank burns
+    const first = step();
+    expect(first).toMatchObject({ racer: away, reason: 'First away', cutAt: r.frame });
+    expect(step(3 * TICK_HZ - 1)).toBe(first);
+    expect(step().reason).not.toBe('First away');
+  });
+
   it('holds back hit cuts while an event plays, and drops the hits it held back', () => {
     const { r, step } = calm();
     paid(r, { viewerId: 'v', name: 'Vera', event: 'chronoSwap', via: 'redemption', reference: 'r1' });

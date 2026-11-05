@@ -7,7 +7,7 @@ import { loadCourse as loadCourseArt, type Sprite as CachedSprite } from './load
 import { loadSounds } from './audio.js';
 import { facingAngle, projectModelPoint } from './ra2/render/voxelRender.js';
 import { loadCourse, mapHash, type CourseFile, type LinePoint } from './race/course.js';
-import { chat, commandList, createRace, playingEvent, secondsLeft, standings, tickRace, type Race, type Racer } from './race/race.js';
+import { chat, commandList, createRace, NUKE_FALL, playingEvent, secondsLeft, standings, tickRace, type Race, type Racer, type Turn } from './race/race.js';
 import { directorShot, type Shot } from './race/camera.js';
 import { mountStreamView, type CameraMode } from './race/view.js';
 import { mountOperator, readChoices } from './race/operator.js';
@@ -126,7 +126,7 @@ async function main() {
     return offset === undefined ? bytes : bytes.subarray(offset, offset + length!);
   } : readInstall;
   const started = performance.now();
-  const { map, mapBytes, art: { battlefield, rhino, tesla, v3, missile, warpOut, warpIn, fire }, cached } = await loadCourseArt(read, mapPath);
+  const { map, mapBytes, art: { battlefield, rhino, tesla, v3, missile, warpOut, warpIn, fire, nuke, mushroom }, cached } = await loadCourseArt(read, mapPath);
   if (edit && params.get('map')) {
     const first = battlefield.grid.speed.findIndex((speed, i) => speed > 0 && !battlefield.grid.blocked[i] && battlefield.grid.deck[i]! < 0);
     if (first < 0) throw new Error('Map has no drivable ground cells');
@@ -201,7 +201,12 @@ async function main() {
   const missiles = new Graphics(), fx = new Container();
   world.addChild(missiles, fx);
   const [v3Tex, missileTex, teslaBody, teslaTurret] = await Promise.all([frameTextures(v3), frameTextures(missile), frameTextures(tesla.body), frameTextures(tesla.turret)]);
-  const [warpOutTex, warpInTex, fireTex] = await Promise.all([animTextures(warpOut), animTextures(warpIn), animTextures(fire)]);
+  const [warpOutTex, warpInTex, fireTex, nukeTex, mushroomTex] = await Promise.all([animTextures(warpOut), animTextures(warpIn), animTextures(fire), animTextures(nuke), animTextures(mushroom)]);
+  // The nuke's white flash covers the whole screen, over the battlefield and under the overlay.
+  const nukeFlash = new Graphics().rect(0, 0, 1, 1).fill(0xffffff);
+  app.stage.addChild(nukeFlash);
+  /** Where the last nuke landed: its mushroom cloud stays there as the tank drives on. */
+  let blast: { turn: Turn; x: number; y: number } | undefined;
   /** Prerender frame for a heading in cells (see the Rhino's `+ 8` below). */
   const frameOf = (dx: number, dy: number) => (Math.round((Math.atan2(dx, -dy) / (2 * Math.PI)) * 32) + 40) % 32;
   let fxUsed = 0;
@@ -312,6 +317,12 @@ async function main() {
     world.position.set((app.screen.width + (cameraMode === 'overview' ? 360 : 0)) / 2 - target.x * scale, app.screen.height / 2 - target.y * scale);
     }
     const a = Math.min(acc * TICK_HZ, 1);
+    // A nuke's impact: a white flash and ~0.5 s of screen shake while the race runs on.
+    const sinceNuke = race.landed?.event === 'nuke' ? (race.frame + a - race.landed.lands!) / TICK_HZ : Infinity;
+    nukeFlash.visible = sinceNuke < 0.4;
+    nukeFlash.alpha = 0.9 * (1 - sinceNuke / 0.4);
+    nukeFlash.scale.set(app.screen.width, app.screen.height);
+    if (sinceNuke < 0.5) world.position.set(world.position.x + (Math.random() - 0.5) * 24 * (1 - sinceNuke / 0.5), world.position.y + (Math.random() - 0.5) * 24 * (1 - sinceNuke / 0.5));
     const ordered = standings(race);
     for (const r of race.racers) {
       const tank = r.tank;
@@ -363,9 +374,9 @@ async function main() {
     const playing = playingEvent(race);
     if (playing) {
       const pulse = 0.5 + 0.5 * Math.sin((race.frame + a) * 3 * Math.PI / TICK_HZ);
-      const [p, q] = playing.picks.map((r) => viewOf(r).view.position);
-      targetRing.moveTo(p!.x, p!.y).lineTo(q!.x, q!.y).stroke({ color: 0xff3030, width: 3, alpha: 0.35 + 0.3 * pulse });
-      for (const { x, y } of [p!, q!]) targetRing.ellipse(x, y, 32 + 6 * pulse, 16 + 3 * pulse).stroke({ color: 0xff2020, width: 4, alpha: 0.5 + 0.5 * pulse });
+      const spots = playing.picks.map((r) => viewOf(r).view.position);
+      if (spots.length === 2) targetRing.moveTo(spots[0]!.x, spots[0]!.y).lineTo(spots[1]!.x, spots[1]!.y).stroke({ color: 0xff3030, width: 3, alpha: 0.35 + 0.3 * pulse });
+      for (const { x, y } of spots) targetRing.ellipse(x, y, 32 + 6 * pulse, 16 + 3 * pulse).stroke({ color: 0xff2020, width: 4, alpha: 0.5 + 0.5 * pulse });
     }
     missiles.clear();
     fxUsed = 0;
@@ -377,6 +388,18 @@ async function main() {
       const p = toScreen(x, y, spotLevel(grid, t.cell));
       put(missileTex[frameOf(tx - m.x, ty - m.y)]!, p.x, p.y - 20 * Math.sin(flight * Math.PI));
     }
+    // The nuke falls on its target under the siren, then its mushroom cloud rises where it landed.
+    if (playing?.event === 'nuke') {
+      const fall = 1 - (playing.lands! - race.frame - a) / (NUKE_FALL * TICK_HZ), p = viewOf(playing.picks[0]!).view.position;
+      if (fall >= 0) put(nukeTex[0]!, p.x, p.y - 300 * (1 - fall));
+    }
+    if (!race.landed) blast = undefined;
+    if (race.landed?.event === 'nuke' && blast?.turn !== race.landed) {
+      const { x, y } = viewOf(race.landed.picks[0]!).view.position;
+      blast = { turn: race.landed, x, y };
+    }
+    const cloud = blast ? Math.floor((race.frame + a - blast.turn.lands!) * ANIM_FPS / TICK_HZ) : Infinity;
+    if (cloud < mushroomTex.length) put(mushroomTex[cloud]!, blast!.x, blast!.y);
     const V3_STEP = 12 / (1.5 * TICK_HZ);
     for (const r of race.v3s) {
       const x = r.x + r.dx * V3_STEP * a, y = r.y + r.dy * V3_STEP * a;

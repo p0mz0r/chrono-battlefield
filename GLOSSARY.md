@@ -209,7 +209,7 @@ The camera mode that holds the whole course in one still frame; tanks are small,
 _Avoid_: Map view, wide shot
 
 **Director**:
-The camera mode that zooms in and cuts between the leading tank, the closest fight for a place and the tank last hit, captioning the tank on screen with its name, its place and, after a hit, who hit it; labels show names. When a big event's turn comes it cuts to the event's target and holds there until a few seconds after it lands.
+The camera mode that zooms in and cuts between the leading tank, the closest fight for a place and the tank last hit, captioning the tank on screen with its name, its place and, after a hit, who hit it; labels show names. When a big event's turn comes it cuts to the event's target and holds there until a few seconds after it lands; after a nuke it holds until the first stun ends, then cuts to that tank, captioned "First away".
 _Avoid_: Chase cam, spectator, auto-cam
 
 **Standings**:
@@ -224,7 +224,7 @@ _Avoid_: Toast, alert, popup
 The pulsing red ring under a big event's target from its turn until it lands, in both camera modes: on the leading tank, on a cell, or on both Chrono swap tanks joined by a line. It moves to whoever the event will hit instead when its target finishes.
 
 **Event queue**:
-The row of chips beside the hype meter showing the big event playing now and the ones waiting, in order, each with who set it off; a cheer carried over to the next race keeps its chip, marked "next race", through race setup and the join window.
+The row of chips beside the hype meter showing the big event playing now and the ones waiting, in order, each with who set it off (a chat-wide event's chip reads "next" instead); a cheer carried over to the next race keeps its chip, marked "next race", through race setup and the join window.
 _Avoid_: Queue bar, timeline
 
 **Results**:

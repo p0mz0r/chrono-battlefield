@@ -27,8 +27,9 @@ describeInstall('interaction art from the install', () => {
     expect(painted(prerenderRocket(vfs, 'temperate', 'v3rocket').colorRgba)).toBe(true);
   });
 
-  it('takes the chronosphere warp and the stun fire from the stock animations', () => {
-    for (const name of ['chronofd', 'chronotg', 'fire01']) expect(painted(prerenderAnim(vfs, name).colorRgba)).toBe(true);
+  it('takes the chronosphere warp, the stun fire, the nuke and its mushroom cloud from the stock animations', () => {
+    for (const name of ['chronofd', 'chronotg', 'fire01', 'nukeanim']) expect(painted(prerenderAnim(vfs, name).colorRgba)).toBe(true);
+    expect(painted(prerenderAnim(vfs, 'nkmsldn', 'temperate').colorRgba)).toBe(true);
     expect(() => prerenderAnim(vfs, 'nosuchanim')).toThrow(/Missing install file: nosuchanim\.shp/);
   });
 });

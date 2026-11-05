@@ -53,8 +53,11 @@ export function prerenderRocket(vfs: Files, theater: string, prefer: 'v3rocket' 
   return renderVoxelToSprite(name, vxl(name), hva(name), pal(), { footprintPx });
 }
 
-/** A stock SHP animation (e.g. `chronofd`, `fire01`) in the theater-independent `anim.pal`. */
-export function prerenderAnim(vfs: Files, name: string): ConvertedSprite {
-  const { open } = reader(vfs, '');
-  return convertShpToAtlas(name, ShpFile.parse(open(`${name}.shp`)), Palette.parse(open('anim.pal')));
+/**
+ * A stock SHP animation (e.g. `chronofd`, `fire01`) in the theater-independent `anim.pal`; with `theater`, an SHP
+ * projectile (e.g. `nkmsldn`) in that theater's unit palette.
+ */
+export function prerenderAnim(vfs: Files, name: string, theater?: string): ConvertedSprite {
+  const { open, pal } = reader(vfs, theater ?? '');
+  return convertShpToAtlas(name, ShpFile.parse(open(`${name}.shp`)), theater ? pal() : Palette.parse(open('anim.pal')));
 }
