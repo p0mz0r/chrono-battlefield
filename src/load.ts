@@ -27,6 +27,9 @@ export interface CourseArt {
   warpOut: Sprite;
   warpIn: Sprite;
   fire: Sprite;
+  /** The nuke falling (`nkmsldn`) and its mushroom cloud (`nukeanim`). */
+  nuke: Sprite;
+  mushroom: Sprite;
 }
 
 type Tank = { body: Sprite; turret: Sprite; pivot: readonly [number, number, number] };
@@ -72,6 +75,8 @@ export async function loadCourse(read: ReadFile, mapPath: string): Promise<{ map
       warpOut: await sprite(prerenderAnim(vfs, 'chronofd')),
       warpIn: await sprite(prerenderAnim(vfs, 'chronotg')),
       fire: await sprite(prerenderAnim(vfs, 'fire01')),
+      nuke: await sprite(prerenderAnim(vfs, 'nkmsldn', map.theater)),
+      mushroom: await sprite(prerenderAnim(vfs, 'nukeanim')),
     };
   });
   return { map, mapBytes, art, cached };

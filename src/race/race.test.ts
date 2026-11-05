@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CellGrid } from '../movement/index.js';
 import { loadCourse, mapHash, type CourseFile } from './course.js';
-import { chat, commandList, createRace, endRace, openJoinWindow, paid, simulateRace, standings, tickRace, type Race, type Racer } from './race.js';
+import { chat, commandList, createRace, endRace, hypeLive, openJoinWindow, paid, simulateRace, standings, tickRace, type Race, type Racer } from './race.js';
 import { TICK_HZ } from '../movement/index.js';
 import { readdirSync, readFileSync } from 'node:fs';
 import { describeInstall, readFromDir } from '../../test/install.js';
@@ -886,5 +886,124 @@ describe('hype meter', () => {
     fill(race, 30);
     expect(say(race, 'a', '!nuke').ok).toBe(true);
     expect(race.feed.at(-1)).toBe('a ▸ NUKE 1/5');
+  });
+});
+
+describe('nuke', () => {
+  const redeem = (race: Race, viewerId: string) => paid(race, { viewerId, name: viewerId, event: 'chronoSwap', via: 'redemption', reference: viewerId });
+  let fans = 0;
+  /** Fills the meter and has 5 viewers call `!nuke`. */
+  const setOff = (race: Race) => {
+    for (let i = 0; i < 30; i++) say(race, `fan${fans++}`, '!boost');
+    for (const v of ['n1', 'n2', 'n3', 'n4', 'n5']) say(race, v, '!nuke', v.toUpperCase());
+  };
+  const calm = (seed = 1) => {
+    const race = racing(seed);
+    for (const r of race.racers) if (r.bot) r.botNext = Infinity;
+    ticks(race, 5 * TICK_HZ); // the field spreads out
+    race.sounds.length = 0;
+    return race;
+  };
+
+  it('takes the next turn on the 5th call, ahead of waiting paid events, behind the one playing', () => {
+    const race = calm();
+    redeem(race, 'v');
+    tickRace(race); // v's Chrono swap plays
+    redeem(race, 'w');
+    setOff(race);
+    expect(race.queue.map((t) => `${t.event} ${t.by}`)).toEqual(['chronoSwap v', 'nuke CHAT', 'chronoSwap w']);
+    expect(race.queue[1]!.callers).toEqual(['N1', 'N2', 'N3', 'N4', 'N5']);
+    const idle = calm();
+    redeem(idle, 'w');
+    setOff(idle);
+    expect(idle.queue.map((t) => t.event)).toEqual(['nuke', 'chronoSwap']);
+    const first = idle.queue[0];
+    setOff(idle); // a second nuke waits behind the first
+    expect(idle.queue.map((t) => t.event)).toEqual(['nuke', 'nuke', 'chronoSwap']);
+    expect(idle.queue[0]).toBe(first);
+  });
+
+  it('never shortens a longer stun already running', () => {
+    const race = calm();
+    setOff(race);
+    tickRace(race);
+    const lands = race.queue[0]!.lands!, burning = race.racers[0]!;
+    ticks(race, lands - race.frame - 1);
+    burning.stunUntil = race.frame + 20 * TICK_HZ;
+    tickRace(race);
+    expect(burning.stunUntil).toBe(lands - 1 + 20 * TICK_HZ);
+  });
+
+  it('launches with EVA, sounds the siren as the missile falls, and lands on the leading tank 3 s after EVA', () => {
+    const race = calm();
+    setOff(race);
+    race.sounds.length = 0; // the meter's own EVA lines
+    const cues: [number, string][] = [];
+    for (let i = 0; i < 4 * TICK_HZ; i++) {
+      tickRace(race);
+      for (const cue of race.sounds.splice(0)) if (cue.startsWith('nuke')) cues.push([race.frame, cue]);
+    }
+    const launch = cues[0]![0];
+    expect(cues).toEqual([[launch, 'nukeLaunch'], [launch + 27, 'nukeSiren'], [launch + 3 * TICK_HZ, 'nukeExplosion']]);
+    expect(race.landed?.event).toBe('nuke');
+    expect(race.feed.at(-1)).toBe('CHAT ▸ NUKE ▸ all');
+    expect(race.settlements).toEqual([]);
+  });
+
+  it('stuns every tank for 2 s + progress % × 60 ms + 0–2 s; only a shield up at impact saves it, stun immunity does not', () => {
+    const race = calm(4);
+    setOff(race);
+    tickRace(race); // the turn comes
+    const lands = race.queue[0]!.lands!;
+    const [shielded, immune, early] = race.racers;
+    ticks(race, lands - race.frame - 1);
+    shielded!.shieldUntil = race.frame + 2; // up at impact
+    immune!.immunityUntil = race.frame + 10 * TICK_HZ;
+    early!.shieldUntil = race.frame; // gone by impact
+    const pct = new Map(race.racers.map((r) => [r, r.progress / race.course.length * 100]));
+    tickRace(race);
+    expect(race.frame).toBe(lands);
+    expect(shielded!.stunUntil).toBeLessThan(lands);
+    const stuns = race.racers.filter((r) => r !== shielded).map((r) => {
+      const s = (r.stunUntil - lands) / TICK_HZ, base = 2 + pct.get(r)! * 0.06;
+      expect(s).toBeGreaterThanOrEqual(base - 1 / TICK_HZ);
+      expect(s).toBeLessThanOrEqual(base + 2 + 1 / TICK_HZ);
+      expect(r.tank!.stunnedUntil).toBe(race.field.frame - 1 + r.stunUntil - lands); // set before the field steps that frame
+      return r.stunUntil;
+    });
+    expect(new Set(stuns).size).toBeGreaterThan(stuns.length / 2); // not all at once: frames can coincide
+    const again = calm(4);
+    setOff(again);
+    ticks(again, lands - again.frame - 1);
+    again.racers[0]!.shieldUntil = again.frame + 2;
+    again.racers[1]!.immunityUntil = again.frame + 10 * TICK_HZ;
+    tickRace(again);
+    expect(again.racers.slice(1).map((r) => r.stunUntil)).toEqual(stuns); // seeded
+  });
+
+  it('sets off at most 2 a race, and the meter is gone after the 2nd', () => {
+    const race = calm();
+    setOff(race);
+    expect(hypeLive(race)).toBe(true);
+    setOff(race);
+    expect(race.queue.filter((t) => t.event === 'nuke')).toHaveLength(2);
+    expect(hypeLive(race)).toBe(false);
+    say(race, 'late', '!boost');
+    expect(race.hype.points).toBe(0);
+    for (let i = 0; i < 30; i++) say(race, `more${i}`, '!boost');
+    expect(commandList(race)).not.toContain('!nuke');
+    endRace(race);
+    openJoinWindow(race, { joinSeconds: 1 });
+    expect(hypeLive(race)).toBe(true);
+  });
+
+  it('drops a nuke still waiting or in flight when the race ends', () => {
+    const race = calm();
+    setOff(race);
+    tickRace(race); // in flight
+    endRace(race);
+    expect(race.queue).toEqual([]);
+    expect(race.settlements).toEqual([]);
+    expect(race.racers.every((r) => r.stunUntil <= race.frame)).toBe(true);
   });
 });

@@ -1,6 +1,7 @@
 import { cachedImport, importStore, type Store } from './install/cache.js';
 import { AudioBank, decodeWav, IniFile } from './ra2/index.js';
 import { locateNested, readNested, type ReadFile } from './ra2/mount.js';
+import { NUKE_FALL } from './race/race.js';
 
 // Stock sound events. The Rhino ready sample is a voice, not an EVA announcement.
 const EVENTS = {
@@ -9,8 +10,10 @@ const EVENTS = {
   missileLaunch: 'DreadnoughtAttack', missileImpact: 'Explosion06',
   teslaCharge: 'TeslaCoilPowerUp', teslaStrike: 'TeslaTankAttack',
   chrono: 'ChronosphereMove', chronoSelect: 'ChronosphereSelect', bridgeCollapse: 'Explosion11', bridgeRepair: 'BridgeRepaired',
-  boost: 'CrateSpeed', shield: 'ForceShieldStarting',
+  boost: 'CrateSpeed', shield: 'ForceShieldStarting', nukeSiren: 'NukeSiren', nukeExplosion: 'NukeExplosion',
 } as const;
+/** Seconds a cue is cut at: the siren stops as the nuke lands (race NUKE_FALL). */
+const CUTS: Partial<Record<Cue, number>> = { nukeSiren: NUKE_FALL };
 
 const EVA_EVENTS = {
   nukeDetected: 'EVA_NuclearSiloDetected', nukeReady: 'EVA_NuclearMissileReady', nukeLaunch: 'EVA_NuclearMissileLaunched',
@@ -98,6 +101,7 @@ export async function loadSounds(read: ReadFile, store: Store = importStore): Pr
       active.set(cue, (active.get(cue) ?? 0) + 1);
       source.onended = () => active.set(cue, (active.get(cue) ?? 1) - 1);
       source.start();
+      if (CUTS[cue]) source.stop(now + CUTS[cue]);
       void context.resume();
     },
     mute() { muted = !muted; master.gain.value = muted ? 0 : 1; localStorage.setItem('rhino-mute', muted ? '1' : '0'); },

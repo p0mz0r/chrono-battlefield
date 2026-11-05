@@ -40,13 +40,15 @@ export interface ChatResult {
 }
 
 /** Big events (#101): one plays at a time from the event queue; `buildUp` is seconds from its turn to landing. */
-export const BIG_EVENTS = { chronoSwap: { label: 'CHRONO SWAP', buildUp: 3 } } as const;
+export const BIG_EVENTS = { chronoSwap: { label: 'CHRONO SWAP', buildUp: 3 }, nuke: { label: 'NUKE', buildUp: 3 } } as const;
 export type BigEvent = keyof typeof BIG_EVENTS;
 /** Frames from one big event landing to the next one's turn. */
 const EVENT_GAP = 10 * TICK_HZ;
+/** Seconds the nuke falls before impact, under the siren. */
+export const NUKE_FALL = 2.1;
 
-/** Hype meter tuning (#107): points per accepted interaction, grace and drain in seconds, full, the armed spell. */
-export const HYPE = { command: 1, redemption: 2, cheer: 3, grace: 5, drain: 2, full: 30, armed: 30, calls: 5 } as const;
+/** Hype meter tuning (#107): points per accepted interaction, grace and drain in seconds, full, the armed spell, chat-wide events a race. */
+export const HYPE = { command: 1, redemption: 2, cheer: 3, grace: 5, drain: 2, full: 30, armed: 30, calls: 5, perRace: 2 } as const;
 
 /** The hype meter: `drainAt` is the race frame it next loses a point; `armedUntil` the frame its armed spell ends. */
 export interface Hype {
@@ -55,11 +57,11 @@ export interface Hype {
   /** EVA has warned at half during this filling. */
   warned: boolean;
   armedUntil: number | undefined;
-  /** Viewers who typed `!nuke` during this armed spell. */
-  calls: Set<string>;
+  /** Viewers who typed `!nuke` during this armed spell: viewer ID to display name. */
+  calls: Map<string, string>;
 }
 
-const emptyHype = (): Hype => ({ points: 0, drainAt: 0, warned: false, armedUntil: undefined, calls: new Set() });
+const emptyHype = (): Hype => ({ points: 0, drainAt: 0, warned: false, armedUntil: undefined, calls: new Map() });
 
 /** A redemption or cheer from a chat source: the paid entry beside `chat`. */
 export interface PaidLine {
@@ -84,10 +86,15 @@ export interface Turn {
   event: BigEvent;
   viewerId: string;
   by: string;
-  reference: string;
+  /** Undefined for a chat-wide event: nothing to settle. */
+  reference: string | undefined;
   lands: number | undefined;
-  /** Chrono swap: the front-half and back-half tanks. */
+  /** Chrono swap: the front-half and back-half tanks; nuke: the leading tank. */
   picks: Racer[];
+  /** Nuke: the viewers who called it. */
+  callers: string[];
+  /** Nuke: the stunned tank whose stun ends first. */
+  firstAway: Racer | undefined;
 }
 
 export interface Racer {
@@ -158,6 +165,8 @@ export interface Race {
   /** Drained by the chat source, as the view drains `sounds`; kept across races until drained. */
   settlements: Settlement[];
   hype: Hype;
+  /** Chat-wide events set off this race. */
+  chatWide: number;
 }
 
 export interface Standing {
@@ -171,7 +180,7 @@ export interface Standing {
 
 export function createRace(course: Course, grid: CellGrid, seed: number): Race {
   const bridgeGrid = 'bridge' in grid && 'bridges' in grid ? grid as BridgeGrid : undefined;
-  return { course, field: createField(grid, seed), seed, phase: 'idle', paused: false, racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions.filter((verb) => verb !== 'bridge' || (bridgeGrid && course.file.bridges.length))), cooldowns: new Map(), feed: [], feedUntil: new Map(), sounds: [], missiles: [], v3s: [], teslas: [], lastHit: undefined, lastHitBy: undefined, lastHitFrame: -1, bridgeGrid, queue: [], nextEventAt: 0, landed: undefined, settlements: [], hype: emptyHype() };
+  return { course, field: createField(grid, seed), seed, phase: 'idle', paused: false, racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions.filter((verb) => verb !== 'bridge' || (bridgeGrid && course.file.bridges.length))), cooldowns: new Map(), feed: [], feedUntil: new Map(), sounds: [], missiles: [], v3s: [], teslas: [], lastHit: undefined, lastHitBy: undefined, lastHitFrame: -1, bridgeGrid, queue: [], nextEventAt: 0, landed: undefined, settlements: [], hype: emptyHype(), chatWide: 0 };
 }
 
 export function commandList(race: Race): string[] {
@@ -204,6 +213,7 @@ export function openJoinWindow(race: Race, { joinSeconds = 90, finishSeconds = 6
   race.nextEventAt = 0;
   race.landed = undefined;
   race.hype = emptyHype();
+  race.chatWide = 0;
   for (const [id, bridge] of race.bridgeGrid?.bridges.entries() ?? []) {
     if (bridge.destroyed) repairBridge(race.bridgeGrid!, id);
     bridge.changedAt = undefined;
@@ -312,10 +322,16 @@ export function chat(race: Race, line: ChatLine): ChatResult {
 function callNuke(race: Race, line: ChatLine): ChatResult {
   const { hype } = race;
   if (!armed(race) || hype.calls.has(line.viewerId)) return IGNORED;
-  hype.calls.add(line.viewerId);
+  hype.calls.set(line.viewerId, line.name);
   post(race, `${line.name} ▸ NUKE ${hype.calls.size}/${HYPE.calls}`);
-  // ponytail: a full count only empties the meter until the nuke itself lands (#108).
-  if (hype.calls.size === HYPE.calls) race.hype = emptyHype();
+  if (hype.calls.size === HYPE.calls) {
+    // The next turn: behind only a big event already playing and nukes already waiting.
+    let at = 0;
+    while (race.queue[at] && (race.queue[at]!.lands !== undefined || race.queue[at]!.event === 'nuke')) at++;
+    race.queue.splice(at, 0, { event: 'nuke', viewerId: '', by: 'CHAT', reference: undefined, lands: undefined, picks: [], callers: [...hype.calls.values()], firstAway: undefined });
+    race.hype = emptyHype();
+    race.chatWide++;
+  }
   return { ok: true, reason: `nuke ${hype.calls.size}/${HYPE.calls}` };
 }
 
@@ -327,7 +343,7 @@ export function paid(race: Race, line: PaidLine): ChatResult {
     settle(race, line.reference, 'refunded');
     return { ok: false, reason: 'not racing' };
   }
-  race.queue.push({ event: line.event, viewerId: line.viewerId, by: line.name, reference: line.reference, lands: undefined, picks: [] });
+  race.queue.push({ event: line.event, viewerId: line.viewerId, by: line.name, reference: line.reference, lands: undefined, picks: [], callers: [], firstAway: undefined });
   addHype(race, HYPE[line.via]);
   return { ok: true, reason: 'queued' };
 }
@@ -335,7 +351,7 @@ export function paid(race: Race, line: PaidLine): ChatResult {
 /** An accepted interaction from a viewer fills the hype meter and restarts the grace before it drains. */
 function addHype(race: Race, points: number): void {
   const { hype } = race;
-  if (hype.armedUntil !== undefined) return;
+  if (hype.armedUntil !== undefined || !hypeLive(race)) return;
   hype.points = Math.min(HYPE.full, hype.points + points);
   hype.drainAt = race.frame + (HYPE.grace + HYPE.drain) * TICK_HZ;
   if (!hype.warned && hype.points >= HYPE.full / 2) {
@@ -362,6 +378,9 @@ function drainHype(race: Race): void {
   hype.drainAt = race.frame + HYPE.drain * TICK_HZ;
 }
 
+/** The hype meter is on screen: gone for the rest of the race once its last chat-wide event is set off. */
+export const hypeLive = (race: Race) => race.chatWide < HYPE.perRace;
+
 /** The hype meter is armed: `!nuke` counts. */
 export const armed = (race: Race) => race.phase === 'racing' && race.hype.armedUntil !== undefined;
 
@@ -369,33 +388,64 @@ export const armed = (race: Race) => race.phase === 'racing' && race.hype.armedU
 function playEvents(race: Race): void {
   const turn = race.queue[0];
   if (!turn || race.frame < race.nextEventAt) return;
+  const nuke = turn.event === 'nuke', aim = nuke ? nukeTarget : swapPicks;
   if (turn.lands === undefined) {
-    if (!swapPicks(race, turn)) return fizzle(race);
+    if (!aim(race, turn)) return fizzle(race);
     turn.lands = race.frame + BIG_EVENTS[turn.event].buildUp * TICK_HZ;
-    race.sounds.push('chronoSelect');
+    race.sounds.push(nuke ? 'nukeLaunch' : 'chronoSelect');
   } else if (race.frame < turn.lands) {
-    // A pick that finishes is replaced at once, so the target ring and the director follow the new one.
-    if (turn.picks.some((r) => r.finishedAt !== undefined) && !swapPicks(race, turn)) fizzle(race);
+    // A target that finishes is replaced at once, so the target ring and the director follow the new one.
+    if (turn.picks.some((r) => r.finishedAt !== undefined) && !aim(race, turn)) fizzle(race);
+    else if (nuke && race.frame === turn.lands - Math.round(NUKE_FALL * TICK_HZ)) race.sounds.push('nukeSiren');
   } else {
-    if (!swapPicks(race, turn) || !chronoSwap(race, turn.picks[0]!, turn.picks[1]!)) return fizzle(race);
+    if (!aim(race, turn)) return fizzle(race);
+    if (nuke) nukeImpact(race, turn);
+    else {
+      if (!chronoSwap(race, turn.picks[0]!, turn.picks[1]!)) return fizzle(race);
+      race.sounds.push('chrono');
+      post(race, `${turn.by} ▸ ${BIG_EVENTS[turn.event].label} ▸ ${turn.picks[0]!.name} ⇄ ${turn.picks[1]!.name}`);
+    }
     race.queue.shift();
     race.landed = turn;
     race.nextEventAt = race.frame + EVENT_GAP;
     settle(race, turn.reference, 'fulfilled');
-    race.sounds.push('chrono');
-    post(race, `${turn.by} ▸ ${BIG_EVENTS[turn.event].label} ▸ ${turn.picks[0]!.name} ⇄ ${turn.picks[1]!.name}`);
   }
+}
+
+/** Keeps the nuke's target while it is still racing, else takes the leading tank; false with none left. */
+function nukeTarget(race: Race, turn: Turn): boolean {
+  if (turn.picks[0] && turn.picks[0].finishedAt === undefined) return true;
+  const leading = ranked(race).find((r) => r.finishedAt === undefined);
+  turn.picks = leading ? [leading] : [];
+  return !!leading;
+}
+
+/**
+ * Stuns every tank on the field for 2 s + course progress % × 60 ms + 0–2 s (seeded), so each restarts at its own
+ * moment; only a shield up at impact saves a tank, stun immunity doesn't, and a longer stun already running stands.
+ */
+function nukeImpact(race: Race, turn: Turn): void {
+  for (const r of race.racers) {
+    if (r.finishedAt !== undefined || r.shieldUntil > race.frame) continue;
+    const frames = Math.round((2 + r.progress / race.course.length * 100 * 0.06 + random(race.field) * 2) * TICK_HZ);
+    stun(race, r, Math.max(frames, r.stunUntil - race.frame));
+    if (!turn.firstAway || r.stunUntil < turn.firstAway.stunUntil) turn.firstAway = r;
+  }
+  race.sounds.push('nukeExplosion');
+  post(race, `${turn.by} ▸ ${BIG_EVENTS.nuke.label} ▸ all`);
 }
 
 /** The big event playing now: its turn has come and it hasn't landed yet. */
 export const playingEvent = (race: Race): Turn | undefined => race.queue[0]?.lands === undefined ? undefined : race.queue[0];
 
-const settle = (race: Race, reference: string, outcome: Settlement['outcome']) => race.settlements.push({ reference, outcome });
+/** A chat-wide event (no reference) has nothing to settle. */
+const settle = (race: Race, reference: string | undefined, outcome: Settlement['outcome']) => { if (reference !== undefined) race.settlements.push({ reference, outcome }); };
 
 function fizzle(race: Race): void {
   const turn = race.queue.shift()!;
   // One that played its build-up still takes the gap before the next turn.
   if (turn.lands !== undefined) race.nextEventAt = race.frame + EVENT_GAP;
+  if (turn.reference === undefined) return; // a chat-wide event is dropped
   settle(race, turn.reference, 'refunded');
   postThrottled(race, turn.viewerId, `${turn.by} ▸ ${BIG_EVENTS[turn.event].label} · refunded`);
 }
@@ -490,12 +540,17 @@ function shield(race: Race, r: Racer, by: string): void {
   post(race, `${by} ▸ shield ▸ ${r.name}`);
 }
 
+/** Stops `r` burning for `frames`, then 3 s of stun immunity. */
+function stun(race: Race, r: Racer, frames: number): void {
+  r.stunUntil = race.frame + frames;
+  r.immunityUntil = r.stunUntil + 3 * TICK_HZ;
+  r.tank!.stunnedUntil = race.field.frame + frames;
+}
+
 /** Stuns `r` unless it is shielded, immune or finished; the feed names who stunned it and with what. */
 function hit(race: Race, r: Racer, verb: Interaction, named: boolean, by: string): void {
   if (r.finishedAt !== undefined || r.shieldUntil > race.frame || r.immunityUntil > race.frame) return;
-  r.stunUntil = race.frame + 3 * TICK_HZ;
-  r.immunityUntil = r.stunUntil + 3 * TICK_HZ;
-  r.tank!.stunnedUntil = race.field.frame + 3 * TICK_HZ;
+  stun(race, r, 3 * TICK_HZ);
   race.lastHit = r;
   race.lastHitBy = by;
   race.lastHitFrame = race.frame;
@@ -549,7 +604,7 @@ export function endRace(race: Race): void {
   refundQueue(race);
 }
 
-/** At race end every big event still queued or playing is refunded. */
+/** At race end every big event still queued or playing is refunded, or dropped if chat set it off. */
 function refundQueue(race: Race): void {
   for (const turn of race.queue.splice(0)) settle(race, turn.reference, 'refunded');
 }
