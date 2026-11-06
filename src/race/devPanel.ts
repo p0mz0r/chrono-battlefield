@@ -1,4 +1,4 @@
-import { chat, openJoinWindow, paid, type Race } from './race.js';
+import { BIG_EVENTS, chat, openJoinWindow, paid, type BigEvent, type Race } from './race.js';
 
 // Dev only (`npm run dev`): the test-chat panel (#8).
 // main.ts imports it behind `import.meta.env.DEV`, so production builds leave it out.
@@ -24,7 +24,7 @@ export function mountDevPanel(race: Race, params: URLSearchParams): void {
   panel.innerHTML = `
 <b>Test chat</b><br>
 <input name="name" size="10" value="p0mz0r"> <input name="text" size="20" placeholder="!rhino"> <button name="say">Say</button><br>
-<button name="redeem">Redeem Chrono swap</button><br>
+<button name="redeem">Redeem Chrono swap</button> <button name="kirov">Redeem Kirov</button><br>
 <button name="fake">Add</button> <input name="n" size="2" value="${params.get('fake') ?? 5}"> fake viewers<br>
 <label><input type="checkbox" name="chaos"> chaos</label> <input name="rate" size="3" value="${params.get('chaos') ?? 3}"> msg/s, seed <input name="seed" size="4" value="${params.get('chatSeed') ?? 1}">
 <pre class="log" style="margin:4px 0 0;max-height:12em;overflow:auto;white-space:pre-wrap"></pre>`;
@@ -46,10 +46,12 @@ export function mountDevPanel(race: Race, params: URLSearchParams): void {
 
   $('say').onclick = () => say(`test:${$('name').value}`, $('name').value, $('text').value);
   let redemptions = 0;
-  $('redeem').onclick = () => {
-    const r = paid(race, { viewerId: `test:${$('name').value}`, name: $('name').value, event: 'chronoSwap', via: 'redemption', reference: `dev:${++redemptions}` });
-    logLine(`${$('name').value} redeems Chrono swap → ${r.ok ? 'ok' : 'no'}, ${r.reason}`);
+  const redeem = (event: BigEvent) => {
+    const r = paid(race, { viewerId: `test:${$('name').value}`, name: $('name').value, event, via: 'redemption', reference: `dev:${++redemptions}` });
+    logLine(`${$('name').value} redeems ${BIG_EVENTS[event].label} → ${r.ok ? 'ok' : 'no'}, ${r.reason}`);
   };
+  $('redeem').onclick = () => redeem('chronoSwap');
+  $('kirov').onclick = () => redeem('kirov');
   // Stands in for a chat source: drains the settlements a platform would get.
   setInterval(() => {
     for (const s of race.settlements.splice(0)) logLine(`${s.reference} ${s.outcome}`);

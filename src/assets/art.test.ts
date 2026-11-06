@@ -2,7 +2,7 @@ import { beforeAll, expect, it } from 'vitest';
 import { describeInstall, readFromDir } from '../../test/install.js';
 import { mountTheater } from '../ra2/mount.js';
 import type { Vfs } from '../ra2/index.js';
-import { prerenderAnim, prerenderRocket, prerenderTank } from './rhino.js';
+import { prerenderAircraft, prerenderAnim, prerenderRocket, prerenderTank } from './rhino.js';
 
 const painted = (rgba: Uint8Array | Uint8ClampedArray) => rgba.some((v, i) => i % 4 === 3 && v > 0);
 
@@ -31,5 +31,14 @@ describeInstall('interaction art from the install', () => {
     for (const name of ['chronofd', 'chronotg', 'fire01', 'nukeanim']) expect(painted(prerenderAnim(vfs, name).colorRgba)).toBe(true);
     expect(painted(prerenderAnim(vfs, 'nkmsldn', 'temperate').colorRgba)).toBe(true);
     expect(() => prerenderAnim(vfs, 'nosuchanim')).toThrow(/Missing install file: nosuchanim\.shp/);
+  });
+
+  it('prerenders the Kirov airship and its bomb in 32 facings, and takes its blast from the stock animations', () => {
+    for (const name of ['zep', 'zbomb']) {
+      const art = prerenderAircraft(vfs, 'temperate', name, 40);
+      expect(art.frames).toHaveLength(32);
+      expect(painted(art.colorRgba)).toBe(true);
+    }
+    expect(painted(prerenderAnim(vfs, 'explolrg').colorRgba)).toBe(true);
   });
 });

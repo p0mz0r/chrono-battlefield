@@ -40,12 +40,14 @@ export interface ChatResult {
 }
 
 /** Big events (#101): one plays at a time from the event queue; `buildUp` is seconds from its turn to landing. */
-export const BIG_EVENTS = { chronoSwap: { label: 'CHRONO SWAP', buildUp: 3 }, nuke: { label: 'NUKE', buildUp: 3 } } as const;
+export const BIG_EVENTS = { chronoSwap: { label: 'CHRONO SWAP', buildUp: 3 }, nuke: { label: 'NUKE', buildUp: 3 }, kirov: { label: 'KIROV', buildUp: 6 } } as const;
 export type BigEvent = keyof typeof BIG_EVENTS;
 /** Frames from one big event landing to the next one's turn. */
 const EVENT_GAP = 10 * TICK_HZ;
 /** Seconds the nuke falls before impact, under the siren. */
 export const NUKE_FALL = 2.1;
+/** Kirov tuning (#109): cells behind the leading tank it flies in from, seconds its bomb falls, blast and knockback in cells. */
+export const KIROV = { from: 12, drop: 1, blast: 3, knockback: 4 } as const;
 
 /** Hype meter tuning (#107): points per accepted interaction, grace and drain in seconds, full, the armed spell, chat-wide events a race. */
 export const HYPE = { command: 1, redemption: 2, cheer: 3, grace: 5, drain: 2, full: 30, armed: 30, calls: 5, perRace: 2 } as const;
@@ -95,6 +97,8 @@ export interface Turn {
   callers: string[];
   /** Nuke: the stunned tank whose stun ends first. */
   firstAway: Racer | undefined;
+  /** Kirov: the airship, in cells, from its turn; over the spot it bombed once it lands. */
+  ship: { x: number; y: number } | undefined;
 }
 
 export interface Racer {
@@ -304,12 +308,8 @@ export function chat(race: Race, line: ChatLine): ChatResult {
   } else if (verb === 'tesla') { race.teslas.push({ by: line.name, target, named, x: target.tank!.x / 256, y: target.tank!.y / 256, arrives: race.frame + 2 * TICK_HZ }); race.sounds.push('teslaCharge'); }
   else if (verb === 'missile') { race.missiles.push({ by: line.name, target, named, launched: race.frame, arrives: race.frame + Math.round(1.5 * TICK_HZ), x: target.tank!.x / 256 - 6, y: target.tank!.y / 256 - 6 }); race.sounds.push('missileLaunch'); }
   else if (verb === 'chrono') {
-    // A move: the tank drives on from its new cell towards the waypoint after it (re-pathed next frame).
     target.warp = { from: { x: target.tank!.cell.x, y: target.tank!.cell.y }, to: { x: shift!.landing.x, y: shift!.landing.y }, at: race.frame };
-    moveTank(race.field, target.tank!, shift!.landing);
-    target.next = shift!.next;
-    target.fork = undefined;
-    target.progress = courseProgress(race.course, shift!.landing.x + 0.5, shift!.landing.y + 0.5, target.next);
+    move(race, target, shift!);
     if (named) target.protectedUntil = race.frame + 15 * TICK_HZ;
     race.sounds.push('chrono');
     post(race, `${line.name} ▸ chrono ▸ ${target.name}`);
@@ -328,7 +328,7 @@ function callNuke(race: Race, line: ChatLine): ChatResult {
     // The next turn: behind only a big event already playing and nukes already waiting.
     let at = 0;
     while (race.queue[at] && (race.queue[at]!.lands !== undefined || race.queue[at]!.event === 'nuke')) at++;
-    race.queue.splice(at, 0, { event: 'nuke', viewerId: '', by: 'CHAT', reference: undefined, lands: undefined, picks: [], callers: [...hype.calls.values()], firstAway: undefined });
+    race.queue.splice(at, 0, { event: 'nuke', viewerId: '', by: 'CHAT', reference: undefined, lands: undefined, picks: [], callers: [...hype.calls.values()], firstAway: undefined, ship: undefined });
     race.hype = emptyHype();
     race.chatWide++;
   }
@@ -343,7 +343,7 @@ export function paid(race: Race, line: PaidLine): ChatResult {
     settle(race, line.reference, 'refunded');
     return { ok: false, reason: 'not racing' };
   }
-  race.queue.push({ event: line.event, viewerId: line.viewerId, by: line.name, reference: line.reference, lands: undefined, picks: [], callers: [], firstAway: undefined });
+  race.queue.push({ event: line.event, viewerId: line.viewerId, by: line.name, reference: line.reference, lands: undefined, picks: [], callers: [], firstAway: undefined, ship: undefined });
   addHype(race, HYPE[line.via]);
   return { ok: true, reason: 'queued' };
 }
@@ -388,18 +388,27 @@ export const armed = (race: Race) => race.phase === 'racing' && race.hype.armedU
 function playEvents(race: Race): void {
   const turn = race.queue[0];
   if (!turn || race.frame < race.nextEventAt) return;
-  const nuke = turn.event === 'nuke', aim = nuke ? nukeTarget : swapPicks;
+  const nuke = turn.event === 'nuke', kirov = turn.event === 'kirov', aim = turn.event === 'chronoSwap' ? swapPicks : leaderTarget;
   if (turn.lands === undefined) {
     if (!aim(race, turn)) return fizzle(race);
     turn.lands = race.frame + BIG_EVENTS[turn.event].buildUp * TICK_HZ;
-    race.sounds.push(nuke ? 'nukeLaunch' : 'chronoSelect');
+    race.sounds.push(...{ nuke: ['nukeLaunch'], chronoSwap: ['chronoSelect'], kirov: ['kirovCreated', 'kirovDrone'] }[turn.event]);
+    if (kirov) turn.ship = lineAt(race.course, turn.picks[0]!.progress - KIROV.from);
   } else if (race.frame < turn.lands) {
-    // A target that finishes is replaced at once, so the target ring and the director follow the new one.
-    if (turn.picks.some((r) => r.finishedAt !== undefined) && !aim(race, turn)) fizzle(race);
+    // A target that finishes is replaced at once, so the target ring and the director follow the new one; the Kirov's follows the lead.
+    if ((kirov || turn.picks.some((r) => r.finishedAt !== undefined)) && !aim(race, turn)) fizzle(race);
     else if (nuke && race.frame === turn.lands - Math.round(NUKE_FALL * TICK_HZ)) race.sounds.push('nukeSiren');
+    else if (kirov) {
+      // Flies the rest of the way in the frames left, so it is over its target as it lands.
+      const ship = turn.ship!, tank = turn.picks[0]!.tank!, left = turn.lands - race.frame;
+      ship.x += (tank.x / 256 - ship.x) / left;
+      ship.y += (tank.y / 256 - ship.y) / left;
+      if (left === Math.round(KIROV.drop * TICK_HZ)) race.sounds.push('kirovAttack');
+    }
   } else {
     if (!aim(race, turn)) return fizzle(race);
     if (nuke) nukeImpact(race, turn);
+    else if (kirov) kirovBlast(race, turn);
     else {
       if (!chronoSwap(race, turn.picks[0]!, turn.picks[1]!)) return fizzle(race);
       race.sounds.push('chrono');
@@ -412,9 +421,9 @@ function playEvents(race: Race): void {
   }
 }
 
-/** Keeps the nuke's target while it is still racing, else takes the leading tank; false with none left. */
-function nukeTarget(race: Race, turn: Turn): boolean {
-  if (turn.picks[0] && turn.picks[0].finishedAt === undefined) return true;
+/** Takes the leading tank as the target: the Kirov's is whoever leads now, the nuke keeps its own while it races; false with none left. */
+function leaderTarget(race: Race, turn: Turn): boolean {
+  if (turn.event === 'nuke' && turn.picks[0] && turn.picks[0].finishedAt === undefined) return true;
   const leading = ranked(race).find((r) => r.finishedAt === undefined);
   turn.picks = leading ? [leading] : [];
   return !!leading;
@@ -433,6 +442,24 @@ function nukeImpact(race: Race, turn: Turn): void {
   }
   race.sounds.push('nukeExplosion');
   post(race, `${turn.by} ▸ ${BIG_EVENTS.nuke.label} ▸ all`);
+}
+
+/**
+ * Stuns every tank within the blast of the Kirov's target as a hit does and knocks it back along the ideal line: a
+ * shield blocks both, stun immunity only the stun. The feed counts the other tanks caught.
+ */
+function kirovBlast(race: Race, turn: Turn): void {
+  const target = turn.picks[0]!, x = target.tank!.x / 256, y = target.tank!.y / 256;
+  const caught = race.racers.filter((r) => r.finishedAt === undefined && r.shieldUntil <= race.frame && Math.hypot(r.tank!.x / 256 - x, r.tank!.y / 256 - y) <= KIROV.blast)
+    .sort((a, b) => a.progress - b.progress); // the rearmost first, so the ones ahead land clear of them
+  for (const r of caught) {
+    if (r.immunityUntil <= race.frame) stun(race, r, 3 * TICK_HZ);
+    const shift = shiftTo(race, r, r.progress - KIROV.knockback);
+    if (shift) move(race, r, shift);
+  }
+  race.sounds.push('hit');
+  const others = caught.filter((r) => r !== target).length;
+  post(race, `${turn.by} ▸ ${BIG_EVENTS.kirov.label} ▸ ${target.name}${others ? ` +${others}` : ''}`);
 }
 
 /** The big event playing now: its turn has come and it hasn't landed yet. */
@@ -497,17 +524,34 @@ type Shift = { landing: Spot; next: number };
  * sent back across a lap drops it. Undefined if no cell near the spot can take the tank.
  */
 function chronoshift(race: Race, racer: Racer): Shift | undefined {
-  const { course, field } = race;
-  const forward = random(field) < 0.2;
-  const share = forward ? 0.05 + random(field) * 0.05 : -(0.15 + random(field) * 0.15);
-  const along = Math.max(0, Math.min(course.length, racer.progress + share * course.drawnLength));
+  const forward = random(race.field) < 0.2;
+  const share = forward ? 0.05 + random(race.field) * 0.05 : -(0.15 + random(race.field) * 0.15);
+  return shiftTo(race, racer, racer.progress + share * race.course.drawnLength);
+}
+
+/** The point `along` cells into the ideal line (clamped to it), in cells, and the waypoint next from there (-1: the finish). */
+function lineAt(course: Course, along: number): { x: number; y: number; next: number } {
+  along = Math.max(0, Math.min(course.length, along));
   const i = Math.max(1, course.along.findIndex((d) => d >= along));
   const a = course.line[i - 1]!, b = course.line[i]!;
   const t = (along - course.along[i - 1]!) / (course.along[i]! - course.along[i - 1]! || 1);
-  const next = course.waypointAlong.findIndex((d) => d >= along), to = course.waypoints[next] ?? course.finish;
-  const landing = findLanding(field, racer.tank!, { x: a.x + (b.x - a.x) * t - 0.5, y: a.y + (b.y - a.y) * t - 0.5 },
+  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, next: course.waypointAlong.findIndex((d) => d >= along) };
+}
+
+/** The cell nearest the ideal line `along` cells in that takes `racer`, outside the finish area and with a way on; undefined if none. */
+function shiftTo(race: Race, racer: Racer, along: number): Shift | undefined {
+  const { course, field } = race, { x, y, next } = lineAt(course, along), to = course.waypoints[next] ?? course.finish;
+  const landing = findLanding(field, racer.tank!, { x: x - 0.5, y: y - 0.5 },
     (s) => !course.finishArea.has(s.y * field.grid.width + s.x) && findRoute(field.grid, s, to) !== undefined);
   return landing && { landing, next: next < 0 ? course.waypoints.length : next };
+}
+
+/** A move: the tank drives on from its new cell towards the waypoint after it (re-pathed next frame). */
+function move(race: Race, r: Racer, { landing, next }: Shift): void {
+  moveTank(race.field, r.tank!, landing);
+  r.next = next;
+  r.fork = undefined;
+  r.progress = courseProgress(race.course, landing.x + 0.5, landing.y + 0.5, next);
 }
 
 const racer = (race: Race, name: string, viewerId?: string): Racer =>

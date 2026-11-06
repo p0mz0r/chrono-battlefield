@@ -157,7 +157,7 @@ The chat-wide event: a few seconds after EVA announces the launch, with the nuke
 _Avoid_: Nuclear strike, bomb
 
 **Kirov airship**:
-A paid event: an airship flies slowly in from behind the leading tank and bombs it; every tank in the blast is stunned and knocked back.
+A paid event: an airship flies slowly in from behind the leading tank and bombs whichever tank leads as it arrives; every tank in the blast is stunned and knocked back, unless shielded; stun immunity spares the stun but not the knockback.
 _Avoid_: Zeppelin, blimp, airstrike
 
 **Desolator**:
