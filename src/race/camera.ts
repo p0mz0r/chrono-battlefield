@@ -57,10 +57,11 @@ function eventFocus(race: Race, event: Turn): { racer: Racer; reason: string } |
 /**
  * The director's next shot (the same object while it holds). A big event's turn cuts to its target and holds until
  * 3 s after it lands; a Chrono swap shows the back tank, then cuts to it landing up front; a Kirov follows the leading
- * tank it will bomb; a nuke holds on its target until the first stun ends, then cuts to that tank ("First away") for
- * 3 s. Hits meanwhile are never cut to. Otherwise a new hit cuts to the tank hit, once at least 2.5 s have passed
- * since the last cut; otherwise each shot holds 7 s (less if its tank finishes), alternating the leader with the
- * chaser in the closest fight for a place. Only unfinished tanks are shown.
+ * tank while it waits, then the tank that came in range, until 3 s after its last bomb; a nuke holds on its target
+ * until the first stun ends, then cuts to that tank ("First away") for 3 s. Hits meanwhile are never cut to.
+ * Otherwise a new hit cuts to the tank hit, once at least 2.5 s have passed since the last cut; otherwise each shot
+ * holds 7 s (less if its tank finishes), alternating the leader with the chaser in the closest fight for a place.
+ * Only unfinished tanks are shown.
  */
 export function directorShot(race: Race, prev: Shot | undefined): Shot {
   const event = heldEvent(race);

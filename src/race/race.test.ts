@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CellGrid } from '../movement/index.js';
-import { loadCourse, mapHash, type CourseFile } from './course.js';
+import { courseProgress, loadCourse, mapHash, type CourseFile } from './course.js';
 import { chat, commandList, createRace, endRace, hypeLive, openJoinWindow, paid, simulateRace, standings, tickRace, type Race, type Racer } from './race.js';
 import { TICK_HZ } from '../movement/index.js';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -766,63 +766,124 @@ describe('Kirov airship', () => {
   };
   const leader = (race: Race) => race.racers.find((r) => r.name === standings(race)[0]!.name)!;
 
-  it('reports in with its drone, flies 6 s from behind the leading tank, and bombs whoever leads at landing', () => {
+  const at = (r: Racer) => ({ x: r.tank!.x / 256, y: r.tank!.y / 256 });
+  const off = (r: Racer, p: { x: number; y: number }) => Math.hypot(at(r).x - p.x, at(r).y - p.y);
+  /** Ticks until the Kirov's first bomb drops; that frame. */
+  const untilBombing = (race: Race) => {
+    for (let i = 0; i < 60 * TICK_HZ && !race.sounds.includes('kirovAttack'); i++) { race.sounds.length = 0; tickRace(race); }
+    return race.frame;
+  };
+
+  it('hovers 5–10 cells ahead of the leading tank, and drops its first bomb, fulfilled, once a tank is within 2.5 cells', () => {
     const race = calm();
     redeem(race);
+    const lead = leader(race), from = lead.progress;
     tickRace(race);
-    const turn = race.queue[0]!, start = { ...turn.ship! };
-    expect(race.sounds).toEqual(expect.arrayContaining(['kirovCreated', 'kirovDrone']));
-    expect(turn.picks).toEqual([leader(race)]);
-    const lead = leader(race).tank!;
-    // Behind: further back along the course than the leading tank, and at least 8 cells off.
-    expect(Math.hypot(start.x - lead.x / 256, start.y - lead.y / 256)).toBeGreaterThan(8);
-    expect(turn.lands).toBe(race.frame + 6 * TICK_HZ);
-    const drops: number[] = [];
-    for (let i = 0; i < 6 * TICK_HZ - 1; i++) {
+    expect(race.sounds).toContain('kirovCreated');
+    const turn = race.queue[0]!, spot = { ...turn.ship! };
+    const ahead = courseProgress(race.course, spot.x, spot.y, lead.next) - from;
+    expect(ahead).toBeGreaterThanOrEqual(5 - 0.01);
+    expect(ahead).toBeLessThanOrEqual(10 + 0.01);
+    let first: number | undefined;
+    for (let i = 0; i < 30 * TICK_HZ && first === undefined; i++) {
+      const inRange = race.racers.some((r) => off(r, spot) <= 2.5), leading = leader(race);
+      race.sounds.length = 0;
+      tickRace(race);
+      if (!inRange) expect(turn.picks, 'the target is the leading tank while it waits').toEqual([leading]);
+      if (race.sounds.includes('kirovAttack')) first = race.frame;
+      expect(race.sounds.includes('kirovAttack')).toBe(inRange);
+      expect(race.settlements).toEqual(inRange ? [{ reference: 'v', outcome: 'fulfilled' }] : []);
+    }
+    expect(first).toBeDefined();
+    expect(off(turn.picks[0]!, spot)).toBeLessThan(4); // the tank that came in range is the one the camera holds on
+  });
+
+  /** Plays a Kirov from its turn to its landing, checking every bomb: each tank within 1.5 cells is knocked back and stunned, no other. */
+  const bombingRun = (race: Race) => {
+    tickRace(race);
+    const spot = { ...race.queue[0]!.ship! }, from = untilBombing(race), drops = [from];
+    const caught: Racer[] = [], knocks: number[] = [];
+    while (race.queue.length) {
+      const inBlast = race.racers.filter((r) => r.finishedAt === undefined && off(r, spot) <= 1.5);
+      const before = new Map(race.racers.map((r) => [r, { progress: r.progress, stunUntil: r.stunUntil, immune: r.immunityUntil > race.frame + 1 }]));
       race.sounds.length = 0;
       tickRace(race);
       if (race.sounds.includes('kirovAttack')) drops.push(race.frame);
+      const impact = (race.frame - from - TICK_HZ / 2) % TICK_HZ === 0 && race.frame >= from + TICK_HZ / 2;
+      for (const r of race.racers) {
+        const was = before.get(r)!;
+        if (!impact || !inBlast.includes(r)) {
+          if (was.stunUntil <= race.frame) expect(r.stunUntil, `${r.name} untouched`).toBe(was.stunUntil);
+          continue;
+        }
+        if (!caught.includes(r)) caught.push(r);
+        // Always knocked back, never left in place or sent forward.
+        expect(was.progress - r.progress, `${r.name} knocked back`).toBeGreaterThan(0.5);
+        knocks.push(was.progress - r.progress);
+        if (!was.immune) expect(r.stunUntil, `${r.name} stunned`).toBe(race.frame + 3 * TICK_HZ);
+      }
     }
-    expect(drops).toEqual([turn.lands! - TICK_HZ]); // the bomb falls for 1 s
-    expect(race.settlements).toEqual([]);
-    const late = leader(race); // the lead may change on the way in
-    const at = { x: late.tank!.x / 256, y: late.tank!.y / 256 };
-    expect(Math.hypot(turn.ship!.x - at.x, turn.ship!.y - at.y)).toBeLessThan(0.5); // over its target as it lands
-    tickRace(race);
-    expect(race.landed).toBe(turn);
-    expect(turn.picks).toEqual([late]);
-    expect(race.settlements).toEqual([{ reference: 'v', outcome: 'fulfilled' }]);
-    expect(race.feed.at(-1)).toMatch(new RegExp(`^Vera ▸ KIROV ▸ ${late.name}( \\+\\d)?$`));
+    return { spot, from, drops, caught, knocks };
+  };
+
+  it.each([1, 2, 3])('drops 7 bombs 1 s apart on its spot, each stunning and knocking back every tank within 1.5 cells, with one feed line at the end (seed %i)', (seed) => {
+    const race = calm(seed);
+    redeem(race);
+    const { spot, from, drops, caught, knocks } = bombingRun(race);
+    expect(Math.max(...knocks)).toBeLessThan(4 + 2); // on open ground, about 4 cells
+    expect(drops.slice(1)).toEqual([1, 2, 3, 4, 5, 6].map((s) => from + s * TICK_HZ));
+    expect(race.landed?.ship?.x).toBe(spot.x);
+    expect(race.frame).toBe(from + 6.5 * TICK_HZ); // lands with its last bomb, 0.5 s after it drops
+    expect(caught.length).toBeGreaterThan(0);
+    expect(race.feed.filter((l) => l.includes('KIROV'))).toEqual([`Vera ▸ KIROV ▸ ${caught[0]!.name}${caught.length > 1 ? ` +${caught.length - 1}` : ''}`]);
+    expect(new Set(race.racers.map((r) => `${r.tank!.cell.x},${r.tank!.cell.y}`)).size).toBe(race.racers.length); // each on its own cell
   });
 
-  it.each([1, 3, 5])('stuns and knocks back 4 cells every tank within 3 cells; a shield blocks both, stun immunity only the stun (seed %i)', (seed) => {
-    const race = racing(seed); // redeemed at GO, so the field is still bunched up at landing
+  it.each([1, 2, 3])('always knocks a tank back, even in a one-cell corridor packed with tanks (seed %i)', (seed) => {
+    // 40×9: an open start area, then a corridor one cell wide to the finish.
+    const corridor = grid(Array.from({ length: 9 }, (_, y) => Array.from({ length: 40 }, (_, x) => (x < 8 || y === 4 ? '.' : '#')).join('')));
+    const file: CourseFile = { ...loopCourse(1), startGrid: [[1, 1], [3, 1], [5, 1], [1, 4], [3, 4], [5, 4], [1, 7], [3, 7], [5, 7], [6, 4]], waypoints: [[20, 4]], laps: [], finish: [37, 4] };
+    const race = createRace(loadCourse(file, MAP, corridor), corridor, seed);
+    openJoinWindow(race, { joinSeconds: 1 });
+    say(race, 'a', '!rhino', 'Kane');
+    ticks(race, 4 * TICK_HZ);
     for (const r of race.racers) if (r.bot) r.botNext = Infinity;
+    ticks(race, 4 * TICK_HZ); // the leaders are in the corridor, the rest queue behind
     redeem(race);
-    tickRace(race);
-    const lands = race.queue[0]!.lands!;
-    ticks(race, lands - race.frame - 1);
-    const target = leader(race), cell = (r: Racer) => ({ x: r.tank!.x / 256, y: r.tank!.y / 256 });
-    const near = race.racers.filter((r) => r !== target && Math.hypot(cell(r).x - cell(target).x, cell(r).y - cell(target).y) <= 2.8);
-    const far = race.racers.filter((r) => Math.hypot(cell(r).x - cell(target).x, cell(r).y - cell(target).y) > 3.2);
-    expect(near.length).toBeGreaterThanOrEqual(2);
-    const [shielded, immune] = near;
-    shielded!.shieldUntil = race.frame + 2; // up at landing
-    immune!.immunityUntil = race.frame + 10 * TICK_HZ;
-    const before = new Map(race.racers.map((r) => [r, { progress: r.progress, stunUntil: r.stunUntil }]));
-    tickRace(race);
-    const dropped = (r: Racer) => before.get(r)!.progress - r.progress;
-    for (const r of [target, ...near.slice(1)]) {
-      expect(dropped(r), r.name).toBeGreaterThan(4 - 1.5); // the nearest free cell to 4 back on the ideal line
-      expect(dropped(r), r.name).toBeLessThan(4 + 1.5);
-    }
-    for (const r of [target, ...near.slice(2)]) expect(r.stunUntil, r.name).toBe(lands + 3 * TICK_HZ);
-    expect(immune!.stunUntil).toBe(before.get(immune!)!.stunUntil);
-    expect(shielded!.stunUntil).toBe(before.get(shielded!)!.stunUntil);
-    expect(Math.abs(dropped(shielded!))).toBeLessThan(0.5);
-    for (const r of far) expect(r.stunUntil, r.name).toBe(before.get(r)!.stunUntil);
-    expect(new Set(race.racers.map((r) => `${r.tank!.cell.x},${r.tank!.cell.y}`)).size).toBe(race.racers.length); // each on its own cell
-    expect(race.feed.at(-1)).toBe(`Vera ▸ KIROV ▸ ${target.name} +${race.racers.filter((r) => r !== target && r !== shielded && dropped(r) > 2).length}`);
+    expect(bombingRun(race).caught.length).toBeGreaterThan(0);
+  });
+
+  it('a shield up when a bomb lands blocks it; stun immunity blocks only the stun', () => {
+    const victim = (shielded: boolean) => {
+      const race = calm();
+      redeem(race);
+      tickRace(race);
+      const spot = race.queue[0]!.ship!;
+      ticks(race, untilBombing(race) + TICK_HZ / 2 - 1 - race.frame); // the frame before the first bomb lands
+      const r = race.racers.find((r) => off(r, spot) <= 1.5)!;
+      if (shielded) r.shieldUntil = race.frame + 2; else r.immunityUntil = race.frame + 10 * TICK_HZ;
+      const { progress, stunUntil } = r;
+      tickRace(race);
+      return { dropped: progress - r.progress, stunned: r.stunUntil !== stunUntil };
+    };
+    const shield = victim(true), immune = victim(false);
+    expect(shield.stunned).toBe(false);
+    expect(shield.dropped).toBeLessThan(0.5);
+    expect(immune.stunned).toBe(false);
+    expect(immune.dropped).toBeGreaterThan(0.5);
+  });
+
+  it('is refunded when the race ends before a tank comes in range, but not once it has started bombing', () => {
+    const waiting = calm();
+    redeem(waiting);
+    tickRace(waiting);
+    endRace(waiting);
+    expect(waiting.settlements).toEqual([{ reference: 'v', outcome: 'refunded' }]);
+    const bombing = calm();
+    redeem(bombing);
+    untilBombing(bombing);
+    endRace(bombing);
+    expect(bombing.settlements).toEqual([{ reference: 'v', outcome: 'fulfilled' }]);
   });
 
   it.each([1, 2, 3])('lets every tank still finish after Kirov knockbacks (seed %i)', (seed) => {

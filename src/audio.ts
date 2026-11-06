@@ -1,7 +1,7 @@
 import { cachedImport, importStore, type Store } from './install/cache.js';
 import { AudioBank, decodeWav, IniFile } from './ra2/index.js';
 import { locateNested, readNested, type ReadFile } from './ra2/mount.js';
-import { BIG_EVENTS, NUKE_FALL } from './race/race.js';
+import { NUKE_FALL } from './race/race.js';
 
 // Stock sound events. The Rhino ready sample is a voice, not an EVA announcement.
 const EVENTS = {
@@ -11,14 +11,10 @@ const EVENTS = {
   teslaCharge: 'TeslaCoilPowerUp', teslaStrike: 'TeslaTankAttack',
   chrono: 'ChronosphereMove', chronoSelect: 'ChronosphereSelect', bridgeCollapse: 'Explosion11', bridgeRepair: 'BridgeRepaired',
   boost: 'CrateSpeed', shield: 'ForceShieldStarting', nukeSiren: 'NukeSiren', nukeExplosion: 'NukeExplosion',
-  kirovCreated: 'KirovCreated', kirovDrone: 'KirovMoveLoop', kirovAttack: 'KirovAttack',
+  kirovCreated: 'KirovCreated', kirovAttack: 'KirovAttack',
 } as const;
-/** Seconds a cue is cut at: the siren stops as the nuke lands (race NUKE_FALL), the Kirov's drone as it lands. */
-const CUTS: Partial<Record<Cue, number>> = { nukeSiren: NUKE_FALL, kirovDrone: BIG_EVENTS.kirov.buildUp };
-/** Cues that loop until cut. */
-const LOOPS = new Set<Cue>(['kirovDrone']);
-/** Which of an event's samples a cue plays, when not the first: the drone's loop body, after its short start. */
-const SAMPLE: Partial<Record<Cue, number>> = { kirovDrone: 1 };
+/** Seconds a cue is cut at: the siren stops as the nuke lands (race NUKE_FALL). */
+const CUTS: Partial<Record<Cue, number>> = { nukeSiren: NUKE_FALL };
 
 const EVA_EVENTS = {
   nukeDetected: 'EVA_NuclearSiloDetected', nukeReady: 'EVA_NuclearMissileReady', nukeLaunch: 'EVA_NuclearMissileLaunched',
@@ -46,7 +42,7 @@ async function decodeSounds(read: ReadFile): Promise<Record<Cue, Decoded>> {
   const decoded = {} as Record<Cue, Decoded>;
   const selections = (Object.entries(EVENTS) as [keyof typeof EVENTS, string][]).map(([cue, event]) => {
     const section = ini.map(file => file.getSection(event)).find(Boolean);
-    const name = section?.getString('Sounds').split(/\s+/)[SAMPLE[cue] ?? 0]?.replace(/^\$/, '').toLowerCase();
+    const name = section?.getString('Sounds').split(/\s+/)[0]?.replace(/^\$/, '').toLowerCase();
     if (!name) throw new Error(`Missing sound event ${event}`);
     const source = banks.find(({ bank }) => bank.has(name));
     if (!source) throw new Error(`Missing sound sample ${name} for ${event}`);
@@ -101,7 +97,6 @@ export async function loadSounds(read: ReadFile, store: Store = importStore): Pr
       last.set(cue, now);
       const source = context.createBufferSource(), gain = context.createGain();
       source.buffer = sound.buffer;
-      source.loop = LOOPS.has(cue);
       gain.gain.value = sound.volume;
       source.connect(gain).connect(master);
       active.set(cue, (active.get(cue) ?? 0) + 1);
