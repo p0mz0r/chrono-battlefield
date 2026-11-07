@@ -157,7 +157,7 @@ The chat-wide event: a few seconds after EVA announces the launch, with the nuke
 _Avoid_: Nuclear strike, bomb
 
 **Kirov airship**:
-A paid event: an airship appears over the course a few cells ahead of the leading tank and hovers there; once a tank comes near, it drops a bomb on that spot every second for a few seconds. Every tank in a bomb's blast is stunned and always knocked back, unless shielded; stun immunity spares the stun but not the knockback.
+A paid event: an airship appears over the course a few cells ahead of the leading tank, never right at the finish, and hovers there; once a tank comes near, it drops a bomb on that spot every second for a few seconds, and if none comes near in time it leaves and the redemption is refunded. Every tank in a bomb's blast is stunned and always knocked back, unless shielded; stun immunity spares the stun but not the knockback.
 _Avoid_: Zeppelin, blimp, airstrike
 
 **Desolator**:

@@ -7,7 +7,7 @@ import { loadCourse as loadCourseArt, type Sprite as CachedSprite } from './load
 import { loadSounds } from './audio.js';
 import { facingAngle, projectModelPoint } from './ra2/render/voxelRender.js';
 import { loadCourse, mapHash, type CourseFile, type LinePoint } from './race/course.js';
-import { chat, commandList, createRace, KIROV, kirovDrops, NUKE_FALL, playingEvent, secondsLeft, standings, tickRace, type Race, type Racer, type Turn } from './race/race.js';
+import { chat, commandList, createRace, KIROV, kirovDrops, kirovImpacts, latestEvent, NUKE_FALL, playingEvent, secondsLeft, standings, tickRace, type Race, type Racer, type Turn } from './race/race.js';
 import { directorShot, type Shot } from './race/camera.js';
 import { mountStreamView, type CameraMode } from './race/view.js';
 import { mountOperator, readChoices } from './race/operator.js';
@@ -410,15 +410,16 @@ async function main() {
     const cloud = blast ? Math.floor((race.frame + a - blast.turn.lands!) * ANIM_FPS / TICK_HZ) : Infinity;
     if (cloud < mushroomTex.length) put(mushroomTex[cloud]!, blast!.x, blast!.y);
     // The Kirov hovers high over its spot, shadow below; each bomb falls onto the spot and bursts there; after its last it fades off up.
-    const kirovTurn = playing?.event === 'kirov' ? playing : race.landed?.event === 'kirov' ? race.landed : undefined;
+    const kirovTurn = latestEvent(race)?.event === 'kirov' ? latestEvent(race) : undefined;
     if (kirovTurn) {
-      const { x, y } = kirovTurn.ship!, p = ground(x, y), now = race.frame + a, fall = KIROV.fall * TICK_HZ, tank = kirovTurn.picks[0]?.tank;
+      const { x, y } = kirovTurn.ship!, p = ground(x, y), now = race.frame + a, tank = kirovTurn.picks[0]?.tank;
       if (kirovTurn === playing && tank && Math.hypot(tank.x / LEPTONS_PER_CELL - x, tank.y / LEPTONS_PER_CELL - y) > 1) kirovFrame = frameOf(tank.x / LEPTONS_PER_CELL - x, tank.y / LEPTONS_PER_CELL - y);
-      for (const drop of kirovDrops(kirovTurn)) {
-        const falling = (now - drop) / fall, shown = Math.floor((now - drop - fall) * ANIM_FPS / TICK_HZ);
+      const impacts = kirovImpacts(kirovTurn);
+      kirovDrops(kirovTurn).forEach((drop, i) => {
+        const falling = (now - drop) / (impacts[i]! - drop), shown = Math.floor((now - impacts[i]!) * ANIM_FPS / TICK_HZ);
         if (falling >= 0 && falling < 1) put(bombTex[kirovFrame]!, p.x, p.y - KIROV_UP * (1 - falling));
         if (shown >= 0 && shown < kirovBlastTex.length) put(kirovBlastTex[shown]!, p.x, p.y);
-      }
+      });
       const gone = kirovTurn === playing ? 0 : (now - kirovTurn.lands!) / (1.5 * TICK_HZ);
       if (gone < 1) {
         missiles.ellipse(p.x, p.y, 44, 22).fill({ color: 0x000000, alpha: 0.3 * (1 - gone) });

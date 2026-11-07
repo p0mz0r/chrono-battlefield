@@ -805,10 +805,12 @@ describe('Kirov airship', () => {
     const caught: Racer[] = [], knocks: number[] = [];
     while (race.queue.length) {
       const inBlast = race.racers.filter((r) => r.finishedAt === undefined && off(r, spot) <= 1.5);
+      const nearest = race.racers.filter((r) => r.finishedAt === undefined).sort((a, b) => off(a, spot) - off(b, spot))[0];
       const before = new Map(race.racers.map((r) => [r, { progress: r.progress, stunUntil: r.stunUntil, immune: r.immunityUntil > race.frame + 1 }]));
       race.sounds.length = 0;
       tickRace(race);
       if (race.sounds.includes('kirovAttack')) drops.push(race.frame);
+      if (race.queue.length) expect(race.queue[0]!.picks, 'the director follows the tank nearest the spot').toEqual([nearest]);
       const impact = (race.frame - from - TICK_HZ / 2) % TICK_HZ === 0 && race.frame >= from + TICK_HZ / 2;
       for (const r of race.racers) {
         const was = before.get(r)!;
@@ -853,6 +855,34 @@ describe('Kirov airship', () => {
     expect(bombingRun(race).caught.length).toBeGreaterThan(0);
   });
 
+  it('leaves, refunded, when no tank has come in range 20 s after its turn', () => {
+    const race = calm();
+    redeem(race);
+    tickRace(race);
+    const turn = race.queue[0]!;
+    turn.ship!.x = -50; // off the battlefield: no tank comes near
+    ticks(race, 20 * TICK_HZ - 1);
+    expect(race.queue[0]).toBe(turn);
+    expect(race.settlements).toEqual([]);
+    tickRace(race);
+    expect(race.queue).toEqual([]);
+    expect(race.settlements).toEqual([{ reference: 'v', outcome: 'refunded' }]);
+    expect(race.feed.at(-1)).toBe('Vera ▸ KIROV · refunded');
+  });
+
+  it('never hovers within 3 cells of the finish: over the leading tank when that is nearer', () => {
+    const race = calm();
+    race.finishFrames = Infinity;
+    const end = race.course.length;
+    while (leader(race).progress < end - 5) tickRace(race); // even 5 cells ahead would reach the finish
+    const lead = leader(race), from = lead.progress;
+    redeem(race);
+    tickRace(race);
+    const spot = race.queue[0]!.ship!, along = courseProgress(race.course, spot.x, spot.y, lead.next);
+    expect(along).toBeLessThanOrEqual(end - 3 + 0.01);
+    expect(along).toBeGreaterThanOrEqual(from - 0.01);
+  });
+
   it('a shield up when a bomb lands blocks it; stun immunity blocks only the stun', () => {
     const victim = (shielded: boolean) => {
       const race = calm();
@@ -884,6 +914,7 @@ describe('Kirov airship', () => {
     untilBombing(bombing);
     endRace(bombing);
     expect(bombing.settlements).toEqual([{ reference: 'v', outcome: 'fulfilled' }]);
+    expect(bombing.feed.at(-1)).toMatch(/^Vera ▸ KIROV ▸ /); // its one line, though cut short
   });
 
   it.each([1, 2, 3])('lets every tank still finish after Kirov knockbacks (seed %i)', (seed) => {
