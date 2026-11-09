@@ -48,6 +48,8 @@ export const BIG_EVENTS = { chronoSwap: { label: 'CHRONO SWAP', buildUp: 3 }, nu
 export type BigEvent = keyof typeof BIG_EVENTS;
 /** Frames from one big event landing to the next one's turn. */
 const EVENT_GAP = 10 * TICK_HZ;
+/** Frames a cheer-paid Chrono swap with no valid pair waits before trying again. */
+const CHEER_RETRY = 10 * TICK_HZ;
 /** Seconds the nuke falls before impact, under the siren. */
 export const NUKE_FALL = 2.1;
 /**
@@ -98,8 +100,10 @@ export interface Turn {
   by: string;
   /** Undefined for a chat-wide event or a cheer, or once settled: nothing (more) to settle. */
   reference: string | undefined;
-  /** Set off by a cheer: never fails, carries over to the next race instead. */
+  /** Set off by a cheer: never fails, tries again `CHEER_RETRY` later or carries over to the next race instead. */
   cheer: boolean;
+  /** Race frame a cheer whose swap had no valid pair may take its turn again; it keeps its place meanwhile. */
+  retryAt: number;
   lands: number | undefined;
   /** Chrono swap: the front-half and back-half tanks; nuke: the leading tank. */
   picks: Racer[];
@@ -346,7 +350,7 @@ function callNuke(race: Race, line: ChatLine): ChatResult {
     // The next turn: behind only a big event already playing and nukes already waiting.
     let at = 0;
     while (race.queue[at] && (race.queue[at]!.lands !== undefined || race.queue[at]!.event === 'nuke')) at++;
-    race.queue.splice(at, 0, { event: 'nuke', viewerId: '', by: 'CHAT', reference: undefined, cheer: false, lands: undefined, picks: [], callers: [...hype.calls.values()], firstAway: undefined, ship: undefined });
+    race.queue.splice(at, 0, { event: 'nuke', viewerId: '', by: 'CHAT', reference: undefined, cheer: false, retryAt: 0, lands: undefined, picks: [], callers: [...hype.calls.values()], firstAway: undefined, ship: undefined });
     race.hype = emptyHype();
     race.chatWide++;
   }
@@ -357,7 +361,7 @@ function callNuke(race: Race, line: ChatLine): ChatResult {
 export function paid(race: Race, line: PaidLine): ChatResult {
   const cheer = line.via === 'cheer';
   if (cheer && (line.event !== 'chronoSwap' || line.bits !== race.cheerBits)) return IGNORED;
-  const turn: Turn = { event: line.event, viewerId: line.viewerId, by: line.name, reference: cheer ? undefined : line.reference, cheer, lands: undefined, picks: [], callers: [], firstAway: undefined, ship: undefined };
+  const turn: Turn = { event: line.event, viewerId: line.viewerId, by: line.name, reference: cheer ? undefined : line.reference, cheer, retryAt: 0, lands: undefined, picks: [], callers: [], firstAway: undefined, ship: undefined };
   if (cheer && !viewersRacing(race)) {
     race.carried.push(turn);
     return { ok: true, reason: 'next race' };
@@ -411,8 +415,12 @@ export const armed = (race: Race) => race.phase === 'racing' && race.hype.armedU
 
 /** The next big event's turn comes, the playing one lands, or it fizzles; the next waits `EVENT_GAP` after a landing. */
 function playEvents(race: Race): void {
-  const turn = race.queue[0];
-  if (!turn || race.frame < race.nextEventAt) return;
+  if (race.frame < race.nextEventAt) return;
+  // The first turn that's due takes the front: a cheer trying again lets the ones behind it go first meanwhile.
+  const due = race.queue.findIndex((t) => t.retryAt <= race.frame);
+  if (due < 0) return;
+  const turn = race.queue.splice(due, 1)[0]!;
+  race.queue.unshift(turn);
   const nuke = turn.event === 'nuke', kirov = turn.event === 'kirov', aim = turn.event === 'chronoSwap' ? swapPicks : leaderTarget;
   if (turn.lands === undefined) {
     if (!aim(race, turn)) return fizzle(race);
@@ -536,8 +544,8 @@ export const eventChips = (race: Race): { label: string; playing: boolean }[] =>
 /** A race viewers are in: not between races, nor an editor simulation run by bots alone, which never spends a cheer. */
 const viewersRacing = (race: Race) => race.phase === 'racing' && race.racers.some((r) => !r.bot);
 
-/** A cheer that can't play now waits for the next race, picked afresh there. */
-const carry = (race: Race, turn: Turn) => race.carried.push(Object.assign(turn, { lands: undefined, picks: [] }));
+/** A cheer still waiting at race end takes its turn in the next race, picked afresh there. */
+const carry = (race: Race, turn: Turn) => race.carried.push(Object.assign(turn, { lands: undefined, picks: [], retryAt: 0 }));
 
 /** A chat-wide event (no reference) has nothing to settle. */
 const settle = (race: Race, reference: string | undefined, outcome: Settlement['outcome']) => { if (reference !== undefined) race.settlements.push({ reference, outcome }); };
@@ -547,8 +555,8 @@ function fizzle(race: Race): void {
   // One that played its build-up still takes the gap before the next turn.
   if (turn.lands !== undefined) race.nextEventAt = race.frame + EVENT_GAP;
   if (turn.cheer) {
-    carry(race, turn);
-    return postThrottled(race, turn.viewerId, `${turn.by} ▸ ${BIG_EVENTS[turn.event].label} · next race`);
+    race.queue.unshift(Object.assign(turn, { lands: undefined, picks: [], retryAt: race.frame + CHEER_RETRY }));
+    return postThrottled(race, turn.viewerId, `${turn.by} ▸ ${BIG_EVENTS[turn.event].label} · retrying`);
   }
   if (turn.reference === undefined) return; // a chat-wide event is dropped
   settle(race, turn.reference, 'refunded');
@@ -826,7 +834,9 @@ function drive(race: Race) {
   }
   if (!anyFinished && race.racers.some((r) => r.finishedAt !== undefined)) race.timer = race.finishFrames;
   else if (anyFinished) race.timer--;
-  if (race.racers.every((r) => r.finishedAt !== undefined) || (anyFinished && race.timer <= 0)) {
+  // One tank still racing can only place last, so the race ends as the one before it finishes.
+  const racing = race.racers.filter((r) => r.finishedAt === undefined).length;
+  if (!racing || (anyFinished && (racing === 1 || race.timer <= 0))) {
     race.phase = 'results';
     race.results = standings(race);
     refundQueue(race);

@@ -244,7 +244,8 @@ describe('audience interactions', () => {
       const race = racing(seed);
       const kane = kaneOf(race);
       // Close enough to the finish that any misfire would overshoot it.
-      while (!(kane.next === race.course.waypoints.length && race.course.length - kane.progress < race.course.drawnLength * 0.05)) tickRace(race);
+      while (race.phase === 'racing' && !(kane.next === race.course.waypoints.length && race.course.length - kane.progress < race.course.drawnLength * 0.05)) tickRace(race);
+      if (race.phase !== 'racing') continue; // Kane ran last: the race ended as the one before finished
       const before = kane.progress;
       say(race, 'viewer', '!chrono Kane');
       if (kane.progress <= before) continue;
@@ -270,8 +271,8 @@ describe('audience interactions', () => {
       sentBack++;
       expect(kane.next).toBeLessThanOrEqual(lapEnd);
       expect(kane.progress).toBeLessThan(race.course.waypointAlong[lapEnd]!);
-      ticks(race, 4000);
-      expect(kane.finishedAt).toBeDefined(); // drove lap 1's end and all of lap 2 again
+      for (let i = 0; i < 4000 && kane.next <= lapEnd; i++) tickRace(race);
+      expect(kane.next).toBeGreaterThan(lapEnd); // drove lap 1's end again
     }
     expect(sentBack).toBeGreaterThan(0);
   });
@@ -497,10 +498,11 @@ describe('racing', () => {
     const { race, trace } = runRace(loopCourse(3), 1, ['p0mz0r', 'Kane']);
     expect(race.phase).toBe('results');
     expect(race.results).toHaveLength(8);
-    expect(race.results.every((s) => s.finishTime !== undefined)).toBe(true);
-    const times = race.results.map((s) => s.finishTime!);
+    expect(race.results.map((s) => s.finishTime === undefined)).toEqual([false, false, false, false, false, false, false, true]); // the last one still racing places last
+    const times = race.results.slice(0, -1).map((s) => s.finishTime!);
     expect(times).toEqual([...times].sort((a, b) => a - b));
     for (const [name, points] of trace) {
+      if (name === race.results.at(-1)!.name) continue;
       // The far corner (24,16) is reached once per lap: three separate visits within 2.25 cells.
       let visits = 0, inside = false;
       for (const p of points) {
@@ -576,6 +578,17 @@ describe('ending', () => {
     const progress = dnf.map((s) => s.progress);
     expect(progress).toEqual([...progress].sort((a, b) => b - a));
     expect(progress.every((p) => p > 0.5 && p < 1)).toBe(true);
+  });
+
+  it('ends the race when the second-to-last tank finishes, placing the last one still racing last', () => {
+    const race = createRace(course(loopCourse(1)), ARENA, 2);
+    openJoinWindow(race, { joinSeconds: 1, finishSeconds: 600 });
+    say(race, 'a', '!rhino');
+    for (let i = 0; i < 20_000 && race.phase !== 'results'; i++) tickRace(race);
+    const last = race.racers.filter((r) => r.finishedAt === undefined);
+    expect(last).toHaveLength(1);
+    expect(race.frame).toBe(Math.max(...race.racers.map((r) => r.finishedAt ?? 0)));
+    expect(race.results.at(-1)).toMatchObject({ name: last[0]!.name, finishTime: undefined });
   });
 
   it('gives each race its own seed, and replays the second race of a session from that seed', () => {
@@ -750,13 +763,14 @@ describe('paid events', () => {
     expect(race.settlements.slice(2)).toEqual([{ reference: 'r5', outcome: 'refunded' }, { reference: 'r6', outcome: 'refunded' }]);
   });
 
-  it.each([1, 2, 3])('lets every tank still finish after Chrono swaps (seed %i)', (seed) => {
+  it.each([1, 2, 3])('lets every tank but the last still finish after Chrono swaps (seed %i)', (seed) => {
     const race = calm(seed);
     race.finishFrames = Infinity;
     for (let n = 0; n < 3; n++) redeem(race, `v${n}`, `V${n}`, `r${n}`);
     for (let i = 0; i < 400 * TICK_HZ && race.phase === 'racing'; i++) tickRace(race);
     expect(race.settlements.map((s) => s.outcome)).toEqual(['fulfilled', 'fulfilled', 'fulfilled']);
-    expect(race.racers.every((r) => r.finishedAt !== undefined)).toBe(true);
+    expect(race.phase).toBe('results');
+    expect(race.racers.filter((r) => r.finishedAt === undefined).length).toBeLessThanOrEqual(1); // the last one places last
   });
 });
 
@@ -922,13 +936,14 @@ describe('Kirov airship', () => {
     expect(bombing.feed.at(-1)).toMatch(/^Vera ▸ KIROV ▸ /); // its one line, though cut short
   });
 
-  it.each([1, 2, 3])('lets every tank still finish after Kirov knockbacks (seed %i)', (seed) => {
+  it.each([1, 2, 3])('lets every tank but the last still finish after Kirov knockbacks (seed %i)', (seed) => {
     const race = calm(seed);
     race.finishFrames = Infinity;
     for (let n = 0; n < 3; n++) redeem(race, `v${n}`, `V${n}`);
     for (let i = 0; i < 400 * TICK_HZ && race.phase === 'racing'; i++) tickRace(race);
     expect(race.settlements.map((s) => s.outcome)).toEqual(['fulfilled', 'fulfilled', 'fulfilled']);
-    expect(race.racers.every((r) => r.finishedAt !== undefined)).toBe(true);
+    expect(race.phase).toBe('results');
+    expect(race.racers.filter((r) => r.finishedAt === undefined).length).toBeLessThanOrEqual(1); // the last one places last
   });
 });
 
@@ -1098,6 +1113,18 @@ describe('cheers', () => {
     expect(race.queue.map((t) => t.by)).toEqual(['r1', 'c1', 'c2', 'r2']);
   });
 
+  it('waits behind a nuke chat sets off, and a later cheer still goes ahead of redemptions', () => {
+    const race = calm();
+    redeem(race, 'r1');
+    tickRace(race); // r1 plays
+    redeem(race, 'r2');
+    cheer(race, 'c1');
+    for (let i = 0; i < 30; i++) say(race, `fan${i}`, '!boost');
+    for (const v of ['n1', 'n2', 'n3', 'n4', 'n5']) say(race, v, '!nuke');
+    cheer(race, 'c2');
+    expect(race.queue.map((t) => `${t.event} ${t.by}`)).toEqual(['chronoSwap r1', 'nuke CHAT', 'chronoSwap c1', 'chronoSwap c2', 'chronoSwap r2']);
+  });
+
   it('carries a cheer waiting at race end, or arriving between races, across the join window to fire first after the countdown', () => {
     const race = calm();
     redeem(race, 'r1');
@@ -1122,18 +1149,42 @@ describe('cheers', () => {
     expect(race.settlements).toHaveLength(1);
   });
 
-  it('waits for the next race when its swap has no valid pair, and lets the queue move on', () => {
+  it('tries again 10 s later when its swap has no valid pair, keeping its place ahead of redemptions', () => {
     const race = calm();
-    for (const r of race.racers) r.shieldUntil = race.frame + 2;
+    for (const r of race.racers) r.shieldUntil = race.frame + 2; // gone a frame after the cheer's turn
     cheer(race, 'Cleo');
     redeem(race, 'r1');
     tickRace(race);
-    expect(race.feed.at(-1)).toBe('Cleo ▸ CHRONO SWAP · next race');
-    expect(race.settlements).toEqual([]);
-    expect(eventChips(race).map((c) => c.label)).toEqual(['CHRONO SWAP · r1', 'CHRONO SWAP · Cleo · next race']);
-    ticks(race, 3 * TICK_HZ + 1); // r1's turn comes on the next frame
+    const failed = race.frame;
+    expect(race.feed.at(-1)).toBe('Cleo ▸ CHRONO SWAP · retrying');
+    tickRace(race); // r1 isn't held up
+    expect(eventChips(race)).toEqual([{ label: 'CHRONO SWAP · r1', playing: true }, { label: 'CHRONO SWAP · Cleo', playing: false }]);
+    redeem(race, 'r2');
+    let retried: number | undefined;
+    for (let i = 0; i < 20 * TICK_HZ && retried === undefined; i++) {
+      race.sounds.length = 0;
+      tickRace(race);
+      if (race.sounds.includes('chronoSelect')) retried = race.frame;
+    }
+    expect(race.queue.map((t) => t.by)).toEqual(['Cleo', 'r2']);
+    expect(retried! - failed).toBe(1 + 3 * TICK_HZ + 10 * TICK_HZ); // after r1's build-up and the gap, which outlast the 10 s
+    ticks(race, 3 * TICK_HZ);
+    expect(race.feed.at(-1)).toMatch(/^Cleo ▸ CHRONO SWAP ▸ /);
     expect(race.settlements).toEqual([{ reference: 'r1', outcome: 'fulfilled' }]);
-    endRace(race);
+  });
+
+  it('tries again alone exactly 10 s on, and is carried to the next race if the race ends first', () => {
+    const race = calm();
+    for (const r of race.racers) r.shieldUntil = race.frame + 10 * TICK_HZ;
+    cheer(race, 'Cleo');
+    tickRace(race);
+    race.sounds.length = 0;
+    ticks(race, 10 * TICK_HZ - 1);
+    expect(race.sounds).not.toContain('chronoSelect');
+    tickRace(race);
+    expect(race.sounds).toContain('chronoSelect');
+    endRace(race); // during its build-up
+    expect(race.queue).toEqual([]);
     expect(eventChips(race).map((c) => c.label)).toEqual(['CHRONO SWAP · Cleo · next race']);
   });
 
