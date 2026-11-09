@@ -47,6 +47,11 @@ it.skipIf(!process.env.RA2_DIR)('plays stock cues with duplicate, Limit and mute
     expect(started).toBe(11);
     const seconds = (n: number) => +(sources.at(n)!.buffer!.length / sources.at(n)!.buffer!.sampleRate).toFixed(2);
     expect(seconds(-2)).toBe(1.52); // vkirsea, "Kirov reporting" (KirovCreated)
+    const voices = new Set<number>();
+    for (let n = 0; n < 200; n++) { context!.currentTime += 0.11; sound.play('desolatorVoice'); voices.add(seconds(-1)); }
+    expect(voices.size).toBe(16); // DesolatorSelect ×5, DesolatorAttackCommand ×6, DesolatorMove ×5
+    sound.play('desolatorDeploy');
+    expect(started).toBe(212);
     sound.mute();
     expect(master!.gain.value).toBe(0);
     expect(storage.get('rhino-mute')).toBe('1');

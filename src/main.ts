@@ -7,7 +7,7 @@ import { loadCourse as loadCourseArt, type Sprite as CachedSprite } from './load
 import { loadSounds } from './audio.js';
 import { facingAngle, projectModelPoint } from './ra2/render/voxelRender.js';
 import { loadCourse, mapHash, type CourseFile, type LinePoint } from './race/course.js';
-import { chat, commandList, createRace, KIROV, kirovDrops, kirovImpacts, latestEvent, NUKE_FALL, playingEvent, secondsLeft, standings, tickRace, type Race, type Racer, type Turn } from './race/race.js';
+import { chat, commandList, createRace, DESOLATOR, KIROV, kirovDrops, kirovImpacts, latestEvent, NUKE_FALL, playingEvent, secondsLeft, standings, tickRace, type Race, type Racer, type Turn } from './race/race.js';
 import { directorShot, type Shot } from './race/camera.js';
 import { mountStreamView, type CameraMode } from './race/view.js';
 import { mountOperator, readChoices } from './race/operator.js';
@@ -375,12 +375,19 @@ async function main() {
       effect.flash.visible = age >= 0 && age < TICK_HZ;
       if (effect.flash.visible) effect.flash.alpha = 0.7 * (1 - age / TICK_HZ);
     }
-    // A pulsing red ring under a big event's target through its build-up; Chrono swap joins its two tanks by a line; the Kirov's rings the blast on its spot.
     targetRing.clear();
+    // Radiation glows green on the ground, brightest at its centre, fading in as it lands and out over its last 2 s.
+    for (const patch of race.radiation) {
+      const p = ground(patch.x, patch.y), now = race.frame + a;
+      const fade = Math.min(1, (now - patch.from) / (0.5 * TICK_HZ), (patch.until - now) / (2 * TICK_HZ));
+      for (let k = 5; k > 0; k--) targetRing.ellipse(p.x, p.y, DESOLATOR.radius * k / 5 * 30 * Math.SQRT2, DESOLATOR.radius * k / 5 * 15 * Math.SQRT2).fill({ color: 0x7cff3a, alpha: 0.12 * fade });
+    }
+    // A pulsing red ring under a big event's target through its build-up; Chrono swap joins its two tanks by a line; the Kirov's rings the blast on its spot, the Desolator's the radiation on its cell.
     const playing = playingEvent(race);
-    if (playing?.event === 'kirov') {
-      const pulse = 0.5 + 0.5 * Math.sin((race.frame + a) * 3 * Math.PI / TICK_HZ), p = ground(playing.ship!.x, playing.ship!.y);
-      targetRing.ellipse(p.x, p.y, KIROV.blast * 30 * Math.SQRT2 + 6 * pulse, KIROV.blast * 15 * Math.SQRT2 + 3 * pulse).stroke({ color: 0xff2020, width: 4, alpha: 0.5 + 0.5 * pulse });
+    const spot = playing?.ship ?? playing?.patch;
+    if (spot) {
+      const pulse = 0.5 + 0.5 * Math.sin((race.frame + a) * 3 * Math.PI / TICK_HZ), p = ground(spot.x, spot.y), cells = playing!.ship ? KIROV.blast : DESOLATOR.radius;
+      targetRing.ellipse(p.x, p.y, cells * 30 * Math.SQRT2 + 6 * pulse, cells * 15 * Math.SQRT2 + 3 * pulse).stroke({ color: 0xff2020, width: 4, alpha: 0.5 + 0.5 * pulse });
     } else if (playing) {
       const pulse = 0.5 + 0.5 * Math.sin((race.frame + a) * 3 * Math.PI / TICK_HZ);
       const spots = playing.picks.map((r) => viewOf(r).view.position);
