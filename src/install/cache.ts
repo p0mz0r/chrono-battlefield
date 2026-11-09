@@ -9,7 +9,7 @@ const IMPORT_VERSION = 15;
 export async function installKey(read: ReadFile): Promise<string> {
   const indexes = await installIndexes(read);
   const all = new Uint8Array(indexes.reduce((n, b) => n + b.length, 0));
-  indexes.reduce((at, b) => (all.set(b, at), at + b.length), 0);
+  indexes.reduce((at, b) => { all.set(b, at); return at + b.length; }, 0);
   return crc32(all).toString(16).padStart(8, '0');
 }
 

@@ -1,5 +1,5 @@
 import { currentLap, type Shot } from './camera.js';
-import { armed, BIG_EVENTS, commandList, HYPE, hypeLive, playingEvent, secondsLeft, standings, type Race } from './race.js';
+import { armed, BIG_EVENTS, commandList, eventChips, HYPE, hypeLive, playingEvent, secondsLeft, standings, type Race } from './race.js';
 
 export type CameraMode = 'overview' | 'director';
 
@@ -28,12 +28,13 @@ export function mountStreamView(): (race: Race, shot?: Shot) => void {
     const playing = playingEvent(race);
     const hype = !hypeLive(race) ? '' : armed(race) ? `<span class="hype armed">NUKE ${race.hype.calls.size}/${HYPE.calls}</span>`
       : `<span class="hype" style="--fill:${Math.round(race.hype.points / HYPE.full * 100)}%">HYPE</span>`;
+    const chips = eventChips(race);
     const timer = race.racers.some((r) => r.finishedAt !== undefined) ? `<small>FINISH TIMER · ${secondsLeft(race)} s</small>` : '';
     const html = `${race.phase === 'results' ? '' : `<section class="standings"><header>${esc(race.course.file.name)}${lapLabel}</header><div class="standings-head">POS <span>RACER</span><b>PROGRESS</b></div>${rows}</section>`}
       ${playing ? `<div class="phase event-banner">${esc(`${BIG_EVENTS[playing.event].label} · ${playing.by}`)}${playing.callers.length ? `<small>${esc(playing.callers.join(' · '))}</small>` : ''}${timer}</div>` : `<div class="phase">${headline}</div>`}
       ${race.paused ? '<div class="pause-banner">PAUSED</div>' : ''}
       ${race.phase === 'racing' && focus ? `<div class="lower-third"><strong>${order.findIndex((s) => s.name === focus.name) + 1}</strong><div>${esc(focus.name)}<small>${esc(shot!.reason)}</small></div></div>` : ''}
-      ${race.phase === 'racing' ? `<div class="queue">${hype}${race.queue.map((t) => `<span${t.lands === undefined ? '' : ' class="playing"'}>${esc(`${BIG_EVENTS[t.event].label} · ${t.event === 'nuke' ? 'next' : t.by}`)}</span>`).join('')}</div>` : ''}
+      ${race.phase === 'racing' || chips.length ? `<div class="queue">${race.phase === 'racing' ? hype : ''}${chips.map((c) => `<span${c.playing ? ' class="playing"' : ''}>${esc(c.label)}</span>`).join('')}</div>` : ''}
       ${commands.length ? `<div class="commands">${commands.map(esc).join(' &nbsp; ')}</div>` : ''}
       ${race.phase === 'racing' && race.feed.length ? `<div class="feed">${race.feed.map((line) => `<div>${esc(line)}</div>`).join('')}</div>` : ''}
       ${resultRows}`;
