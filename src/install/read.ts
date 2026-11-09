@@ -67,8 +67,8 @@ export function idb<T>(name: string, mode: IDBTransactionMode, run: (store: IDBO
       const db = open.result;
       const tx = db.transaction('files', mode);
       const req = run(tx.objectStore('files'));
-      tx.oncomplete = () => (db.close(), resolve(req.result));
-      tx.onerror = tx.onabort = () => (db.close(), reject(tx.error));
+      tx.oncomplete = () => { db.close(); resolve(req.result); };
+      tx.onerror = tx.onabort = () => { db.close(); reject(tx.error); };
     };
   });
 }

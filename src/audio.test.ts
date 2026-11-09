@@ -24,7 +24,10 @@ it.skipIf(!process.env.RA2_DIR)('plays stock cues with duplicate, Limit and mute
     const map = new Map<string, unknown>();
     const store = { get: async (k: string) => map.get(k), set: async (k: string, v: unknown) => void map.set(k, v), keys: async () => [...map.keys()], delete: async (k: string) => void map.delete(k) };
     const audioReads: string[] = [];
-    const read: ReadFile = (path, ...range) => (/^lang/.test(path) && audioReads.push(path), readFromDir(path, ...range));
+    const read: ReadFile = (path, ...range) => {
+      if (/^lang/.test(path)) audioReads.push(path);
+      return readFromDir(path, ...range);
+    };
     await loadSounds(read, store);
     expect(audioReads).toContain('language.mix');
     audioReads.length = 0;

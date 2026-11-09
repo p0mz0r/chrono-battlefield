@@ -1,6 +1,6 @@
 # Coding standards
 
-Read at review. Each rule is a judgement call; typecheck and tests run in the pre-commit hook and CI.
+Read at review. Each rule is a judgement call; typecheck, lint and tests run in the pre-commit hook and CI. A finding that is a fixed syntax pattern becomes a rule in `.oxlintrc.json` instead of a line here.
 
 ## Domain vocabulary
 
