@@ -7,6 +7,8 @@ import { theaterArtExt } from '../ra2/theater.js';
 export const RHINO_FOOTPRINT_PX = 54;
 /** On-screen V3 rocket / Dreadnought missile length in px (eyeballed). */
 export const ROCKET_FOOTPRINT_PX = 30;
+/** On-screen Kirov airship and Kirov bomb length in px (eyeballed). */
+export const KIROV_FOOTPRINT_PX = 140, BOMB_FOOTPRINT_PX = 16;
 
 export interface RhinoArt {
   /** 32 hull facings, frame i = facing i × 360°/32 clockwise from north (-y). */
@@ -47,9 +49,14 @@ export const prerenderRhino = (vfs: Files, theater: string, footprintPx = RHINO_
 
 /** 32 facings of the V3 rocket (`v3rocket`) or the Dreadnought missile (`dmisl`); each falls back to the other when missing. */
 export function prerenderRocket(vfs: Files, theater: string, prefer: 'v3rocket' | 'dmisl', footprintPx = ROCKET_FOOTPRINT_PX): ConvertedSprite {
-  const { has, vxl, hva, pal } = reader(vfs, theater);
+  const { has } = reader(vfs, theater);
   const other = prefer === 'dmisl' ? 'v3rocket' : 'dmisl';
-  const name = has(prefer) || !has(other) ? prefer : other;
+  return prerenderAircraft(vfs, theater, has(prefer) || !has(other) ? prefer : other, footprintPx);
+}
+
+/** 32 facings of a voxel with no turret, such as the Kirov airship (`zep`) or its bomb (`zbomb`). */
+export function prerenderAircraft(vfs: Files, theater: string, name: string, footprintPx: number): ConvertedSprite {
+  const { vxl, hva, pal } = reader(vfs, theater);
   return renderVoxelToSprite(name, vxl(name), hva(name), pal(), { footprintPx });
 }
 

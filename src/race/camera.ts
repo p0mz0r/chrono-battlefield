@@ -1,6 +1,6 @@
 import { TICK_HZ } from '../movement/index.js';
 import type { CourseFile } from './course.js';
-import { playingEvent, standings, type Race, type Racer, type Turn } from './race.js';
+import { latestEvent, playingEvent, standings, type Race, type Racer, type Turn } from './race.js';
 
 /** The leader's lap of the course's lap section, for the standings header; undefined without a lap section. */
 export function currentLap(race: Race): { lap: number; count: number } | undefined {
@@ -39,8 +39,8 @@ const HOLD = 7 * TICK_HZ, HIT_GAP = 2.5 * TICK_HZ, EVENT_HOLD = 3 * TICK_HZ;
 
 /** The big event the director holds on: the one playing, or the last one until 3 s after it lands (after a nuke, after the first stun ends). */
 function heldEvent(race: Race): Turn | undefined {
-  const landed = race.landed;
-  return playingEvent(race) ?? (landed && race.frame < (landed.firstAway?.stunUntil ?? landed.lands!) + EVENT_HOLD ? landed : undefined);
+  const event = latestEvent(race);
+  return event && (event === playingEvent(race) || race.frame < (event.firstAway?.stunUntil ?? event.lands!) + EVENT_HOLD) ? event : undefined;
 }
 
 /** The tank and caption a big event's shot holds on, if that tank is still racing. */
@@ -49,17 +49,19 @@ function eventFocus(race: Race, event: Turn): { racer: Racer; reason: string } |
   const away = landed && event.firstAway && race.frame >= event.firstAway.stunUntil ? event.firstAway : undefined;
   const [racer, reason]: [Racer | undefined, string] = event.event === 'nuke'
     ? away ? [away, 'First away'] : [event.picks[0], `Nuke by ${event.by}`]
+    : event.event === 'kirov' ? [event.picks[0], `Kirov by ${event.by}`]
     : [event.picks[1], landed ? `Swapped up front by ${event.by}` : `Chrono swap by ${event.by}`];
   return racer && racer.finishedAt === undefined ? { racer, reason } : undefined;
 }
 
 /**
  * The director's next shot (the same object while it holds). A big event's turn cuts to its target and holds until
- * 3 s after it lands; a Chrono swap shows the back tank, then cuts to it landing up front; a nuke holds on its target
- * until the first stun ends, then cuts to that tank ("First away") for 3 s. Hits meanwhile are never
- * cut to. Otherwise a new hit cuts to the tank hit, once at least 2.5 s
- * have passed since the last cut; otherwise each shot holds 7 s (less if its tank finishes), alternating the leader
- * with the chaser in the closest fight for a place. Only unfinished tanks are shown.
+ * 3 s after it lands; a Chrono swap shows the back tank, then cuts to it landing up front; a Kirov follows the leading
+ * tank while it waits, then the tank nearest its spot, until 3 s after its last bomb; a nuke holds on its target
+ * until the first stun ends, then cuts to that tank ("First away") for 3 s. Hits meanwhile are never cut to.
+ * Otherwise a new hit cuts to the tank hit, once at least 2.5 s have passed since the last cut; otherwise each shot
+ * holds 7 s (less if its tank finishes), alternating the leader with the chaser in the closest fight for a place.
+ * Only unfinished tanks are shown.
  */
 export function directorShot(race: Race, prev: Shot | undefined): Shot {
   const event = heldEvent(race);

@@ -1,4 +1,4 @@
-import { prerenderAnim, prerenderRhino, prerenderRocket, prerenderTank } from './assets/rhino.js';
+import { BOMB_FOOTPRINT_PX, KIROV_FOOTPRINT_PX, prerenderAircraft, prerenderAnim, prerenderRhino, prerenderRocket, prerenderTank } from './assets/rhino.js';
 import type { Battlefield } from './battlefield/import.js';
 import { importBattlefield } from './battlefield/import.js';
 import type { ObjectImage } from './battlefield/objects.js';
@@ -30,6 +30,10 @@ export interface CourseArt {
   /** The nuke falling (`nkmsldn`) and its mushroom cloud (`nukeanim`). */
   nuke: Sprite;
   mushroom: Sprite;
+  /** The Kirov airship (`zep`) and its bomb (`zbomb`), 32 facings each, and the bomb's blast (`explolrg`, from `BlimpHE`). */
+  kirov: Sprite;
+  bomb: Sprite;
+  kirovBlast: Sprite;
 }
 
 type Tank = { body: Sprite; turret: Sprite; pivot: readonly [number, number, number] };
@@ -77,6 +81,9 @@ export async function loadCourse(read: ReadFile, mapPath: string): Promise<{ map
       fire: await sprite(prerenderAnim(vfs, 'fire01')),
       nuke: await sprite(prerenderAnim(vfs, 'nkmsldn', map.theater)),
       mushroom: await sprite(prerenderAnim(vfs, 'nukeanim')),
+      kirov: await sprite(prerenderAircraft(vfs, map.theater, 'zep', KIROV_FOOTPRINT_PX)),
+      bomb: await sprite(prerenderAircraft(vfs, map.theater, 'zbomb', BOMB_FOOTPRINT_PX)),
+      kirovBlast: await sprite(prerenderAnim(vfs, 'explolrg')),
     };
   });
   return { map, mapBytes, art, cached };

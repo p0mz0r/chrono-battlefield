@@ -142,6 +142,22 @@ describe('director camera', () => {
     expect(step().reason).not.toBe('First away');
   });
 
+  it('holds on the Kirov\'s target while it waits and bombs, and 3 s after its last bomb', () => {
+    const { r, step } = calm();
+    paid(r, { viewerId: 'v', name: 'Vera', event: 'kirov', via: 'redemption', reference: 'r1' });
+    let bombs = 0, shot: Shot;
+    do {
+      r.sounds.length = 0;
+      shot = step();
+      if (r.sounds.includes('kirovAttack')) bombs++;
+      // The leading tank while it waits, then the tank that came in range.
+      expect(shot).toMatchObject({ racer: (r.queue[0] ?? r.landed)!.picks[0], reason: 'Kirov by Vera' });
+    } while (r.queue.length);
+    expect(bombs).toBe(7);
+    expect(step(3 * TICK_HZ - 1)).toBe(shot);
+    expect(step().reason).not.toBe('Kirov by Vera'); // 3 s after its last bomb
+  });
+
   it('holds back hit cuts while an event plays, and drops the hits it held back', () => {
     const { r, step } = calm();
     paid(r, { viewerId: 'v', name: 'Vera', event: 'chronoSwap', via: 'redemption', reference: 'r1' });

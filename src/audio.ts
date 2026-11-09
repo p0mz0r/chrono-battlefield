@@ -11,6 +11,7 @@ const EVENTS = {
   teslaCharge: 'TeslaCoilPowerUp', teslaStrike: 'TeslaTankAttack',
   chrono: 'ChronosphereMove', chronoSelect: 'ChronosphereSelect', bridgeCollapse: 'Explosion11', bridgeRepair: 'BridgeRepaired',
   boost: 'CrateSpeed', shield: 'ForceShieldStarting', nukeSiren: 'NukeSiren', nukeExplosion: 'NukeExplosion',
+  kirovCreated: 'KirovCreated', kirovAttack: 'KirovAttack',
 } as const;
 /** Seconds a cue is cut at: the siren stops as the nuke lands (race NUKE_FALL). */
 const CUTS: Partial<Record<Cue, number>> = { nukeSiren: NUKE_FALL };
