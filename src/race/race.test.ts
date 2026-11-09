@@ -75,6 +75,11 @@ describe('course', () => {
 const course = (file = loopCourse()) => loadCourse(file, MAP, ARENA);
 const say = (race: Race, viewerId: string, text: string, name = viewerId) => chat(race, { viewerId, name, text });
 const ticks = (race: Race, n: number) => { for (let i = 0; i < n; i++) tickRace(race); };
+/**
+ * Ticks until the race enters `phase`, on the tick that ends the one before. Race rules (a queued turn coming, tanks
+ * driving) run from the next tick: GO is not yet a race frame.
+ */
+const untilPhase = (race: Race, phase: Race['phase']) => { for (let i = 0; race.phase !== phase; i++) { if (i > 600 * TICK_HZ) throw new Error(`never ${phase}`); tickRace(race); } };
 const racing = (seed = 1) => {
   const race = createRace(course(), ARENA, seed);
   openJoinWindow(race, { joinSeconds: 1 });
@@ -1106,10 +1111,9 @@ describe('cheers', () => {
     openJoinWindow(race, { joinSeconds: 1 });
     say(race, 'a', '!rhino', 'Kane');
     expect(eventChips(race).map((c) => c.label)).toEqual(next);
-    ticks(race, TICK_HZ + 3 * TICK_HZ - 1); // join window, then 3-2-1
-    expect(race.phase).toBe('countdown');
+    untilPhase(race, 'racing'); // join window, then 3-2-1, GO
     expect(race.sounds).not.toContain('chronoSelect');
-    ticks(race, 2); // GO, then its turn comes on the first race frame
+    tickRace(race); // its turn comes on the first race frame
     expect(race.sounds).toContain('chronoSelect');
     expect(eventChips(race)).toEqual([{ label: 'CHRONO SWAP · Cleo', playing: true }, { label: 'CHRONO SWAP · Cy', playing: false }]);
     expect(race.hype.points).toBe(0); // the meter was not live when they arrived
@@ -1138,7 +1142,8 @@ describe('cheers', () => {
     endRace(race);
     cheer(race, 'Cleo');
     simulateRace(race, race.course, 4);
-    ticks(race, 3 * TICK_HZ + 2);
+    untilPhase(race, 'racing');
+    tickRace(race);
     expect(cheer(race, 'Cy')).toEqual({ ok: true, reason: 'next race' });
     expect([race.queue, eventChips(race).map((c) => c.label)]).toEqual([[], ['CHRONO SWAP · Cleo · next race', 'CHRONO SWAP · Cy · next race']]);
   });

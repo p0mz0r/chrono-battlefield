@@ -25,7 +25,9 @@ Create a GitHub issue in `p0mz0r/chrono-battlefield`.
 
 Read it with `gh issue view <number> --json number,title,body,labels,comments`. The human view with `--comments` prints nothing on an issue with no comments.
 
+A parent map body is long: grep it for the ticket's terms (`gh issue view <map> --json body -q .body | grep -n -i '<term>'`) rather than reading it whole.
+
 ## Wayfinding operations
 
-Use a GitHub issue as the map and child issues as tickets. Link child tickets as sub-issues when available; otherwise put `Part of #<map>` in the child body. Use issue dependencies for blockers when available, or a `Blocked by: #<n>` line. Assign an issue before starting work, comment with the resolution, then close it and add a context pointer to the map issue.
+Use a GitHub issue as the map and child issues as tickets. Link child tickets as sub-issues when available; otherwise put `Part of #<map>` in the child body. Use issue dependencies for blockers when available, or a `Blocked by: #<n>` line. Assign an issue before starting work. Once its PR merges, comment with the resolution and the merged PR, close it, and add a context pointer to the map issue.
 
