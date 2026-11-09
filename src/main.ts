@@ -510,12 +510,13 @@ async function main() {
   if (edit) (await import('./race/editor.js')).mountEditor(app, world, grid, mapBytes, file!, toScreen, params.has('map') ? '' : Object.entries(COURSES).find(([, c]) => c === file)![0].replace(/^.*\/|\.json$/g, ''), race);
   else {
     mountOperator(race, courses, imported, Object.entries(courses).find(([, candidate]) => candidate === file)?.[0] ?? '', (mode) => { cameraMode = mode; }, sounds.mute);
-    // Chat from outside the page (e.g. Streamer.bot via obs-websocket obs-browser emit_event): `chronoChat` with { viewerId, name, text }.
-    addEventListener('chronoChat', (event) => {
+    if (chatSource() === 'streamerbot') chatLink = connectStreamerBot(race);
+    // The fallback when no chat source is picked, so no line arrives twice: chat from outside the page (e.g. Streamer.bot
+    // via obs-websocket obs-browser emit_event), `chronoChat` with { viewerId, name, text }.
+    if (!chatLink) addEventListener('chronoChat', (event) => {
       const { viewerId, name, text } = (event as CustomEvent).detail ?? {};
       if ([viewerId, name, text].every((v) => typeof v === 'string' && v.length <= 500)) chat(race, { viewerId, name, text });
     });
-    if (chatSource() === 'streamerbot') chatLink = connectStreamerBot(race);
     if (import.meta.env.DEV) (await import('./race/devPanel.js')).mountDevPanel(race, params, !chatLink);
   }
   document.body.dataset.ready = String(terrain.missing === 0);

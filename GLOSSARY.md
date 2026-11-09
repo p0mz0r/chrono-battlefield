@@ -184,6 +184,7 @@ _Avoid_: Integration, connector, bot
 
 **Chat offline marker**:
 The small "CHAT OFFLINE" tag on stream while the chat source's connection is down; the race carries on and the game reconnects with growing waits. Redemptions made meanwhile stay in the platform's queue.
+_Avoid_: Disconnected banner, error
 
 **Redemption**:
 A viewer spending channel points on one of the game's rewards to set off an audience interaction; it is fulfilled when the interaction lands and refunded when it fails. Never a chat command, and not held to the viewer cooldown.

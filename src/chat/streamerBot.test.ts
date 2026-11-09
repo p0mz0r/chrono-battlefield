@@ -41,6 +41,14 @@ afterEach(() => { source.close(); vi.useRealTimers(); });
 const redeem = (title: string, redemptionId = 'red-1') => last().event('Twitch', 'RewardRedemption', { redemptionId, reward: { id: 'rew-1', title }, user: { id: '7', login: 'vera', name: 'Vera' } });
 
 describe('Streamer.bot chat source', () => {
+  it('counts as online while the first connection is still opening, offline once it fails', () => {
+    source.close();
+    source = connectStreamerBot(race, { Socket: FakeSocket });
+    expect(source.online()).toBe(true);
+    last().drop();
+    expect(source.online()).toBe(false);
+  });
+
   it('subscribes to chat on every platform and Twitch redemptions and cheers', () => {
     expect(last().url).toBe('ws://127.0.0.1:8080/');
     expect(last().sent[0]).toMatchObject({ request: 'Subscribe', events: { Twitch: ['ChatMessage', 'RewardRedemption', 'Cheer'], YouTube: ['Message'], Kick: ['ChatMessage'] } });
@@ -50,7 +58,7 @@ describe('Streamer.bot chat source', () => {
     openJoinWindow(race);
     last().event('Twitch', 'ChatMessage', { user: { id: '123', login: 'vera', name: 'Vera' }, text: '!rhino' });
     last().event('YouTube', 'Message', { user: { id: 'UCabc', name: 'Yuki' }, message: '!rhino' });
-    last().event('Kick', 'ChatMessage', { user: { id: '99', login: 'kim', name: 'Kim' }, text: '!rhino' });
+    last().event('Kick', 'ChatMessage', { user: { id: 99, login: 'kim', name: 'Kim' }, text: '!rhino' });
     last().event('Twitch', 'ChatMessage', { user: null, text: '!rhino' });
     expect(race.racers.map((r) => [r.viewerId, r.name])).toEqual([['twitch:123', 'Vera'], ['youtube:UCabc', 'Yuki'], ['kick:99', 'Kim']]);
   });
@@ -76,7 +84,8 @@ describe('Streamer.bot chat source', () => {
     cheer(51);
     expect(eventChips(race)).toEqual([]);
     cheer(50);
-    expect(eventChips(race).map((c) => c.label)).toEqual(['CHRONO SWAP · Vera · next race']);
+    last().event('Twitch', 'Cheer', { bits: 50, user: null, text: 'Cheer50' });
+    expect(eventChips(race).map((c) => c.label)).toEqual(['CHRONO SWAP · Vera · next race', 'CHRONO SWAP · Anonymous · next race']);
     vi.advanceTimersByTime(1000);
     expect(last().actions()).toEqual([]);
   });

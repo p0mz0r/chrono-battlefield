@@ -35,17 +35,22 @@ const text = (v: unknown): v is string => typeof v === 'string' && v.length > 0 
  * A drop never stops the race: it reconnects with growing waits, and settlements wait in the race until it is back.
  */
 export function connectStreamerBot(race: Race, { url = STREAMER_BOT_URL, Socket = WebSocket as new (url: string) => Socket } = {}): ChatSource {
-  let socket: Socket | undefined, wait = RETRY.first, closed = false, retry: ReturnType<typeof setTimeout> | undefined;
+  // Online until the first drop: the first connection is still opening at page load.
+  let socket: Socket | undefined, wait = RETRY.first, closed = false, up = true, retry: ReturnType<typeof setTimeout> | undefined;
   /** Redemption ID to its reward, which `DoAction` hands back to Streamer.bot. */
   const rewards = new Map<string, { id: string; title: string }>();
   const open = () => socket?.readyState === 1;
-  const viewer = (platform: string, user: User | null | undefined) => user && text(user.id) && text(user.name) ? { viewerId: `${platform.toLowerCase()}:${user.id}`, name: user.name } : undefined;
+  const viewer = (platform: string, user: User | null | undefined) => {
+    const id = typeof user?.id === 'number' ? String(user.id) : user?.id;
+    return text(id) && text(user!.name) ? { viewerId: `${platform.toLowerCase()}:${id}`, name: user!.name } : undefined;
+  };
 
   const receive = (raw: string) => {
     let message: { event?: { source?: string; type?: string }; data?: Record<string, unknown> };
     try { message = JSON.parse(raw); } catch { return; }
     const { source = '', type = '' } = message.event ?? {}, data = message.data ?? {};
-    const who = viewer(source, data.user as User);
+    // An anonymous cheer still spends bits, so it still counts.
+    const who = viewer(source, data.user as User) ?? (source === 'Twitch' && type === 'Cheer' ? { viewerId: 'twitch:anonymous', name: 'Anonymous' } : undefined);
     if (!who) return;
     // Twitch and Kick chat carry `text`, YouTube's `message`.
     if (type === 'ChatMessage' || (source === 'YouTube' && type === 'Message')) {
@@ -67,11 +72,13 @@ export function connectStreamerBot(race: Race, { url = STREAMER_BOT_URL, Socket 
     const s = socket = new Socket(url);
     s.onopen = () => {
       wait = RETRY.first;
+      up = true;
       s.send(JSON.stringify({ request: 'Subscribe', id: 'rhino-subscribe', events: { Twitch: ['ChatMessage', 'RewardRedemption', 'Cheer'], YouTube: ['Message'], Kick: ['ChatMessage'] } }));
     };
     s.onmessage = (e) => receive(e.data);
     s.onclose = () => {
       if (closed || s !== socket) return;
+      up = false;
       retry = setTimeout(connect, wait * 1000);
       wait = Math.min(wait * 2, RETRY.longest);
     };
@@ -82,6 +89,7 @@ export function connectStreamerBot(race: Race, { url = STREAMER_BOT_URL, Socket 
     if (!open()) return;
     for (const { reference, outcome } of race.settlements.splice(0)) {
       const reward = rewards.get(reference);
+      // ponytail: rewards live in page memory, so a reload mid-race leaves its redemptions unsettled in Twitch's queue; persist them if that bites.
       if (!reward) continue; // another source's, such as the dev panel's
       rewards.delete(reference);
       socket!.send(JSON.stringify({ request: 'DoAction', id: `rhino-settle-${reference}`, action: { name: SETTLE_ACTION }, args: { redemptionId: reference, rewardId: reward.id, reward: reward.title, outcome } }));
@@ -90,7 +98,7 @@ export function connectStreamerBot(race: Race, { url = STREAMER_BOT_URL, Socket 
 
   connect();
   return {
-    online: open,
+    online: () => up,
     close() { closed = true; clearTimeout(retry); clearInterval(drain); socket?.close(); },
   };
 }
