@@ -17,7 +17,7 @@ The action is found by its **name**, `Rhino Race settle`, so the import must kee
 
 | Argument | Value |
 |---|---|
-| `redemptionId` | The Twitch redemption ID, from the `RewardRedemption` event's `redemptionId`. |
+| `redemptionId` | The Twitch redemption ID, from the `RewardRedemption` event's `id` (`redemptionId` in older Streamer.bot versions). |
 | `rewardId` | The Twitch reward ID, from the event's `reward.id`. |
 | `reward` | The reward title as Twitch sent it, for logs only. |
 | `outcome` | `fulfilled` when the paid event landed; `refunded` when it fizzled, was still waiting at race end, arrived outside a race or is switched off in race setup. |
@@ -28,7 +28,7 @@ Cheers are never settled, and YouTube and Kick paid events are ignored.
 
 ## The shipped action
 
-The action is one Execute C# Code sub-action, with no trigger, in `src/chat/settleAction.cs`. Its import string, `src/chat/settleAction.sb`, is built from that file by `node tools/streamer-bot-action.mjs`; rerun it after any change to the C#, and a test fails until you do. Install setup (`F2`) shows the string for copying, and the operator pastes it into Streamer.bot's Import. A refusal from Twitch, or an unknown `outcome`, is logged as a warning in Streamer.bot's log.
+The action is one Execute C# Code sub-action, with no trigger, in `src/chat/settleAction.cs`. Its import string, `src/chat/settleAction.sb`, is built from that file by `node tools/streamer-bot-action.mjs`; rerun it after any change to the C#, and a test fails until you do. Install setup (`F2`) shows the string for copying, and the operator pastes it into Streamer.bot's Import. A refusal from Twitch, or an unknown `outcome`, is logged as a warning in Streamer.bot's log. Verified on Streamer.bot 1.0.7 against real redemptions: one refunded outside a race, one fulfilled when its Chrono swap landed.
 
 ## Reward titles
 
