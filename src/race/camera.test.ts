@@ -158,6 +158,16 @@ describe('director camera', () => {
     expect(step().reason).not.toBe('Kirov by Vera'); // 3 s after its last bomb
   });
 
+  it('holds on the leading tank through a Desolator\'s build-up, and 3 s after it lands', () => {
+    const { r, step } = calm();
+    paid(r, { viewerId: 'v', name: 'Vera', event: 'desolator', via: 'redemption', reference: 'r1' });
+    let shot: Shot;
+    do expect(shot = step()).toMatchObject({ racer: (r.queue[0] ?? r.landed)!.picks[0], reason: 'Desolator by Vera' });
+    while (r.queue.length);
+    expect(step(3 * TICK_HZ - 1)).toBe(shot);
+    expect(step().reason).not.toBe('Desolator by Vera');
+  });
+
   it('holds back hit cuts while an event plays, and drops the hits it held back', () => {
     const { r, step } = calm();
     paid(r, { viewerId: 'v', name: 'Vera', event: 'chronoSwap', via: 'redemption', reference: 'r1' });

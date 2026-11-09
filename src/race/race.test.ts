@@ -955,6 +955,86 @@ describe('Kirov airship', () => {
   });
 });
 
+describe('Desolator', () => {
+  const redeem = (race: Race, viewerId = 'v', name = 'Vera') => paid(race, { viewerId, name, event: 'desolator', via: 'redemption', reference: viewerId });
+  const calm = (seed = 1) => {
+    const race = racing(seed);
+    for (const r of race.racers) if (r.bot) r.botNext = Infinity;
+    ticks(race, 5 * TICK_HZ); // the field spreads out
+    race.sounds.length = 0;
+    return race;
+  };
+  const leader = (race: Race) => race.racers.find((r) => r.name === standings(race)[0]!.name)!;
+  /** Linear from 1 at 5 cells out to 0.25 at the centre. */
+  const slowing = (cells: number) => (cells >= 5 ? 1 : 0.25 + 0.75 * cells / 5);
+  /** Course progress of a point on the ideal line within the next two legs of `r`. */
+  const along = (race: Race, r: Racer, p: { x: number; y: number }) => Math.max(courseProgress(race.course, p.x, p.y, r.next), courseProgress(race.course, p.x, p.y, r.next + 1));
+
+  it('speaks, then lands radiation on the ideal line ahead of the leading tank 2 s later, fulfilled, gone 15 s after', () => {
+    const race = calm();
+    redeem(race);
+    const lead = leader(race), from = lead.progress;
+    tickRace(race);
+    expect(race.sounds).toEqual(['desolatorVoice']);
+    const patch = { ...race.queue[0]!.patch! };
+    expect(along(race, lead, patch) - from).toBeCloseTo(12, 1);
+    ticks(race, 2 * TICK_HZ - 1);
+    expect(race.settlements).toEqual([]);
+    race.sounds.length = 0;
+    tickRace(race);
+    expect(race.sounds).toContain('desolatorDeploy');
+    expect(race.settlements).toEqual([{ reference: 'v', outcome: 'fulfilled' }]);
+    expect(race.feed.at(-1)).toBe(`Vera ▸ DESOLATOR ▸ ${leader(race).name}`);
+    expect(along(race, leader(race), patch)).toBeGreaterThan(leader(race).progress); // still ahead of it
+    expect(race.radiation).toMatchObject([patch]);
+    ticks(race, 15 * TICK_HZ - 1);
+    expect(race.radiation).toHaveLength(1);
+    tickRace(race);
+    expect(race.radiation).toEqual([]);
+  });
+
+  it.each([1, 2, 3])('slows a tank from full speed at 5 cells out to 0.25 at the centre, times its boost; a shield ignores it (seed %i)', (seed) => {
+    const race = calm(seed);
+    redeem(race);
+    ticks(race, 2 * TICK_HZ + 1);
+    const patch = race.radiation[0]!, shielded = race.racers[1]!, boosted = race.racers[0]!;
+    shielded.shieldUntil = Infinity;
+    shielded.immunityUntil = Infinity; // stun immunity doesn't help
+    let slowest = 1;
+    for (let i = 0; i < 15 * TICK_HZ - 1; i++) {
+      if (i === 5 * TICK_HZ) say(race, 'w', `!boost ${boosted.name}`, 'Wes');
+      const before = new Map(race.racers.map((r) => [r, r.tank && Math.hypot(r.tank.x / 256 - patch.x, r.tank.y / 256 - patch.y)]));
+      tickRace(race);
+      for (const r of race.racers) {
+        if (r.finishedAt !== undefined) continue;
+        const factor = (r.boostUntil > race.frame ? 1.5 : 1) * (r === shielded ? 1 : slowing(before.get(r)!));
+        expect(r.tank!.speedFactor, r.name).toBeCloseTo(factor, 6);
+        if (r !== shielded) slowest = Math.min(slowest, r.tank!.speedFactor);
+      }
+    }
+    expect(slowest).toBeLessThan(0.6); // a tank drove well into it
+  });
+
+  it('is gone in the next race', () => {
+    const race = calm();
+    redeem(race);
+    ticks(race, 2 * TICK_HZ + 1);
+    endRace(race);
+    openJoinWindow(race);
+    expect(race.radiation).toEqual([]);
+  });
+
+  it.each([1, 2, 3])('lets every tank but the last still finish through radiation (seed %i)', (seed) => {
+    const race = calm(seed);
+    race.finishFrames = Infinity;
+    for (let n = 0; n < 3; n++) redeem(race, `v${n}`, `V${n}`);
+    for (let i = 0; i < 400 * TICK_HZ && race.phase === 'racing'; i++) tickRace(race);
+    expect(race.settlements.map((s) => s.outcome)).toEqual(['fulfilled', 'fulfilled', 'fulfilled']);
+    expect(race.phase).toBe('results');
+    expect(race.racers.filter((r) => r.finishedAt === undefined).length).toBeLessThanOrEqual(1); // the last one places last
+  });
+});
+
 describeInstall('bundled courses', () => {
   it.each(Object.keys(COURSES))('%s loads over its battlefield from the install', async (path) => {
     const file = COURSES[path]!;

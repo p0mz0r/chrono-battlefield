@@ -3,7 +3,8 @@ import { AudioBank, decodeWav, IniFile } from './ra2/index.js';
 import { locateNested, readNested, type ReadFile } from './ra2/mount.js';
 import { NUKE_FALL } from './race/race.js';
 
-// Stock sound events. The Rhino ready sample is a voice, not an EVA announcement.
+// Stock sound events. The Rhino ready sample is a voice, not an EVA announcement. A cue of several events plays one
+// random sample of all theirs.
 const EVENTS = {
   ready: 'GenSovVehicleSelect', cannon: 'RhinoTankAttack', hit: 'Explosion06',
   v3Launch: 'V3Attack', v3Impact: 'Explosion12',
@@ -12,6 +13,7 @@ const EVENTS = {
   chrono: 'ChronosphereMove', chronoSelect: 'ChronosphereSelect', bridgeCollapse: 'Explosion11', bridgeRepair: 'BridgeRepaired',
   boost: 'CrateSpeed', shield: 'ForceShieldStarting', nukeSiren: 'NukeSiren', nukeExplosion: 'NukeExplosion',
   kirovCreated: 'KirovCreated', kirovAttack: 'KirovAttack',
+  desolatorVoice: ['DesolatorSelect', 'DesolatorAttackCommand', 'DesolatorMove'], desolatorDeploy: 'DesolatorDeploy',
 } as const;
 /** Seconds a cue is cut at: the siren stops as the nuke lands (race NUKE_FALL). */
 const CUTS: Partial<Record<Cue, number>> = { nukeSiren: NUKE_FALL };
@@ -21,8 +23,8 @@ const EVA_EVENTS = {
 } as const;
 
 type Cue = keyof typeof EVENTS | keyof typeof EVA_EVENTS;
-type Sound = { buffer: AudioBuffer; limit: number; volume: number };
-type Decoded = { samples: Int16Array; sampleRate: number; limit: number; volume: number };
+type Sound = { buffers: AudioBuffer[]; limit: number; volume: number };
+type Decoded = { clips: { samples: Int16Array; sampleRate: number }[]; limit: number; volume: number };
 
 /** Each cue's PCM and INI settings, read from the install. */
 async function decodeSounds(read: ReadFile): Promise<Record<Cue, Decoded>> {
@@ -40,14 +42,18 @@ async function decodeSounds(read: ReadFile): Promise<Record<Cue, Decoded>> {
   }));
   const ini = [IniFile.parse(yrIni), IniFile.parse(baseIni)];
   const decoded = {} as Record<Cue, Decoded>;
-  const selections = (Object.entries(EVENTS) as [keyof typeof EVENTS, string][]).map(([cue, event]) => {
-    const section = ini.map(file => file.getSection(event)).find(Boolean);
-    const name = section?.getString('Sounds').split(/\s+/)[0]?.replace(/^\$/, '').toLowerCase();
-    if (!name) throw new Error(`Missing sound event ${event}`);
-    const source = banks.find(({ bank }) => bank.has(name));
-    if (!source) throw new Error(`Missing sound sample ${name} for ${event}`);
-    const entry = source.bank.entry(name)!;
-    return { cue, section: section!, name, source, entry };
+  const selections = (Object.entries(EVENTS) as [keyof typeof EVENTS, string | readonly string[]][]).flatMap(([cue, events]) => {
+    const several = typeof events !== 'string';
+    return (several ? events : [events]).flatMap((event) => {
+      const section = ini.map(file => file.getSection(event)).find(Boolean);
+      const names = section?.getString('Sounds').split(/\s+/).map(name => name.replace(/^\$/, '').toLowerCase()).filter(Boolean) ?? [];
+      if (!names.length) throw new Error(`Missing sound event ${event}`);
+      return (several ? names : names.slice(0, 1)).map((name) => {
+        const source = banks.find(({ bank }) => bank.has(name));
+        if (!source) throw new Error(`Missing sound sample ${name} for ${event}`);
+        return { cue, section: section!, name, source, entry: source.bank.entry(name)! };
+      });
+    });
   });
   for (const source of banks) {
     const chosen = selections.filter(selection => selection.source === source);
@@ -57,7 +63,8 @@ async function decodeSounds(read: ReadFile): Promise<Record<Cue, Decoded>> {
     chosen.forEach(({ cue, section, name }, i) => {
       const { samples, sampleRate } = source.bank.decode(name, bodies[i]!)!;
       const limit = section.getInt('Limit');
-      decoded[cue] = { samples, sampleRate, limit: limit > 0 ? limit : Infinity, volume: Number(section.getString('Volume', '100')) / 100 };
+      decoded[cue] ??= { clips: [], limit: limit > 0 ? limit : Infinity, volume: Number(section.getString('Volume', '100')) / 100 };
+      decoded[cue].clips.push({ samples, sampleRate });
     });
   }
   const eva = IniFile.parse(evaIni);
@@ -65,7 +72,7 @@ async function decodeSounds(read: ReadFile): Promise<Record<Cue, Decoded>> {
     const name = eva.getSection(event)?.getString('Allied');
     if (!name) throw new Error(`Missing EVA announcement ${event}`);
     const { samples, sampleRate } = decodeWav(await readNested(read, 'langmd.mix', ['audiomd.mix', `${name}.wav`]));
-    decoded[cue] = { samples, sampleRate, limit: 1, volume: 1 };
+    decoded[cue] = { clips: [{ samples, sampleRate }], limit: 1, volume: 1 };
   }));
   return decoded;
 }
@@ -81,10 +88,13 @@ export async function loadSounds(read: ReadFile, store: Store = importStore): Pr
   const limiter = new DynamicsCompressorNode(context, { threshold: -6, knee: 0, ratio: 20, attack: 0.003, release: 0.25 });
   master.connect(limiter).connect(context.destination);
   const loaded = new Map<Cue, Sound>();
-  for (const [cue, { samples, sampleRate, limit, volume }] of Object.entries(decoded) as [Cue, Decoded][]) {
-    const buffer = context.createBuffer(1, samples.length, sampleRate);
-    buffer.copyToChannel(Float32Array.from(samples, sample => sample / 32768), 0);
-    loaded.set(cue, { buffer, limit, volume });
+  for (const [cue, { clips, limit, volume }] of Object.entries(decoded) as [Cue, Decoded][]) {
+    const buffers = clips.map(({ samples, sampleRate }) => {
+      const buffer = context.createBuffer(1, samples.length, sampleRate);
+      buffer.copyToChannel(Float32Array.from(samples, sample => sample / 32768), 0);
+      return buffer;
+    });
+    loaded.set(cue, { buffers, limit, volume });
   }
   const active = new Map<Cue, number>();
   const last = new Map<Cue, number>();
@@ -96,7 +106,7 @@ export async function loadSounds(read: ReadFile, store: Store = importStore): Pr
       if (now - (last.get(cue) ?? -1) < 0.1 || (active.get(cue) ?? 0) >= sound.limit) return;
       last.set(cue, now);
       const source = context.createBufferSource(), gain = context.createGain();
-      source.buffer = sound.buffer;
+      source.buffer = sound.buffers[Math.floor(Math.random() * sound.buffers.length)]!;
       gain.gain.value = sound.volume;
       source.connect(gain).connect(master);
       active.set(cue, (active.get(cue) ?? 0) + 1);

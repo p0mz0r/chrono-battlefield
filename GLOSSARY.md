@@ -113,7 +113,7 @@ A move a few cells back along the course that comes with a stun from a big event
 _Avoid_: Pushback, recoil
 
 **Radiation**:
-A glowing patch on the ground that slows every tank driving through it, the more the closer to its centre, but never stops one, until it fades; a shield keeps a tank unharmed, stun immunity does not.
+A glowing patch on the ground that slows every tank driving through it, the more the closer to its centre, down to a quarter of its speed there and on top of any boost, but never stops one, until it fades; a shield keeps a tank unharmed, stun immunity does not.
 _Avoid_: Slow field, poison
 
 **Viewer cooldown**:
@@ -165,7 +165,7 @@ A paid event: an airship appears over the course a few cells ahead of the leadin
 _Avoid_: Zeppelin, blimp, airstrike
 
 **Desolator**:
-A paid event that leaves radiation on the course just ahead of the leading tank.
+A paid event that leaves radiation on the ideal line just ahead of the leading tank for about 15 s.
 _Avoid_: Rad cannon, slow trap
 
 **Chrono swap**:

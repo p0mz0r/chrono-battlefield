@@ -44,7 +44,7 @@ export interface ChatResult {
  * Kirov's is open-ended: it lands with its last bomb).
  */
 // ponytail: the Kirov's Infinity build-up keeps it playing until `kirovRun` sets its real landing; a per-event phase if more events wait like this.
-export const BIG_EVENTS = { chronoSwap: { label: 'CHRONO SWAP', buildUp: 3 }, nuke: { label: 'NUKE', buildUp: 3 }, kirov: { label: 'KIROV', buildUp: Infinity } } as const;
+export const BIG_EVENTS = { chronoSwap: { label: 'CHRONO SWAP', buildUp: 3 }, nuke: { label: 'NUKE', buildUp: 3 }, kirov: { label: 'KIROV', buildUp: Infinity }, desolator: { label: 'DESOLATOR', buildUp: 2 } } as const;
 export type BigEvent = keyof typeof BIG_EVENTS;
 /** What race setup can switch off: the hype meter (and with it the nuke) and each paid event. */
 export type Chaos = 'hype' | Exclude<BigEvent, 'nuke'>;
@@ -62,6 +62,12 @@ export const NUKE_FALL = 2.1;
  * them and each falls, blast radius and knockback in cells.
  */
 export const KIROV = { ahead: [5, 10], clear: 3, wait: 20, range: 2.5, bombs: 7, every: 1, fall: 0.5, blast: 1.5, knockback: 4 } as const;
+/**
+ * Desolator tuning (#110): cells ahead of the leading tank its radiation is aimed at when its turn comes (the leading
+ * tank drives about 6 of them in the build-up, so it lands just ahead), radius in cells (stock `CellSpread=10`, halved),
+ * speed factor at the centre and seconds it lasts.
+ */
+export const DESOLATOR = { ahead: 12, radius: 5, centre: 0.25, lasts: 15 } as const;
 
 /** Hype meter tuning (#107): points per accepted interaction, grace and drain in seconds, full, the armed spell, chat-wide events a race. */
 export const HYPE = { command: 1, redemption: 2, cheer: 3, grace: 5, drain: 2, full: 30, armed: 30, calls: 5, perRace: 2 } as const;
@@ -120,6 +126,16 @@ export interface Turn {
    * frame its first bomb drops, and every tank its bombs caught.
    */
   ship: { x: number; y: number; waitUntil: number; firstDrop: number | undefined; caught: Racer[] } | undefined;
+  /** Desolator: the point (cells) its radiation lands on. */
+  patch: { x: number; y: number } | undefined;
+}
+
+/** Radiation on the course: its centre in cells and the race frames it landed and fades on. */
+export interface Radiation {
+  x: number;
+  y: number;
+  from: number;
+  until: number;
 }
 
 export interface Racer {
@@ -198,6 +214,8 @@ export interface Race {
   cheerBits: number;
   /** Cheers waiting for the next race, in order: they survive `openJoinWindow` and take the first turns after its countdown. */
   carried: Turn[];
+  /** Radiation the Desolator left on the course, until it fades. */
+  radiation: Radiation[];
 }
 
 export interface Standing {
@@ -211,7 +229,7 @@ export interface Standing {
 
 export function createRace(course: Course, grid: CellGrid, seed: number): Race {
   const bridgeGrid = 'bridge' in grid && 'bridges' in grid ? grid as BridgeGrid : undefined;
-  return { course, field: createField(grid, seed), seed, phase: 'idle', paused: false, racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions.filter((verb) => verb !== 'bridge' || (bridgeGrid && course.file.bridges.length))), cooldowns: new Map(), feed: [], feedUntil: new Map(), sounds: [], missiles: [], v3s: [], teslas: [], lastHit: undefined, lastHitBy: undefined, lastHitFrame: -1, bridgeGrid, queue: [], nextEventAt: 0, landed: undefined, settlements: [], hype: emptyHype(), chatWide: 0, chaos: new Set(CHAOS), cheerBits: 50, carried: [] };
+  return { course, field: createField(grid, seed), seed, phase: 'idle', paused: false, racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions.filter((verb) => verb !== 'bridge' || (bridgeGrid && course.file.bridges.length))), cooldowns: new Map(), feed: [], feedUntil: new Map(), sounds: [], missiles: [], v3s: [], teslas: [], lastHit: undefined, lastHitBy: undefined, lastHitFrame: -1, bridgeGrid, queue: [], nextEventAt: 0, landed: undefined, settlements: [], hype: emptyHype(), chatWide: 0, chaos: new Set(CHAOS), cheerBits: 50, carried: [], radiation: [] };
 }
 
 export function commandList(race: Race): string[] {
@@ -245,6 +263,7 @@ export function openJoinWindow(race: Race, { joinSeconds = 90, finishSeconds = 6
   race.landed = undefined;
   race.hype = emptyHype();
   race.chatWide = 0;
+  race.radiation.length = 0;
   for (const [id, bridge] of race.bridgeGrid?.bridges.entries() ?? []) {
     if (bridge.destroyed) repairBridge(race.bridgeGrid!, id);
     bridge.changedAt = undefined;
@@ -355,7 +374,7 @@ function callNuke(race: Race, line: ChatLine): ChatResult {
     // The next turn: behind only a big event already playing and nukes already waiting.
     let at = 0;
     while (race.queue[at] && (race.queue[at]!.lands !== undefined || race.queue[at]!.event === 'nuke')) at++;
-    race.queue.splice(at, 0, { event: 'nuke', viewerId: '', by: 'CHAT', reference: undefined, cheer: false, retryAt: 0, lands: undefined, picks: [], callers: [...hype.calls.values()], firstAway: undefined, ship: undefined });
+    race.queue.splice(at, 0, { event: 'nuke', viewerId: '', by: 'CHAT', reference: undefined, cheer: false, retryAt: 0, lands: undefined, picks: [], callers: [...hype.calls.values()], firstAway: undefined, ship: undefined, patch: undefined });
     race.hype = emptyHype();
     race.chatWide++;
   }
@@ -374,7 +393,7 @@ export function paid(race: Race, line: PaidLine): ChatResult {
     settle(race, line.reference, 'refunded');
     return { ok: false, reason: 'switched off' };
   }
-  const turn: Turn = { event: line.event, viewerId: line.viewerId, by: line.name, reference: cheer ? undefined : line.reference, cheer, retryAt: 0, lands: undefined, picks: [], callers: [], firstAway: undefined, ship: undefined };
+  const turn: Turn = { event: line.event, viewerId: line.viewerId, by: line.name, reference: cheer ? undefined : line.reference, cheer, retryAt: 0, lands: undefined, picks: [], callers: [], firstAway: undefined, ship: undefined, patch: undefined };
   if (cheer && !viewersRacing(race)) {
     race.carried.push(turn);
     return { ok: true, reason: 'next race' };
@@ -434,11 +453,16 @@ function playEvents(race: Race): void {
   if (due < 0) return;
   const turn = race.queue.splice(due, 1)[0]!;
   race.queue.unshift(turn);
-  const nuke = turn.event === 'nuke', kirov = turn.event === 'kirov', aim = turn.event === 'chronoSwap' ? swapPicks : leaderTarget;
+  const nuke = turn.event === 'nuke', kirov = turn.event === 'kirov', desolator = turn.event === 'desolator', aim = turn.event === 'chronoSwap' ? swapPicks : leaderTarget;
   if (turn.lands === undefined) {
     if (!aim(race, turn)) return fizzle(race);
     turn.lands = race.frame + BIG_EVENTS[turn.event].buildUp * TICK_HZ;
-    race.sounds.push({ nuke: 'nukeLaunch', chronoSwap: 'chronoSelect', kirov: 'kirovCreated' }[turn.event]);
+    race.sounds.push({ nuke: 'nukeLaunch', chronoSwap: 'chronoSelect', kirov: 'kirovCreated', desolator: 'desolatorVoice' }[turn.event]);
+    // ponytail: aimed by top speed on clear ground; a slower leading tank meets it later, a faster one is over its edge.
+    if (desolator) {
+      const { x, y } = lineAt(race.course, turn.picks[0]!.progress + DESOLATOR.ahead);
+      turn.patch = { x, y };
+    }
     if (kirov) {
       // Never so near the finish that tanks finish before coming in range: right over the leading tank if it is that near.
       const [near, far] = KIROV.ahead, lead = turn.picks[0]!.progress;
@@ -453,7 +477,11 @@ function playEvents(race: Race): void {
   } else {
     if (!aim(race, turn)) return fizzle(race);
     if (nuke) nukeImpact(race, turn);
-    else {
+    else if (desolator) {
+      race.radiation.push({ x: turn.patch!.x, y: turn.patch!.y, from: race.frame, until: race.frame + DESOLATOR.lasts * TICK_HZ });
+      race.sounds.push('desolatorDeploy');
+      post(race, `${turn.by} ▸ ${BIG_EVENTS.desolator.label} ▸ ${turn.picks[0]!.name}`);
+    } else {
       if (!chronoSwap(race, turn.picks[0]!, turn.picks[1]!)) return fizzle(race);
       race.sounds.push('chrono');
       post(race, `${turn.by} ▸ ${BIG_EVENTS[turn.event].label} ▸ ${turn.picks[0]!.name} ⇄ ${turn.picks[1]!.name}`);
@@ -787,7 +815,8 @@ function drive(race: Race) {
     r.botV3Next = !r.botV3Next;
     r.botNext = race.frame + (5 + Math.floor(random(field) * 5)) * TICK_HZ;
   }
-  for (const r of race.racers) if (r.tank && r.boostUntil <= race.frame) r.tank.speedFactor = 1;
+  race.radiation = race.radiation.filter((patch) => patch.until > race.frame);
+  for (const r of race.racers) if (r.tank) r.tank.speedFactor = (r.boostUntil > race.frame ? 1.5 : 1) * irradiated(race, r);
   for (let i = race.missiles.length - 1; i >= 0; i--) {
     const missile = race.missiles[i]!;
     if (missile.arrives > race.frame) continue;
@@ -858,6 +887,13 @@ function drive(race: Race) {
     refundQueue(race);
   }
 }
+
+/**
+ * Speed factor radiation leaves `r` at: from 1 at a patch's edge linearly down to `DESOLATOR.centre` at its centre,
+ * never 0; overlapping patches multiply. A shield ignores it.
+ */
+const irradiated = (race: Race, r: Racer) => r.shieldUntil > race.frame ? 1 : race.radiation.reduce((factor, patch) =>
+  factor * Math.min(1, DESOLATOR.centre + (1 - DESOLATOR.centre) * Math.hypot(r.tank!.x / 256 - patch.x, r.tank!.y / 256 - patch.y) / DESOLATOR.radius), 1);
 
 /** Racers in standings order. */
 const ranked = (race: Race) => [...race.racers]
