@@ -47,16 +47,15 @@ export function mountDevPanel(race: Race, params: URLSearchParams): void {
 
   $('say').onclick = () => say(`test:${$('name').value}`, $('name').value, $('text').value);
   let redemptions = 0;
-  const redeem = (event: BigEvent) => {
-    const r = paid(race, { viewerId: `test:${$('name').value}`, name: $('name').value, event, via: 'redemption', reference: `dev:${++redemptions}` });
-    logLine(`${$('name').value} redeems ${BIG_EVENTS[event].label} → ${r.ok ? 'ok' : 'no'}, ${r.reason}`);
+  /** A redemption, or a cheer when `bits` is given. */
+  const send = (event: BigEvent, bits?: number) => {
+    const name = $('name').value;
+    const r = paid(race, { viewerId: `test:${name}`, name, event, via: bits === undefined ? 'redemption' : 'cheer', bits, reference: `dev:${++redemptions}` });
+    logLine(`${name} ${bits === undefined ? `redeems ${BIG_EVENTS[event].label}` : `cheers ${bits}`} → ${r.ok ? 'ok' : 'no'}, ${r.reason}`);
   };
-  $('redeem').onclick = () => redeem('chronoSwap');
-  $('kirov').onclick = () => redeem('kirov');
-  $('cheer').onclick = () => {
-    const r = paid(race, { viewerId: `test:${$('name').value}`, name: $('name').value, event: 'chronoSwap', via: 'cheer', bits: Number($('bits').value), reference: `dev:${++redemptions}` });
-    logLine(`${$('name').value} cheers ${$('bits').value} → ${r.ok ? 'ok' : 'no'}, ${r.reason}`);
-  };
+  $('redeem').onclick = () => send('chronoSwap');
+  $('kirov').onclick = () => send('kirov');
+  $('cheer').onclick = () => send('chronoSwap', Number($('bits').value));
   // Stands in for a chat source: drains the settlements a platform would get.
   setInterval(() => {
     for (const s of race.settlements.splice(0)) logLine(`${s.reference} ${s.outcome}`);
