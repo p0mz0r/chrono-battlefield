@@ -32,6 +32,10 @@ _Avoid_: Game, match, round
 The on-stream screen between races where the operator picks the course and the race's options, then opens the join window; it remembers the last choices.
 _Avoid_: Lobby, menu, settings
 
+**Chaos options**:
+Race setup's on/off switches for the hype meter (and with it the nuke) and for each paid event, all on by default, plus the Chrono swap cheer price. Each applies from the next race; with the hype meter off, neither it nor `!nuke` appears.
+_Avoid_: Chaos meter, event settings
+
 **Join window**:
 The opening phase of a race, started by the operator, during which viewers can join as racers; it closes when its time runs out or the field is full, and nobody joins after it closes.
 _Avoid_: Lobby, registration, starting countdown
@@ -145,7 +149,7 @@ A big event that chat builds up together and then unleashes: chat fills the hype
 _Avoid_: Global event, raid
 
 **Hype meter**:
-The on-stream meter chat fills during a race for the next chat-wide event: every accepted audience interaction from a viewer adds to it, a cheer or anything else paid with money most, a redemption less, a chat command least; failed commands, plain chat lines and bots add nothing. EVA warns when it first passes half full. It drains once nobody has added for a moment, empties when a chat-wide event is set off, and is gone for the rest of the race after the second.
+The on-stream meter chat fills during a race for the next chat-wide event: every accepted audience interaction from a viewer adds to it, a cheer or anything else paid with money most, a redemption less, a chat command least; failed commands, plain chat lines and bots add nothing. EVA warns when it first passes half full. It drains once nobody has added for a moment, empties when a chat-wide event is set off, and is gone for the rest of the race after the second. The operator can switch it off in race setup's chaos options.
 _Avoid_: Hype train, chaos meter, bar
 
 **Armed**:
@@ -183,11 +187,11 @@ A viewer spending channel points on one of the game's rewards to set off an audi
 _Avoid_: Reward, purchase, chat command
 
 **Settlement**:
-The race's word back to the chat source on a redemption: fulfilled when its event lands, refunded when it fizzles, is still waiting at race end or arrives outside a race. Cheers are never settled.
+The race's word back to the chat source on a redemption: fulfilled when its event lands, refunded when it fizzles, is still waiting at race end, arrives outside a race or is for an event switched off in race setup. Cheers are never settled.
 _Avoid_: Ack, receipt
 
 **Cheer**:
-A viewer spending bits to set off an audience interaction; bits are never refunded, so a cheer's interaction cannot fail during a race. It queues ahead of waiting redemptions, and one still waiting at race end, or arriving between races, takes the first turn after the next start countdown.
+A viewer spending bits to set off an audience interaction; bits are never refunded, so a cheer's interaction cannot fail during a race. It queues ahead of waiting redemptions, and one still waiting at race end, or arriving between races, takes the first turn after the next start countdown that has its event switched on. One for a switched-off event does nothing.
 _Avoid_: Bits, donation, redemption
 
 **Command list**:

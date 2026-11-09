@@ -116,7 +116,7 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, i
   };
   const join = root.querySelector<HTMLInputElement>('[name=join]')!, finish = root.querySelector<HTMLInputElement>('[name=finish]')!;
   join.value = String(choices.joinSeconds); finish.value = String(choices.finishSeconds);
-  const fieldset = root.querySelector<HTMLFieldSetElement>('[name=verbs]')!, chaos = root.querySelector<HTMLFieldSetElement>('[name=chaos]')!;
+  const verbs = root.querySelector<HTMLFieldSetElement>('[name=verbs]')!, chaos = root.querySelector<HTMLFieldSetElement>('[name=chaos]')!;
   const bits = chaos.querySelector<HTMLInputElement>('[name=bits]')!;
   bits.value = String(choices.cheerBits);
   const toggles = (into: HTMLFieldSetElement, names: readonly string[], on: string[], text: (name: string) => string) => {
@@ -126,7 +126,7 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, i
       label.append(box, ` ${text(name)}`); into.append(label);
     }
   };
-  toggles(fieldset, VERBS, choices.enabled, (verb) => verb);
+  toggles(verbs, VERBS, choices.enabled, (verb) => verb);
   toggles(chaos, CHAOS, choices.chaos, (c) => c === 'hype' ? 'hype meter & nuke' : BIG_EVENTS[c as keyof typeof BIG_EVENTS].label.toLowerCase());
   const checked = (set: HTMLFieldSetElement) => [...set.querySelectorAll<HTMLInputElement>('input:checked')].map((box) => box.name);
   const valid = () => [choices.joinSeconds, choices.finishSeconds, choices.cheerBits].every((n) => Number.isInteger(n) && n > 0);
@@ -134,7 +134,7 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, i
     choices.course = select.value;
     choices.joinSeconds = Number(join.value);
     choices.finishSeconds = Number(finish.value);
-    choices.enabled = checked(fieldset);
+    choices.enabled = checked(verbs);
     choices.chaos = checked(chaos);
     choices.cheerBits = Number(bits.value);
     if (valid()) save();

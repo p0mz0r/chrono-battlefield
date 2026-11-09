@@ -25,7 +25,7 @@ export function mountDevPanel(race: Race, params: URLSearchParams): void {
 <b>Test chat</b><br>
 <input name="name" size="10" value="p0mz0r"> <input name="text" size="20" placeholder="!rhino"> <button name="say">Say</button><br>
 <button name="redeem">Redeem Chrono swap</button> <button name="kirov">Redeem Kirov</button><br>
-<button name="cheer">Cheer</button> <input name="bits" size="4" value="${race.cheerBits}"> bits<br>
+<button name="cheer">Cheer</button> <input name="bits" size="4" placeholder="price"> bits<br>
 <button name="fake">Add</button> <input name="n" size="2" value="${params.get('fake') ?? 5}"> fake viewers<br>
 <label><input type="checkbox" name="chaos"> chaos</label> <input name="rate" size="3" value="${params.get('chaos') ?? 3}"> msg/s, seed <input name="seed" size="4" value="${params.get('chatSeed') ?? 1}">
 <pre class="log" style="margin:4px 0 0;max-height:12em;overflow:auto;white-space:pre-wrap"></pre>`;
@@ -55,7 +55,7 @@ export function mountDevPanel(race: Race, params: URLSearchParams): void {
   };
   $('redeem').onclick = () => send('chronoSwap');
   $('kirov').onclick = () => send('kirov');
-  $('cheer').onclick = () => send('chronoSwap', Number($('bits').value));
+  $('cheer').onclick = () => send('chronoSwap', Number($('bits').value || race.cheerBits));
   // Stands in for a chat source: drains the settlements a platform would get.
   setInterval(() => {
     for (const s of race.settlements.splice(0)) logLine(`${s.reference} ${s.outcome}`);

@@ -1220,6 +1220,17 @@ describe('cheers', () => {
     expect(eventChips(race).map((c) => c.label)).toEqual(['CHRONO SWAP · Cleo · next race']);
   });
 
+  it('keeps a carried cheer waiting through a race with Chrono swap switched off', () => {
+    const race = calm();
+    endRace(race);
+    cheer(race, 'Cleo');
+    race.chaos.delete('chronoSwap');
+    openJoinWindow(race, { joinSeconds: 1 });
+    say(race, 'a', '!rhino', 'Kane');
+    untilPhase(race, 'racing');
+    expect([race.queue, eventChips(race).map((c) => c.label)]).toEqual([[], ['CHRONO SWAP · Cleo · next race']]);
+  });
+
   it('keeps a carried cheer for a real race, not an editor simulation run by bots alone', () => {
     const race = calm();
     endRace(race);

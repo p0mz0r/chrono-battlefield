@@ -48,6 +48,7 @@ export const BIG_EVENTS = { chronoSwap: { label: 'CHRONO SWAP', buildUp: 3 }, nu
 export type BigEvent = keyof typeof BIG_EVENTS;
 /** What race setup can switch off: the hype meter (and with it the nuke) and each paid event. */
 export type Chaos = 'hype' | Exclude<BigEvent, 'nuke'>;
+/** Every chaos option, all on by default. */
 export const CHAOS: Chaos[] = ['hype', ...(Object.keys(BIG_EVENTS) as BigEvent[]).filter((event): event is Exclude<BigEvent, 'nuke'> => event !== 'nuke')];
 /** Frames from one big event landing to the next one's turn. */
 const EVENT_GAP = 10 * TICK_HZ;
@@ -361,7 +362,10 @@ function callNuke(race: Race, line: ChatLine): ChatResult {
   return { ok: true, reason: `nuke ${hype.calls.size}/${HYPE.calls}` };
 }
 
-/** The paid entry: queues a redemption during a race, refunds it outside one; a cheer of exactly the price queues ahead of redemptions. */
+/**
+ * The paid entry: queues a redemption during a race, refunds it outside one or when its event is switched off; a cheer
+ * of exactly the price queues ahead of redemptions, and does nothing while Chrono swap is switched off.
+ */
 export function paid(race: Race, line: PaidLine): ChatResult {
   const cheer = line.via === 'cheer';
   if (cheer && (line.event !== 'chronoSwap' || line.bits !== race.cheerBits)) return IGNORED;
@@ -764,7 +768,10 @@ export function tickRace(race: Race): void {
   if (race.phase === 'join' && --race.timer <= 0) closeJoinWindow(race);
   else if (race.phase === 'countdown' && --race.timer <= 0) {
     race.phase = 'racing';
-    if (viewersRacing(race)) race.queue.push(...race.carried.splice(0));
+    // A cheer for an event switched off this race keeps waiting for one that has it on.
+    const due = viewersRacing(race) ? race.carried.filter((t) => t.event !== 'nuke' && race.chaos.has(t.event)) : [];
+    race.queue.push(...due);
+    race.carried = race.carried.filter((t) => !due.includes(t));
   }
   else if (race.phase === 'racing') drive(race);
 }
