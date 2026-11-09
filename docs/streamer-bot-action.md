@@ -43,3 +43,5 @@ A cheer sets off a Chrono swap only at exactly the price set in race setup.
 ## Connection
 
 The game connects to `ws://127.0.0.1:8080/` (Streamer.bot's defaults) and subscribes to `Twitch.ChatMessage`, `Twitch.RewardRedemption`, `Twitch.Cheer`, `YouTube.Message` and `Kick.ChatMessage`. A WebSocket password with "Enforce" is not supported yet. If the connection drops, the "chat offline" marker shows and the game retries after 1, 2, 4 … up to 30 seconds; settlements made meanwhile go out once it is back.
+
+Unsettled redemptions are kept in the browser's storage. If the page reloads before one is settled, the race it was for is gone, so the game refunds it once it reaches Streamer.bot again. One whose event landed just before the reload is refunded too.

@@ -13,6 +13,8 @@ export const STREAMER_BOT_URL = 'ws://127.0.0.1:8080/';
 export const SETTLE_ACTION = 'Rhino Race settle';
 /** Paid events by reward title, lower case: the operator types the titles by hand, so case and outer spaces don't matter (#102). */
 const BY_TITLE = new Map(Object.entries(REWARDS).map(([event, { title }]) => [title.toLowerCase(), event as Exclude<BigEvent, 'nuke'>]));
+/** Where unsettled redemptions survive a page reload. */
+const PENDING_KEY = 'rhino-streamerbot-redemptions';
 /** Seconds before the first reconnect, doubling to the longest. */
 const RETRY = { first: 1, longest: 30 };
 
@@ -36,8 +38,13 @@ const text = (v: unknown): v is string => typeof v === 'string' && v.length > 0 
 export function connectStreamerBot(race: Race, { url = STREAMER_BOT_URL, Socket = WebSocket as new (url: string) => Socket } = {}): ChatSource {
   // Online until the first drop: the first connection is still opening at page load.
   let socket: Socket | undefined, wait = RETRY.first, closed = false, up = true, retry: ReturnType<typeof setTimeout> | undefined;
-  /** Redemption ID to its reward, which `DoAction` hands back to Streamer.bot. */
-  const rewards = new Map<string, { id: string; title: string }>();
+  /** Unsettled redemptions: ID to its reward, which `DoAction` hands back to Streamer.bot. Kept across reloads. */
+  let rewards = new Map<string, { id: string; title: string }>();
+  try { rewards = new Map(JSON.parse(localStorage.getItem(PENDING_KEY) || '[]')); } catch { /* malformed: nothing to refund */ }
+  const save = () => localStorage.setItem(PENDING_KEY, JSON.stringify([...rewards]));
+  // Left from before a reload: the race they were for is gone, so they are refunded, as if still waiting at race end.
+  // ponytail: one whose event landed just before the reload is refunded too (its "fulfilled" never went out); rare, and in the viewer's favour.
+  for (const reference of rewards.keys()) race.settlements.push({ reference, outcome: 'refunded' });
   const open = () => socket?.readyState === 1;
   const viewer = (platform: string, user: User | null | undefined) => {
     const id = typeof user?.id === 'number' ? String(user.id) : user?.id;
@@ -63,6 +70,7 @@ export function connectStreamerBot(race: Race, { url = STREAMER_BOT_URL, Socket 
       const event = text(reward?.title) ? BY_TITLE.get(reward.title.trim().toLowerCase()) : undefined;
       if (!event || !text(id) || !text(reward?.id)) return;
       rewards.set(id, { id: reward.id, title: reward.title as string });
+      save();
       paid(race, { ...who, event, via: 'redemption', reference: id });
     }
   };
@@ -88,9 +96,9 @@ export function connectStreamerBot(race: Race, { url = STREAMER_BOT_URL, Socket 
     if (!open()) return;
     for (const { reference, outcome } of race.settlements.splice(0)) {
       const reward = rewards.get(reference);
-      // ponytail: rewards live in page memory, so a reload mid-race leaves its redemptions unsettled in Twitch's queue; persist them if that bites.
       if (!reward) continue; // another source's, such as the dev panel's
       rewards.delete(reference);
+      save();
       socket!.send(JSON.stringify({ request: 'DoAction', id: `rhino-settle-${reference}`, action: { name: SETTLE_ACTION }, args: { redemptionId: reference, rewardId: reward.id, reward: reward.title, outcome } }));
     }
   }, 250);

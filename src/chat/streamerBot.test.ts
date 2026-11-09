@@ -31,12 +31,14 @@ let race: Race;
 let source: ReturnType<typeof connectStreamerBot>;
 beforeEach(() => {
   vi.useFakeTimers();
+  const storage = new Map<string, string>();
+  vi.stubGlobal('localStorage', { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value) });
   FakeSocket.all = [];
   race = newRace();
   source = connectStreamerBot(race, { Socket: FakeSocket });
   last().open();
 });
-afterEach(() => { source.close(); vi.useRealTimers(); });
+afterEach(() => { source.close(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 const redeem = (title: string, redemptionId = 'red-1') => last().event('Twitch', 'RewardRedemption', { redemptionId, reward: { id: 'rew-1', title }, user: { id: '7', login: 'vera', name: 'Vera' } });
 
@@ -118,5 +120,23 @@ describe('Streamer.bot chat source', () => {
     expect(source.online()).toBe(true);
     vi.advanceTimersByTime(1000);
     expect(last().actions()).toMatchObject([{ redemptionId: 'red-1', outcome: 'refunded' }]);
+  });
+
+  it('refunds a redemption still unsettled when the page reloads, once the new page connects', () => {
+    last().drop();
+    redeem('Desolator', 'red-1');
+    // Reload: a new race and source, before the refund ever went out.
+    source.close();
+    race = newRace();
+    source = connectStreamerBot(race, { Socket: FakeSocket });
+    last().open();
+    vi.advanceTimersByTime(1000);
+    expect(last().actions()).toEqual([{ redemptionId: 'red-1', rewardId: 'rew-1', reward: 'Desolator', outcome: 'refunded' }]);
+    // Settled once: the next reload refunds nothing.
+    source.close();
+    source = connectStreamerBot(newRace(), { Socket: FakeSocket });
+    last().open();
+    vi.advanceTimersByTime(1000);
+    expect(last().actions()).toEqual([]);
   });
 });
