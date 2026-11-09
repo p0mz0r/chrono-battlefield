@@ -189,7 +189,7 @@ export interface Race {
   /** Chat-wide events set off this race. */
   chatWide: number;
   /** The operator's Chrono swap price in bits: only a cheer of exactly this sets one off. */
-  // ponytail: fixed at the default 50 until install setup gains the chat-source settings (#101).
+  // ponytail: fixed at the default 50 until race setup gains the bit amount (#112).
   cheerBits: number;
   /** Cheers waiting for the next race, in order: they survive `openJoinWindow` and take the first turns after its countdown. */
   carried: Turn[];
