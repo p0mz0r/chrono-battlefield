@@ -5,13 +5,13 @@ export type CameraMode = 'overview' | 'director';
 
 const esc = (value: string) => value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
-/** Fixed screen overlay: standings, phase or event banner, hype meter and event queue, commands, feed, results, and the director shot's lower third. Tank labels stay in Pixi. */
-export function mountStreamView(): (race: Race, shot?: Shot) => void {
+/** Fixed screen overlay: standings, phase or event banner, hype meter and event queue, commands, feed, results, the director shot's lower third and the "chat offline" marker. Tank labels stay in Pixi. */
+export function mountStreamView(): (race: Race, shot?: Shot, chatOffline?: boolean) => void {
   const root = document.createElement('div');
   root.id = 'stream-view';
   document.body.append(root);
   let previous = '';
-  return (race, shot) => {
+  return (race, shot, chatOffline = false) => {
     const focus = shot?.racer;
     const order = race.phase === 'results' ? race.results : standings(race);
     const byName = new Map(race.racers.map((r) => [r.name, r]));
@@ -37,6 +37,7 @@ export function mountStreamView(): (race: Race, shot?: Shot) => void {
       ${race.phase === 'racing' || chips.length ? `<div class="queue">${race.phase === 'racing' ? hype : ''}${chips.map((c) => `<span${c.playing ? ' class="playing"' : ''}>${esc(c.label)}</span>`).join('')}</div>` : ''}
       ${commands.length ? `<div class="commands">${commands.map(esc).join(' &nbsp; ')}</div>` : ''}
       ${race.phase === 'racing' && race.feed.length ? `<div class="feed">${race.feed.map((line) => `<div>${esc(line)}</div>`).join('')}</div>` : ''}
+      ${chatOffline ? '<div class="chat-offline">CHAT OFFLINE</div>' : ''}
       ${resultRows}`;
     if (html !== previous) { root.innerHTML = html; previous = html; }
   };

@@ -1,3 +1,5 @@
+import { SETTLE_ACTION } from '../chat/streamerBot.js';
+import { REWARDS } from '../race/race.js';
 import { clearUploads, installFiles, savedPath, storeUploads, uploadedNames, useFolder } from './read.js';
 
 // Install setup, used through OBS Interact. Any change reloads the page, which reopens the install.
@@ -14,11 +16,27 @@ dialog.innerHTML = `
   <button value="use">Use this folder</button>
 </form>
 <p class="stored"></p>
+<p><label>Chat source <select name="chat"><option value="">None (chronoChat events only)</option><option value="streamerbot">Streamer.bot (ws://127.0.0.1:8080)</option></select></label></p>
+<div class="rewards">
+  <p>In Streamer.bot, create these rewards with its Create Reward button (rewards made in Twitch's dashboard can't be refunded), then import the action <b>${SETTLE_ACTION}</b>. Click a field to select it for copying.</p>
+  ${Object.values(REWARDS).map(({ title, prompt }) => `<p><input readonly size="14" value="${title}"> <input readonly size="60" value="${prompt}"></p>`).join('')}
+</div>
 <p><button class="clear">Clear stored files</button> <button class="close">Close</button></p>`;
 dialog.style.cssText = 'font:20px/1.5 sans-serif;background:#111;color:#ddd;border:1px solid #666;max-width:46em';
 const $ = <T extends Element>(sel: string) => dialog.querySelector<T>(sel)!;
 const pathInput = $<HTMLInputElement>('input[name=path]');
 const fileInput = $<HTMLInputElement>('input[type=file]');
+const chatInput = $<HTMLSelectElement>('select[name=chat]');
+const CHAT_KEY = 'rhino-chat-source';
+for (const input of dialog.querySelectorAll<HTMLInputElement>('.rewards input')) input.addEventListener('focus', () => input.select());
+
+/** The chat source picked in setup (ADR 0008): exactly one, or none (only `chronoChat` page events). */
+export const chatSource = (): '' | 'streamerbot' => localStorage.getItem(CHAT_KEY) === 'streamerbot' ? 'streamerbot' : '';
+
+chatInput.addEventListener('change', () => {
+  localStorage.setItem(CHAT_KEY, chatInput.value);
+  location.reload();
+});
 
 function report(problems: string[]) {
   $('.problems').replaceChildren(...problems.map((p) => Object.assign(document.createElement('li'), { textContent: p })));
@@ -58,6 +76,8 @@ $('.close').addEventListener('click', () => dialog.close());
 export function showSetup(problems: string[] = []) {
   if (!dialog.isConnected) document.body.append(dialog);
   pathInput.value = savedPath();
+  chatInput.value = chatSource();
+  $<HTMLElement>('.rewards').hidden = chatInput.value !== 'streamerbot';
   report(problems);
   void showStored();
   if (!dialog.open) dialog.showModal();

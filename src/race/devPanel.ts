@@ -17,7 +17,8 @@ function rng(seed: number) {
   };
 }
 
-export function mountDevPanel(race: Race, params: URLSearchParams): void {
+/** `drainSettlements`: no chat source is connected to take the race's settlements, so the panel logs them. */
+export function mountDevPanel(race: Race, params: URLSearchParams, drainSettlements: boolean): void {
   const panel = document.createElement('div');
   panel.id = 'dev-panel';
   panel.style.cssText = 'position:fixed;right:8px;bottom:8px;width:330px;padding:8px;background:#000d;color:#ccc;font:12px/1.5 monospace;border:1px solid #444';
@@ -58,7 +59,7 @@ export function mountDevPanel(race: Race, params: URLSearchParams): void {
   $('desolator').onclick = () => send('desolator');
   $('cheer').onclick = () => send('chronoSwap', Number($('bits').value || race.cheerBits));
   // Stands in for a chat source: drains the settlements a platform would get.
-  setInterval(() => {
+  if (drainSettlements) setInterval(() => {
     for (const s of race.settlements.splice(0)) logLine(`${s.reference} ${s.outcome}`);
   }, 250);
   $('text').onkeydown = (e) => { if (e.key === 'Enter') $('say').click(); };

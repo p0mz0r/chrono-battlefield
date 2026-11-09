@@ -46,6 +46,15 @@ export interface ChatResult {
 // ponytail: the Kirov's Infinity build-up keeps it playing until `kirovRun` sets its real landing; a per-event phase if more events wait like this.
 export const BIG_EVENTS = { chronoSwap: { label: 'CHRONO SWAP', buildUp: 3 }, nuke: { label: 'NUKE', buildUp: 3 }, kirov: { label: 'KIROV', buildUp: Infinity }, desolator: { label: 'DESOLATOR', buildUp: 2 } } as const;
 export type BigEvent = keyof typeof BIG_EVENTS;
+/**
+ * The channel-point reward each paid event is redeemed with (#102): its title (ASCII, at most 45 characters, viewer-facing
+ * only, so Chrono swap's may say Chronosphere) and the prompt viewers see (at most 200).
+ */
+export const REWARDS: Record<Exclude<BigEvent, 'nuke'>, { title: string; prompt: string }> = {
+  kirov: { title: 'Kirov', prompt: 'A Kirov airship hovers ahead of the leading tank and bombs every tank that comes near: stunned and knocked back. Shields block it. Refunded if no tank comes near.' },
+  desolator: { title: 'Desolator', prompt: 'Radiation lands on the track just ahead of the leading tank for about 15 s and slows every tank in it, most at its centre. Shields ignore it.' },
+  chronoSwap: { title: 'Chronosphere', prompt: 'Swaps two random tanks still racing: one from the front half of the standings, one from the back half. Shielded tanks are safe.' },
+};
 /** What race setup can switch off: the hype meter (and with it the nuke) and each paid event. */
 export type Chaos = 'hype' | Exclude<BigEvent, 'nuke'>;
 /** Every chaos option, all on by default. */

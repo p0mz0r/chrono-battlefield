@@ -1,7 +1,8 @@
 import { Application, Container, Graphics, Rectangle, Sprite, Text, Texture } from 'pixi.js';
 import type { CellGrid } from './battlefield/grid.js';
 import { openInstall, readInstall } from './install/read.js';
-import { bindSetupKey, showSetup } from './install/setup.js';
+import { bindSetupKey, chatSource, showSetup } from './install/setup.js';
+import { connectStreamerBot, type ChatSource } from './chat/streamerBot.js';
 import { LEPTONS_PER_CELL, spotLevel, tankCell, TICK_HZ, type Cell } from './movement/index.js';
 import { loadCourse as loadCourseArt, type Sprite as CachedSprite } from './load.js';
 import { loadSounds } from './audio.js';
@@ -290,6 +291,7 @@ async function main() {
   const zoom = Number(params.get('zoom')) || (focus ? 1 : 0);
   let cameraMode: CameraMode = 'overview';
   const drawOverlay = edit ? undefined : mountStreamView();
+  let chatLink: ChatSource | undefined;
   if (edit) world.scale.set(Math.min(app.screen.width / terrain.width, app.screen.height / terrain.height));
   const bounds = [...course.line, ...[...course.forks.values()].flatMap((fork) => fork.line)]
     .map((point) => toScreen(point.x, point.y, level(Math.floor(point.x), Math.floor(point.y))));
@@ -489,7 +491,7 @@ async function main() {
       arcs(top.x, top.y, 3 * 30 * Math.SQRT2, 8, 0xffffff);
     }
     for (let i = fxUsed; i < fx.children.length; i++) fx.children[i]!.visible = false;
-    drawOverlay?.(race, shot);
+    drawOverlay?.(race, shot, chatLink?.online() === false);
     hud.textContent = hudText(race);
     // For headless checks.
     Object.assign(document.body.dataset, {
@@ -508,12 +510,14 @@ async function main() {
   if (edit) (await import('./race/editor.js')).mountEditor(app, world, grid, mapBytes, file!, toScreen, params.has('map') ? '' : Object.entries(COURSES).find(([, c]) => c === file)![0].replace(/^.*\/|\.json$/g, ''), race);
   else {
     mountOperator(race, courses, imported, Object.entries(courses).find(([, candidate]) => candidate === file)?.[0] ?? '', (mode) => { cameraMode = mode; }, sounds.mute);
-    // Chat from outside the page (e.g. Streamer.bot via obs-websocket obs-browser emit_event): `chronoChat` with { viewerId, name, text }.
-    addEventListener('chronoChat', (event) => {
+    if (chatSource() === 'streamerbot') chatLink = connectStreamerBot(race);
+    // The fallback when no chat source is picked, so no line arrives twice: chat from outside the page (e.g. Streamer.bot
+    // via obs-websocket obs-browser emit_event), `chronoChat` with { viewerId, name, text }.
+    if (!chatLink) addEventListener('chronoChat', (event) => {
       const { viewerId, name, text } = (event as CustomEvent).detail ?? {};
       if ([viewerId, name, text].every((v) => typeof v === 'string' && v.length <= 500)) chat(race, { viewerId, name, text });
     });
-    if (import.meta.env.DEV) (await import('./race/devPanel.js')).mountDevPanel(race, params);
+    if (import.meta.env.DEV) (await import('./race/devPanel.js')).mountDevPanel(race, params, !chatLink);
   }
   document.body.dataset.ready = String(terrain.missing === 0);
 }
