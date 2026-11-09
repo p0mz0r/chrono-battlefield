@@ -64,18 +64,21 @@ describe('Streamer.bot chat source', () => {
   });
 
   it('settles a redemption by its reward title through DoAction, and ignores unknown titles', () => {
-    redeem('Kirov airship', 'red-1');
+    redeem('Kirov', 'red-1');
     redeem('Hydrate!', 'red-2');
+    redeem('Kirov airship', 'red-3');
     vi.advanceTimersByTime(1000);
     // Outside a race, so refunded straight away.
-    expect(last().actions()).toEqual([{ redemptionId: 'red-1', rewardId: 'rew-1', reward: 'Kirov airship', outcome: 'refunded' }]);
+    expect(last().actions()).toEqual([{ redemptionId: 'red-1', rewardId: 'rew-1', reward: 'Kirov', outcome: 'refunded' }]);
     expect(last().sent.find((m) => m.request === 'DoAction')).toMatchObject({ action: { name: 'Rhino Race settle' } });
   });
 
-  it('matches reward titles regardless of case and spacing', () => {
-    redeem('  chrono   SWAP ');
+  it('matches reward titles ignoring case and outer spaces, but not inner spacing', () => {
+    redeem('  CHRONOsphere ', 'red-1');
+    redeem(' desolator', 'red-2');
+    redeem('Chrono sphere', 'red-3');
     vi.advanceTimersByTime(1000);
-    expect(last().actions()).toHaveLength(1);
+    expect(last().actions()).toMatchObject([{ redemptionId: 'red-1' }, { redemptionId: 'red-2' }]);
   });
 
   it('turns a cheer of exactly the price into a Chrono swap and ignores any other amount', () => {

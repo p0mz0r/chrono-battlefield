@@ -9,7 +9,7 @@ On the Streamer.bot chat source ([ADR 0008](adr/0008-streamer-bot-or-twitch-dire
   "request": "DoAction",
   "id": "rhino-settle-<redemptionId>",
   "action": { "name": "Rhino Race settle" },
-  "args": { "redemptionId": "…", "rewardId": "…", "reward": "Kirov airship", "outcome": "fulfilled" }
+  "args": { "redemptionId": "…", "rewardId": "…", "reward": "Kirov", "outcome": "fulfilled" }
 }
 ```
 
@@ -28,13 +28,15 @@ Cheers are never settled, and YouTube and Kick paid events are ignored.
 
 ## Reward titles
 
-A redemption reaches the game only if its reward title is one of these, ignoring case and extra spaces; any other title is ignored and never settled. The titles are placeholders until [#102](https://github.com/p0mz0r/chrono-battlefield/issues/102) fixes them.
+Decided in [#102](https://github.com/p0mz0r/chrono-battlefield/issues/102) ([research](research/channel-point-reward-titles.md)); the strings live in `REWARDS` in `src/race/race.ts`, and install setup (`F2`) lists them for copying when Streamer.bot is picked. The operator must create the rewards with Streamer.bot's Create Reward button, since only rewards Streamer.bot created can be fulfilled or refunded.
 
-| Title | Paid event |
-|---|---|
-| Kirov airship | Kirov airship |
-| Desolator | Desolator |
-| Chrono swap | Chrono swap |
+A redemption reaches the game only if its reward title matches one of these after trimming and ignoring case; inner spacing must match exactly. Any other title is ignored: no settlement, no feed line, no hype.
+
+| Title | Paid event | Prompt |
+|---|---|---|
+| Kirov | Kirov airship | A Kirov airship hovers ahead of the leading tank and bombs every tank that comes near: stunned and knocked back. Shields block it. Refunded if no tank comes near. |
+| Desolator | Desolator | Radiation lands on the track just ahead of the leading tank for about 15 s and slows every tank in it, most at its centre. Shields ignore it. |
+| Chronosphere | Chrono swap | Swaps two random tanks still racing: one from the front half of the standings, one from the back half. Shielded tanks are safe. |
 
 A cheer sets off a Chrono swap only at exactly the price set in race setup.
 

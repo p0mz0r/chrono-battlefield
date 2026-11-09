@@ -1,4 +1,4 @@
-import { chat, paid, type BigEvent, type Race } from '../race/race.js';
+import { chat, paid, REWARDS, type BigEvent, type Race } from '../race/race.js';
 
 /** A chat source (#101): platform messages in as the race's chat and paid calls, its settlements out, online or not. */
 export interface ChatSource {
@@ -11,9 +11,8 @@ export interface ChatSource {
 export const STREAMER_BOT_URL = 'ws://127.0.0.1:8080/';
 /** The one action the operator imports; every settlement is a `DoAction` on it (docs/streamer-bot-action.md). */
 export const SETTLE_ACTION = 'Rhino Race settle';
-// ponytail: placeholder titles until #102 settles them; one place to change.
-/** The reward title (lower case, single spaces) each paid event is redeemed under. */
-export const REWARD_TITLES: Record<string, Exclude<BigEvent, 'nuke'>> = { 'kirov airship': 'kirov', desolator: 'desolator', 'chrono swap': 'chronoSwap' };
+/** Paid events by reward title, lower case: the operator types the titles by hand, so case and outer spaces don't matter (#102). */
+const BY_TITLE = new Map(Object.entries(REWARDS).map(([event, { title }]) => [title.toLowerCase(), event as Exclude<BigEvent, 'nuke'>]));
 /** Seconds before the first reconnect, doubling to the longest. */
 const RETRY = { first: 1, longest: 30 };
 
@@ -61,7 +60,7 @@ export function connectStreamerBot(race: Race, { url = STREAMER_BOT_URL, Socket 
     if (type === 'Cheer' && typeof data.bits === 'number') paid(race, { ...who, event: 'chronoSwap', via: 'cheer', bits: data.bits, reference: '' });
     if (type === 'RewardRedemption') {
       const reward = data.reward as { id?: unknown; title?: unknown } | null, id = data.redemptionId;
-      const event = text(reward?.title) ? REWARD_TITLES[reward.title.trim().replace(/\s+/g, ' ').toLowerCase()] : undefined;
+      const event = text(reward?.title) ? BY_TITLE.get(reward.title.trim().toLowerCase()) : undefined;
       if (!event || !text(id) || !text(reward?.id)) return;
       rewards.set(id, { id: reward.id, title: reward.title as string });
       paid(race, { ...who, event, via: 'redemption', reference: id });
