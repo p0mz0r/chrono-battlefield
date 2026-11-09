@@ -75,6 +75,13 @@ describe('Streamer.bot chat source', () => {
     expect(last().sent.find((m) => m.request === 'DoAction')).toMatchObject({ action: { name: 'Rhino Race settle' } });
   });
 
+  it('settles a redemption in the shape Streamer.bot 1.0.7 sends it: ID in `id`, viewer in flat user_ fields', () => {
+    last().event('Twitch', 'RewardRedemption', { id: '427b1584', user_id: '427115971', user_login: 'p0mz0r', user_name: 'p0mz0r', user_input: '', status: 'unfulfilled',
+      reward: { id: 'c8a55d1a', title: 'Chronosphere', cost: 1, prompt: '' }, is_test: false });
+    vi.advanceTimersByTime(1000);
+    expect(last().actions()).toEqual([{ redemptionId: '427b1584', rewardId: 'c8a55d1a', reward: 'Chronosphere', outcome: 'refunded' }]);
+  });
+
   it('matches reward titles ignoring case and outer spaces, but not inner spacing', () => {
     redeem('  CHRONOsphere ', 'red-1');
     redeem(' desolator', 'red-2');

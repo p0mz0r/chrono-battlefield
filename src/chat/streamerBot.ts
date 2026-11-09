@@ -56,7 +56,9 @@ export function connectStreamerBot(race: Race, { url = STREAMER_BOT_URL, Socket 
     try { message = JSON.parse(raw); } catch { return; }
     const { source = '', type = '' } = message.event ?? {}, data = message.data ?? {};
     // An anonymous cheer still spends bits, so it still counts.
-    const who = viewer(source, data.user as User) ?? (source === 'Twitch' && type === 'Cheer' ? { viewerId: 'twitch:anonymous', name: 'Anonymous' } : undefined);
+    // Chat events carry a `user` object; Streamer.bot 1.0.7's redemptions carry flat `user_id`/`user_name` instead.
+    const user = (data.user ?? (data.user_id === undefined ? undefined : { id: data.user_id, name: data.user_name })) as User | undefined;
+    const who = viewer(source, user) ?? (source === 'Twitch' && type === 'Cheer' ? { viewerId: 'twitch:anonymous', name: 'Anonymous' } : undefined);
     if (!who) return;
     // Twitch and Kick chat carry `text`, YouTube's `message`.
     if (type === 'ChatMessage' || (source === 'YouTube' && type === 'Message')) {
@@ -66,7 +68,7 @@ export function connectStreamerBot(race: Race, { url = STREAMER_BOT_URL, Socket 
     if (source !== 'Twitch') return; // YouTube and Kick paid events wait for a later ticket
     if (type === 'Cheer' && typeof data.bits === 'number') paid(race, { ...who, event: 'chronoSwap', via: 'cheer', bits: data.bits, reference: '' });
     if (type === 'RewardRedemption') {
-      const reward = data.reward as { id?: unknown; title?: unknown } | null, id = data.redemptionId;
+      const reward = data.reward as { id?: unknown; title?: unknown } | null, id = data.redemptionId ?? data.id;
       const event = text(reward?.title) ? BY_TITLE.get(reward.title.trim().toLowerCase()) : undefined;
       if (!event || !text(id) || !text(reward?.id)) return;
       rewards.set(id, { id: reward.id, title: reward.title as string });

@@ -1,3 +1,4 @@
+import settleImport from '../chat/settleAction.sb?raw';
 import { SETTLE_ACTION } from '../chat/streamerBot.js';
 import { REWARDS } from '../race/race.js';
 import { clearUploads, installFiles, savedPath, storeUploads, uploadedNames, useFolder } from './read.js';
@@ -18,8 +19,9 @@ dialog.innerHTML = `
 <p class="stored"></p>
 <p><label>Chat source <select name="chat"><option value="">None (chronoChat events only)</option><option value="streamerbot">Streamer.bot (ws://127.0.0.1:8080)</option></select></label></p>
 <div class="rewards">
-  <p>In Streamer.bot, create these rewards with its Create Reward button (rewards made in Twitch's dashboard can't be refunded), then import the action <b>${SETTLE_ACTION}</b>. Click a field to select it for copying.</p>
+  <p>In Streamer.bot, create these rewards with its Create Reward button (rewards made in Twitch's dashboard can't be refunded), then import the action <b>${SETTLE_ACTION}</b> (Import, paste the string below). Click a field to select it for copying.</p>
   ${Object.values(REWARDS).map(({ title, prompt }) => `<p><input readonly size="14" value="${title}"> <input readonly size="60" value="${prompt}"></p>`).join('')}
+  <p><input readonly size="77" value="${settleImport.trim()}"></p>
 </div>
 <p><button class="clear">Clear stored files</button> <button class="close">Close</button></p>`;
 dialog.style.cssText = 'font:20px/1.5 sans-serif;background:#111;color:#ddd;border:1px solid #666;max-width:46em';
