@@ -26,6 +26,10 @@ The action should mark the redemption fulfilled (C# `TwitchRedemptionFulfill`, o
 
 Cheers are never settled, and YouTube and Kick paid events are ignored.
 
+## The shipped action
+
+The action is one Execute C# Code sub-action, with no trigger, in `src/chat/settleAction.cs`. Its import string, `src/chat/settleAction.sb`, is built from that file by `node tools/streamer-bot-action.mjs`; rerun it after any change to the C#, and a test fails until you do. Install setup (`F2`) shows the string for copying, and the operator pastes it into Streamer.bot's Import. A refusal from Twitch, or an unknown `outcome`, is logged as a warning in Streamer.bot's log.
+
 ## Reward titles
 
 Decided in [#102](https://github.com/p0mz0r/chrono-battlefield/issues/102) ([research](research/channel-point-reward-titles.md)); the strings live in `REWARDS` in `src/race/race.ts`, and install setup (`F2`) lists them for copying when Streamer.bot is picked. The operator must create the rewards with Streamer.bot's Create Reward button, since only rewards Streamer.bot created can be fulfilled or refunded.
