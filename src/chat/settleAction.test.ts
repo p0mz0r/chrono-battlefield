@@ -11,7 +11,7 @@ describe('Streamer.bot settle action import', () => {
     const { actions } = JSON.parse(gunzipSync(bytes.subarray(4)).toString()).data;
     expect(actions).toHaveLength(1);
     expect(actions[0]).toMatchObject({ name: SETTLE_ACTION, enabled: true, triggers: [] });
-    expect(actions[0].subActions.map((s: { type: number }) => s.type)).toEqual([99999]);
+    expect(actions[0].subActions.map((s: { type: number }) => s.type)).toEqual([99999]); // Execute C# Code
     const code = Buffer.from(actions[0].subActions[0].byteCode, 'base64').toString();
     expect(code.replaceAll('\r\n', '\n')).toBe(readFileSync('src/chat/settleAction.cs', 'utf8').replaceAll('\r\n', '\n'));
   });

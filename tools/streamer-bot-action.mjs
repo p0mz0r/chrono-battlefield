@@ -1,6 +1,7 @@
 // Builds the Streamer.bot import string for the settle action (#114) from src/chat/settleAction.cs:
 // "SBAE" + gzip(JSON), base64, the layout Streamer.bot 1.0.7's own exports use. Fixed ids keep the output stable.
 // Run after editing the C#: node tools/streamer-bot-action.mjs
+// ponytail: layout copied from a 1.0.7 export, not documented; if a newer Streamer.bot rejects it, re-export from the app and copy its fields here.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 
