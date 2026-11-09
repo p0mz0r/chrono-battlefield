@@ -675,6 +675,14 @@ describe('paid events', () => {
     expect(Math.hypot(ra.tank!.x - at.get(b!)!.x, ra.tank!.y - at.get(b!)!.y) / 256).toBeLessThan(3);
   });
 
+  it('refunds a redemption for a switched-off event straight away', () => {
+    const race = calm();
+    race.chaos.delete('kirov');
+    expect(paid(race, { viewerId: 'v', name: 'Vera', event: 'kirov', via: 'redemption', reference: 'r1' })).toEqual({ ok: false, reason: 'switched off' });
+    expect([race.queue, race.settlements, race.hype.points]).toEqual([[], [{ reference: 'r1', outcome: 'refunded' }], 0]);
+    expect(redeem(race, 'w', 'Wes', 'r2')).toEqual({ ok: true, reason: 'queued' });
+  });
+
   it('plays one big event at a time in arrival order, 10 s apart', () => {
     const race = calm();
     redeem(race, 'v', 'Vera', 'r1');
@@ -990,6 +998,16 @@ describe('hype meter', () => {
     expect(race.hype.points).toBe(3);
   });
 
+  it('never shows or fills when switched off, so !nuke never appears', () => {
+    const race = calm();
+    race.chaos.delete('hype');
+    expect(hypeLive(race)).toBe(false);
+    for (let i = 0; i < 15; i++) redeem(race, `v${i}`);
+    expect(race.hype.points).toBe(0);
+    expect(commandList(race)).not.toContain('!nuke');
+    expect(chat(race, { viewerId: 'v0', name: 'v0', text: '!nuke' }).ok).toBe(false);
+  });
+
   it('drains 1 point per 2 s once nobody has added for 5 s', () => {
     const race = calm();
     for (const v of ['a', 'b', 'c']) say(race, v, '!boost');
@@ -1101,6 +1119,20 @@ describe('cheers', () => {
     ticks(race, 3 * TICK_HZ + 1);
     expect(race.feed.at(-1)).toMatch(/^v ▸ CHRONO SWAP ▸ \S+ ⇄ \S+$/);
     expect(race.settlements).toEqual([]); // never settled
+  });
+
+  it('takes its price from race setup', () => {
+    const race = calm();
+    race.cheerBits = 100;
+    expect(cheer(race, 'v').ok).toBe(false);
+    expect(cheer(race, 'v', 100)).toEqual({ ok: true, reason: 'queued' });
+  });
+
+  it('does nothing when Chrono swap is switched off', () => {
+    const race = calm();
+    race.chaos.delete('chronoSwap');
+    expect(cheer(race, 'v').ok).toBe(false);
+    expect([race.queue, race.carried, race.settlements]).toEqual([[], [], []]);
   });
 
   it('queues ahead of waiting redemptions in arrival order, behind the one playing', () => {

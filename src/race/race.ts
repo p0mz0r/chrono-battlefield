@@ -46,6 +46,9 @@ export interface ChatResult {
 // ponytail: the Kirov's Infinity build-up keeps it playing until `kirovRun` sets its real landing; a per-event phase if more events wait like this.
 export const BIG_EVENTS = { chronoSwap: { label: 'CHRONO SWAP', buildUp: 3 }, nuke: { label: 'NUKE', buildUp: 3 }, kirov: { label: 'KIROV', buildUp: Infinity } } as const;
 export type BigEvent = keyof typeof BIG_EVENTS;
+/** What race setup can switch off: the hype meter (and with it the nuke) and each paid event. */
+export type Chaos = 'hype' | Exclude<BigEvent, 'nuke'>;
+export const CHAOS: Chaos[] = ['hype', ...(Object.keys(BIG_EVENTS) as BigEvent[]).filter((event): event is Exclude<BigEvent, 'nuke'> => event !== 'nuke')];
 /** Frames from one big event landing to the next one's turn. */
 const EVENT_GAP = 10 * TICK_HZ;
 /** Frames a cheer-paid Chrono swap with no valid pair waits before trying again. */
@@ -188,8 +191,9 @@ export interface Race {
   hype: Hype;
   /** Chat-wide events set off this race. */
   chatWide: number;
+  /** The hype meter and paid events switched on for this race; setup can select a subset. */
+  chaos: Set<Chaos>;
   /** The operator's Chrono swap price in bits: only a cheer of exactly this sets one off. */
-  // ponytail: fixed at the default 50 until race setup gains the bit amount (#112).
   cheerBits: number;
   /** Cheers waiting for the next race, in order: they survive `openJoinWindow` and take the first turns after its countdown. */
   carried: Turn[];
@@ -206,7 +210,7 @@ export interface Standing {
 
 export function createRace(course: Course, grid: CellGrid, seed: number): Race {
   const bridgeGrid = 'bridge' in grid && 'bridges' in grid ? grid as BridgeGrid : undefined;
-  return { course, field: createField(grid, seed), seed, phase: 'idle', paused: false, racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions.filter((verb) => verb !== 'bridge' || (bridgeGrid && course.file.bridges.length))), cooldowns: new Map(), feed: [], feedUntil: new Map(), sounds: [], missiles: [], v3s: [], teslas: [], lastHit: undefined, lastHitBy: undefined, lastHitFrame: -1, bridgeGrid, queue: [], nextEventAt: 0, landed: undefined, settlements: [], hype: emptyHype(), chatWide: 0, cheerBits: 50, carried: [] };
+  return { course, field: createField(grid, seed), seed, phase: 'idle', paused: false, racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions.filter((verb) => verb !== 'bridge' || (bridgeGrid && course.file.bridges.length))), cooldowns: new Map(), feed: [], feedUntil: new Map(), sounds: [], missiles: [], v3s: [], teslas: [], lastHit: undefined, lastHitBy: undefined, lastHitFrame: -1, bridgeGrid, queue: [], nextEventAt: 0, landed: undefined, settlements: [], hype: emptyHype(), chatWide: 0, chaos: new Set(CHAOS), cheerBits: 50, carried: [] };
 }
 
 export function commandList(race: Race): string[] {
@@ -361,6 +365,11 @@ function callNuke(race: Race, line: ChatLine): ChatResult {
 export function paid(race: Race, line: PaidLine): ChatResult {
   const cheer = line.via === 'cheer';
   if (cheer && (line.event !== 'chronoSwap' || line.bits !== race.cheerBits)) return IGNORED;
+  if (line.event === 'nuke' || !race.chaos.has(line.event)) {
+    if (cheer) return IGNORED;
+    settle(race, line.reference, 'refunded');
+    return { ok: false, reason: 'switched off' };
+  }
   const turn: Turn = { event: line.event, viewerId: line.viewerId, by: line.name, reference: cheer ? undefined : line.reference, cheer, retryAt: 0, lands: undefined, picks: [], callers: [], firstAway: undefined, ship: undefined };
   if (cheer && !viewersRacing(race)) {
     race.carried.push(turn);
@@ -408,7 +417,7 @@ function drainHype(race: Race): void {
 }
 
 /** The hype meter is on screen: gone for the rest of the race once its last chat-wide event is set off. */
-export const hypeLive = (race: Race) => race.chatWide < HYPE.perRace;
+export const hypeLive = (race: Race) => race.chaos.has('hype') && race.chatWide < HYPE.perRace;
 
 /** The hype meter is armed: `!nuke` counts. */
 export const armed = (race: Race) => race.phase === 'racing' && race.hype.armedUntil !== undefined;

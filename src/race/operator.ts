@@ -1,7 +1,7 @@
 import { readInstall } from '../install/read.js';
 import type { CourseFile } from './course.js';
 import { readCourseFile, removeImported, saveImported, type ImportedCourse } from './courseFile.js';
-import { endRace, openJoinWindow, type Race } from './race.js';
+import { BIG_EVENTS, CHAOS, endRace, openJoinWindow, type Race } from './race.js';
 import type { CameraMode } from './view.js';
 
 const KEY = 'rhino-race-setup';
@@ -11,6 +11,10 @@ export interface OperatorChoices {
   joinSeconds: number;
   finishSeconds: number;
   enabled: string[];
+  /** Hype meter and paid events switched on. */
+  chaos: string[];
+  /** Chrono swap cheer price. */
+  cheerBits: number;
   camera: CameraMode;
 }
 
@@ -22,6 +26,8 @@ export function readChoices(): OperatorChoices {
     joinSeconds: Number.isInteger(saved.joinSeconds) && saved.joinSeconds! > 0 ? saved.joinSeconds! : 90,
     finishSeconds: Number.isInteger(saved.finishSeconds) && saved.finishSeconds! > 0 ? saved.finishSeconds! : 60,
     enabled: Array.isArray(saved.enabled) ? saved.enabled.filter((v): v is string => typeof v === 'string' && VERBS.includes(v as typeof VERBS[number])) : [...VERBS],
+    chaos: Array.isArray(saved.chaos) ? saved.chaos.filter((c): c is string => typeof c === 'string' && CHAOS.includes(c as typeof CHAOS[number])) : [...CHAOS],
+    cheerBits: Number.isInteger(saved.cheerBits) && saved.cheerBits! > 0 ? saved.cheerBits! : 50,
     camera: saved.camera === 'director' ? 'director' : 'overview',
   };
 }
@@ -60,7 +66,7 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, i
   const root = document.createElement('section');
   root.id = 'race-setup';
   root.hidden = true;
-  root.innerHTML = `<div class="setup"><h1>RACE SETUP</h1><label>Course <select name="course"></select></label><button type="button" name="import">Import courses…</button><label>Join window <input name="join" type="number" min="1" step="1"> s</label><label>Finish timer <input name="finish" type="number" min="1" step="1"> s</label><fieldset><legend>Audience interactions</legend></fieldset><p>Keys: S setup · Enter start · P pause · E E end · C camera · M mute · F2 install</p></div>
+  root.innerHTML = `<div class="setup"><h1>RACE SETUP</h1><label>Course <select name="course"></select></label><button type="button" name="import">Import courses…</button><label>Join window <input name="join" type="number" min="1" step="1"> s</label><label>Finish timer <input name="finish" type="number" min="1" step="1"> s</label><fieldset name="verbs"><legend>Audience interactions</legend></fieldset><fieldset name="chaos"><legend>Chaos</legend><label>Chrono swap cheer <input name="bits" type="number" min="1" step="1"> bits</label></fieldset><p>Keys: S setup · Enter start · P pause · E E end · C camera · M mute · F2 install</p></div>
     <div class="courses" hidden><h1>COURSES</h1><label>Import course files (.rhino-course.json) <input name="files" type="file" multiple accept=".json"></label>
     <div class="messages" role="status"></div><ul></ul><button type="button" name="back">Back to race setup</button></div>`;
   document.body.append(root);
@@ -110,24 +116,34 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, i
   };
   const join = root.querySelector<HTMLInputElement>('[name=join]')!, finish = root.querySelector<HTMLInputElement>('[name=finish]')!;
   join.value = String(choices.joinSeconds); finish.value = String(choices.finishSeconds);
-  const fieldset = root.querySelector('fieldset')!;
-  for (const verb of VERBS) {
-    const label = document.createElement('label'), box = document.createElement('input');
-    box.type = 'checkbox'; box.name = verb; box.checked = choices.enabled.includes(verb);
-    label.append(box, ` ${verb}`); fieldset.append(label);
-  }
+  const fieldset = root.querySelector<HTMLFieldSetElement>('[name=verbs]')!, chaos = root.querySelector<HTMLFieldSetElement>('[name=chaos]')!;
+  const bits = chaos.querySelector<HTMLInputElement>('[name=bits]')!;
+  bits.value = String(choices.cheerBits);
+  const toggles = (into: HTMLFieldSetElement, names: readonly string[], on: string[], text: (name: string) => string) => {
+    for (const name of names) {
+      const label = document.createElement('label'), box = document.createElement('input');
+      box.type = 'checkbox'; box.name = name; box.checked = on.includes(name);
+      label.append(box, ` ${text(name)}`); into.append(label);
+    }
+  };
+  toggles(fieldset, VERBS, choices.enabled, (verb) => verb);
+  toggles(chaos, CHAOS, choices.chaos, (c) => c === 'hype' ? 'hype meter & nuke' : BIG_EVENTS[c as keyof typeof BIG_EVENTS].label.toLowerCase());
+  const checked = (set: HTMLFieldSetElement) => [...set.querySelectorAll<HTMLInputElement>('input:checked')].map((box) => box.name);
+  const valid = () => [choices.joinSeconds, choices.finishSeconds, choices.cheerBits].every((n) => Number.isInteger(n) && n > 0);
   const update = () => {
     choices.course = select.value;
     choices.joinSeconds = Number(join.value);
     choices.finishSeconds = Number(finish.value);
-    choices.enabled = [...fieldset.querySelectorAll<HTMLInputElement>('input:checked')].map((box) => box.name);
-    if (Number.isInteger(choices.joinSeconds) && choices.joinSeconds > 0 && Number.isInteger(choices.finishSeconds) && choices.finishSeconds > 0) save();
+    choices.enabled = checked(fieldset);
+    choices.chaos = checked(chaos);
+    choices.cheerBits = Number(bits.value);
+    if (valid()) save();
   };
   root.addEventListener('change', update);
   const start = () => {
     if (!root.hidden || race.phase === 'idle' || race.phase === 'results' || race.phase === 'cancelled') {
       update();
-      if (!Number.isInteger(choices.joinSeconds) || choices.joinSeconds <= 0 || !Number.isInteger(choices.finishSeconds) || choices.finishSeconds <= 0) { root.hidden = false; return; }
+      if (!valid()) { root.hidden = false; return; }
       const picked = choices.course === 'random' ? Object.keys(courses)[Math.floor(Math.random() * Object.keys(courses).length)]! : choices.course;
       if (picked !== current) {
         const url = new URL(location.href);
@@ -137,6 +153,8 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, i
         return;
       }
       race.enabled = new Set(VERBS.filter((v) => choices.enabled.includes(v) && (v !== 'bridge' || race.course.file.bridges.length)));
+      race.chaos = new Set(CHAOS.filter((c) => choices.chaos.includes(c)));
+      race.cheerBits = choices.cheerBits;
       openJoinWindow(race, { joinSeconds: choices.joinSeconds, finishSeconds: choices.finishSeconds });
       // Off stream, in the OBS log (Help > Log Files): obs-browser logs only console errors.
       console.error(`Rhino Race seed ${race.seed}: replay with ?course=${current.replace(/^.*\/|\.json$/g, '')}&seed=${race.seed}`);
