@@ -14,11 +14,22 @@ dialog.innerHTML = `
   <button value="use">Use this folder</button>
 </form>
 <p class="stored"></p>
+<p><label>Chat source <select name="chat"><option value="">None (chronoChat events only)</option><option value="streamerbot">Streamer.bot (ws://127.0.0.1:8080)</option></select></label></p>
 <p><button class="clear">Clear stored files</button> <button class="close">Close</button></p>`;
 dialog.style.cssText = 'font:20px/1.5 sans-serif;background:#111;color:#ddd;border:1px solid #666;max-width:46em';
 const $ = <T extends Element>(sel: string) => dialog.querySelector<T>(sel)!;
 const pathInput = $<HTMLInputElement>('input[name=path]');
 const fileInput = $<HTMLInputElement>('input[type=file]');
+const chatInput = $<HTMLSelectElement>('select[name=chat]');
+const CHAT_KEY = 'rhino-chat-source';
+
+/** The chat source picked in setup (ADR 0008): exactly one, or none (only `chronoChat` page events). */
+export const chatSource = (): '' | 'streamerbot' => localStorage.getItem(CHAT_KEY) === 'streamerbot' ? 'streamerbot' : '';
+
+chatInput.addEventListener('change', () => {
+  localStorage.setItem(CHAT_KEY, chatInput.value);
+  location.reload();
+});
 
 function report(problems: string[]) {
   $('.problems').replaceChildren(...problems.map((p) => Object.assign(document.createElement('li'), { textContent: p })));
@@ -58,6 +69,7 @@ $('.close').addEventListener('click', () => dialog.close());
 export function showSetup(problems: string[] = []) {
   if (!dialog.isConnected) document.body.append(dialog);
   pathInput.value = savedPath();
+  chatInput.value = chatSource();
   report(problems);
   void showStored();
   if (!dialog.open) dialog.showModal();
