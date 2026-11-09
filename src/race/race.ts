@@ -96,8 +96,10 @@ export interface Turn {
   event: BigEvent;
   viewerId: string;
   by: string;
-  /** Undefined for a chat-wide event, or once settled: nothing (more) to settle. */
+  /** Undefined for a chat-wide event or a cheer, or once settled: nothing (more) to settle. */
   reference: string | undefined;
+  /** Set off by a cheer: never fails, carries over to the next race instead. */
+  cheer: boolean;
   lands: number | undefined;
   /** Chrono swap: the front-half and back-half tanks; nuke: the leading tank. */
   picks: Racer[];
@@ -182,6 +184,10 @@ export interface Race {
   hype: Hype;
   /** Chat-wide events set off this race. */
   chatWide: number;
+  /** The operator's Chrono swap price in bits: only a cheer of exactly this sets one off. */
+  cheerBits: number;
+  /** Cheers waiting for the next race, in order: they survive `openJoinWindow` and take the first turns after its countdown. */
+  carried: Turn[];
 }
 
 export interface Standing {
@@ -195,7 +201,7 @@ export interface Standing {
 
 export function createRace(course: Course, grid: CellGrid, seed: number): Race {
   const bridgeGrid = 'bridge' in grid && 'bridges' in grid ? grid as BridgeGrid : undefined;
-  return { course, field: createField(grid, seed), seed, phase: 'idle', paused: false, racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions.filter((verb) => verb !== 'bridge' || (bridgeGrid && course.file.bridges.length))), cooldowns: new Map(), feed: [], feedUntil: new Map(), sounds: [], missiles: [], v3s: [], teslas: [], lastHit: undefined, lastHitBy: undefined, lastHitFrame: -1, bridgeGrid, queue: [], nextEventAt: 0, landed: undefined, settlements: [], hype: emptyHype(), chatWide: 0 };
+  return { course, field: createField(grid, seed), seed, phase: 'idle', paused: false, racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions.filter((verb) => verb !== 'bridge' || (bridgeGrid && course.file.bridges.length))), cooldowns: new Map(), feed: [], feedUntil: new Map(), sounds: [], missiles: [], v3s: [], teslas: [], lastHit: undefined, lastHitBy: undefined, lastHitFrame: -1, bridgeGrid, queue: [], nextEventAt: 0, landed: undefined, settlements: [], hype: emptyHype(), chatWide: 0, cheerBits: 50, carried: [] };
 }
 
 export function commandList(race: Race): string[] {
@@ -339,22 +345,26 @@ function callNuke(race: Race, line: ChatLine): ChatResult {
     // The next turn: behind only a big event already playing and nukes already waiting.
     let at = 0;
     while (race.queue[at] && (race.queue[at]!.lands !== undefined || race.queue[at]!.event === 'nuke')) at++;
-    race.queue.splice(at, 0, { event: 'nuke', viewerId: '', by: 'CHAT', reference: undefined, lands: undefined, picks: [], callers: [...hype.calls.values()], firstAway: undefined, ship: undefined });
+    race.queue.splice(at, 0, { event: 'nuke', viewerId: '', by: 'CHAT', reference: undefined, cheer: false, lands: undefined, picks: [], callers: [...hype.calls.values()], firstAway: undefined, ship: undefined });
     race.hype = emptyHype();
     race.chatWide++;
   }
   return { ok: true, reason: `nuke ${hype.calls.size}/${HYPE.calls}` };
 }
 
-/** The paid entry: queues a redemption during a race, refunds it outside one. */
+/** The paid entry: queues a redemption during a race, refunds it outside one; a cheer of exactly the price queues ahead of redemptions. */
 export function paid(race: Race, line: PaidLine): ChatResult {
-  // ponytail: cheers wait for #111 (exact price, carry-over to the next race).
-  if (line.via !== 'redemption') return IGNORED;
+  const cheer = line.via === 'cheer';
+  if (cheer && (line.event !== 'chronoSwap' || line.bits !== race.cheerBits)) return IGNORED;
+  const turn: Turn = { event: line.event, viewerId: line.viewerId, by: line.name, reference: cheer ? undefined : line.reference, cheer, lands: undefined, picks: [], callers: [], firstAway: undefined, ship: undefined };
   if (race.phase !== 'racing') {
+    if (cheer) return race.carried.push(turn), { ok: true, reason: 'next race' };
     settle(race, line.reference, 'refunded');
     return { ok: false, reason: 'not racing' };
   }
-  race.queue.push({ event: line.event, viewerId: line.viewerId, by: line.name, reference: line.reference, lands: undefined, picks: [], callers: [], firstAway: undefined, ship: undefined });
+  // Behind the one playing, a waiting nuke and earlier cheers; redemptions just go last.
+  const at = cheer ? race.queue.findIndex((t) => t.lands === undefined && t.event !== 'nuke' && !t.cheer) : -1;
+  race.queue.splice(at < 0 ? race.queue.length : at, 0, turn);
   addHype(race, HYPE[line.via]);
   return { ok: true, reason: 'queued' };
 }
@@ -515,6 +525,13 @@ export const playingEvent = (race: Race): Turn | undefined => race.queue[0]?.lan
 /** The big event playing now, else the one that landed last this race. */
 export const latestEvent = (race: Race): Turn | undefined => playingEvent(race) ?? race.landed;
 
+/** The event-queue chips in order: the playing one lit, a chat-wide event's reading "next", a carried cheer's "next race". */
+export const eventChips = (race: Race): { label: string; playing: boolean }[] => [...race.phase === 'racing' ? race.queue : [], ...race.carried]
+  .map((t) => ({ label: `${BIG_EVENTS[t.event].label} · ${t.event === 'nuke' ? 'next' : t.by}${race.carried.includes(t) ? ' · next race' : ''}`, playing: t.lands !== undefined }));
+
+/** A cheer that can't play now waits for the next race, picked afresh there. */
+const carry = (race: Race, turn: Turn) => race.carried.push(Object.assign(turn, { lands: undefined, picks: [] }));
+
 /** A chat-wide event (no reference) has nothing to settle. */
 const settle = (race: Race, reference: string | undefined, outcome: Settlement['outcome']) => { if (reference !== undefined) race.settlements.push({ reference, outcome }); };
 
@@ -522,6 +539,10 @@ function fizzle(race: Race): void {
   const turn = race.queue.shift()!;
   // One that played its build-up still takes the gap before the next turn.
   if (turn.lands !== undefined) race.nextEventAt = race.frame + EVENT_GAP;
+  if (turn.cheer) {
+    carry(race, turn);
+    return postThrottled(race, turn.viewerId, `${turn.by} ▸ ${BIG_EVENTS[turn.event].label} · next race`);
+  }
   if (turn.reference === undefined) return; // a chat-wide event is dropped
   settle(race, turn.reference, 'refunded');
   postThrottled(race, turn.viewerId, `${turn.by} ▸ ${BIG_EVENTS[turn.event].label} · refunded`);
@@ -701,9 +722,13 @@ export function endRace(race: Race): void {
   refundQueue(race);
 }
 
-/** At race end every big event still queued or playing is refunded, or dropped if chat set it off; a Kirov already bombing posts its line. */
+/**
+ * At race end every big event still queued or playing is refunded, dropped if chat set it off, or carried to the next
+ * race if a cheer did; a Kirov already bombing posts its line.
+ */
 function refundQueue(race: Race): void {
   for (const turn of race.queue.splice(0)) {
+    if (turn.cheer) carry(race, turn);
     if (turn.ship?.firstDrop !== undefined) kirovLine(race, turn);
     settle(race, turn.reference, 'refunded');
   }
@@ -713,7 +738,10 @@ function refundQueue(race: Race): void {
 export function tickRace(race: Race): void {
   if (race.paused) return;
   if (race.phase === 'join' && --race.timer <= 0) closeJoinWindow(race);
-  else if (race.phase === 'countdown' && --race.timer <= 0) race.phase = 'racing';
+  else if (race.phase === 'countdown' && --race.timer <= 0) {
+    race.phase = 'racing';
+    race.queue.push(...race.carried.splice(0));
+  }
   else if (race.phase === 'racing') drive(race);
 }
 

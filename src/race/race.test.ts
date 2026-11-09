@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CellGrid } from '../movement/index.js';
 import { courseProgress, loadCourse, mapHash, type CourseFile } from './course.js';
-import { chat, commandList, createRace, endRace, hypeLive, openJoinWindow, paid, simulateRace, standings, tickRace, type Race, type Racer } from './race.js';
+import { chat, commandList, createRace, endRace, eventChips, hypeLive, openJoinWindow, paid, simulateRace, standings, tickRace, type Race, type Racer } from './race.js';
 import { TICK_HZ } from '../movement/index.js';
 import { readdirSync, readFileSync } from 'node:fs';
 import { describeInstall, readFromDir } from '../../test/install.js';
@@ -1058,6 +1058,79 @@ describe('hype meter', () => {
     fill(race, 30);
     expect(say(race, 'a', '!nuke').ok).toBe(true);
     expect(race.feed.at(-1)).toBe('a ▸ NUKE 1/5');
+  });
+});
+
+describe('cheers', () => {
+  const cheer = (race: Race, viewerId: string, bits = 50) => paid(race, { viewerId, name: viewerId, event: 'chronoSwap', via: 'cheer', bits, reference: `c:${viewerId}` });
+  const redeem = (race: Race, viewerId: string) => paid(race, { viewerId, name: viewerId, event: 'chronoSwap', via: 'redemption', reference: viewerId });
+  const calm = (seed = 1) => {
+    const race = racing(seed);
+    for (const r of race.racers) if (r.bot) r.botNext = Infinity;
+    ticks(race, 5 * TICK_HZ); // the field spreads out
+    race.sounds.length = 0;
+    return race;
+  };
+
+  it('sets off a Chrono swap only at exactly the price; 49 and 51 do nothing in the game', () => {
+    const race = calm();
+    for (const bits of [49, 51]) expect(cheer(race, 'v', bits).ok).toBe(false);
+    expect([race.queue, race.feed, race.hype.points]).toEqual([[], [], 0]);
+    expect(cheer(race, 'v')).toEqual({ ok: true, reason: 'queued' });
+    expect(race.hype.points).toBe(3);
+    ticks(race, 3 * TICK_HZ + 1);
+    expect(race.feed.at(-1)).toMatch(/^v ▸ CHRONO SWAP ▸ \S+ ⇄ \S+$/);
+    expect(race.settlements).toEqual([]); // never settled
+  });
+
+  it('queues ahead of waiting redemptions in arrival order, behind the one playing', () => {
+    const race = calm();
+    redeem(race, 'r1');
+    tickRace(race); // r1 plays
+    redeem(race, 'r2');
+    cheer(race, 'c1');
+    cheer(race, 'c2');
+    expect(race.queue.map((t) => t.by)).toEqual(['r1', 'c1', 'c2', 'r2']);
+  });
+
+  it('carries a cheer waiting at race end, or arriving between races, across the join window to fire first after the countdown', () => {
+    const race = calm();
+    redeem(race, 'r1');
+    tickRace(race); // r1 plays
+    cheer(race, 'Cleo');
+    endRace(race);
+    expect(race.settlements).toEqual([{ reference: 'r1', outcome: 'refunded' }]);
+    expect(cheer(race, 'Cy')).toEqual({ ok: true, reason: 'next race' });
+    const next = ['CHRONO SWAP · Cleo · next race', 'CHRONO SWAP · Cy · next race'];
+    expect(eventChips(race).map((c) => c.label)).toEqual(next);
+    openJoinWindow(race, { joinSeconds: 1 });
+    say(race, 'a', '!rhino', 'Kane');
+    expect(eventChips(race).map((c) => c.label)).toEqual(next);
+    ticks(race, TICK_HZ + 3 * TICK_HZ - 1); // join window, then 3-2-1
+    expect(race.phase).toBe('countdown');
+    expect(race.sounds).not.toContain('chronoSelect');
+    ticks(race, 2); // GO, then its turn comes on the first race frame
+    expect(race.sounds).toContain('chronoSelect');
+    expect(eventChips(race)).toEqual([{ label: 'CHRONO SWAP · Cleo', playing: true }, { label: 'CHRONO SWAP · Cy', playing: false }]);
+    expect(race.hype.points).toBe(0); // the meter was not live when they arrived
+    ticks(race, 3 * TICK_HZ);
+    expect(race.feed.at(-1)).toMatch(/^Cleo ▸ CHRONO SWAP ▸ /);
+    expect(race.settlements).toHaveLength(1);
+  });
+
+  it('waits for the next race when its swap has no valid pair, and lets the queue move on', () => {
+    const race = calm();
+    for (const r of race.racers) r.shieldUntil = race.frame + 2;
+    cheer(race, 'Cleo');
+    redeem(race, 'r1');
+    tickRace(race);
+    expect(race.feed.at(-1)).toBe('Cleo ▸ CHRONO SWAP · next race');
+    expect(race.settlements).toEqual([]);
+    expect(eventChips(race).map((c) => c.label)).toEqual(['CHRONO SWAP · r1', 'CHRONO SWAP · Cleo · next race']);
+    ticks(race, 3 * TICK_HZ + 1); // r1's turn comes on the next frame
+    expect(race.settlements).toEqual([{ reference: 'r1', outcome: 'fulfilled' }]);
+    endRace(race);
+    expect(eventChips(race).map((c) => c.label)).toEqual(['CHRONO SWAP · Cleo · next race']);
   });
 });
 
