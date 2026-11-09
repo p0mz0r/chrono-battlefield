@@ -185,6 +185,7 @@ export interface Race {
   /** Chat-wide events set off this race. */
   chatWide: number;
   /** The operator's Chrono swap price in bits: only a cheer of exactly this sets one off. */
+  // ponytail: fixed at the default 50 until install setup gains the chat-source settings (#101).
   cheerBits: number;
   /** Cheers waiting for the next race, in order: they survive `openJoinWindow` and take the first turns after its countdown. */
   carried: Turn[];
@@ -357,8 +358,11 @@ export function paid(race: Race, line: PaidLine): ChatResult {
   const cheer = line.via === 'cheer';
   if (cheer && (line.event !== 'chronoSwap' || line.bits !== race.cheerBits)) return IGNORED;
   const turn: Turn = { event: line.event, viewerId: line.viewerId, by: line.name, reference: cheer ? undefined : line.reference, cheer, lands: undefined, picks: [], callers: [], firstAway: undefined, ship: undefined };
+  if (cheer && !viewersRacing(race)) {
+    race.carried.push(turn);
+    return { ok: true, reason: 'next race' };
+  }
   if (race.phase !== 'racing') {
-    if (cheer) return race.carried.push(turn), { ok: true, reason: 'next race' };
     settle(race, line.reference, 'refunded');
     return { ok: false, reason: 'not racing' };
   }
@@ -528,6 +532,9 @@ export const latestEvent = (race: Race): Turn | undefined => playingEvent(race) 
 /** The event-queue chips in order: the playing one lit, a chat-wide event's reading "next", a carried cheer's "next race". */
 export const eventChips = (race: Race): { label: string; playing: boolean }[] => [...race.phase === 'racing' ? race.queue : [], ...race.carried]
   .map((t) => ({ label: `${BIG_EVENTS[t.event].label} · ${t.event === 'nuke' ? 'next' : t.by}${race.carried.includes(t) ? ' · next race' : ''}`, playing: t.lands !== undefined }));
+
+/** A race viewers are in: not between races, nor an editor simulation run by bots alone, which never spends a cheer. */
+const viewersRacing = (race: Race) => race.phase === 'racing' && race.racers.some((r) => !r.bot);
 
 /** A cheer that can't play now waits for the next race, picked afresh there. */
 const carry = (race: Race, turn: Turn) => race.carried.push(Object.assign(turn, { lands: undefined, picks: [] }));
@@ -740,7 +747,7 @@ export function tickRace(race: Race): void {
   if (race.phase === 'join' && --race.timer <= 0) closeJoinWindow(race);
   else if (race.phase === 'countdown' && --race.timer <= 0) {
     race.phase = 'racing';
-    race.queue.push(...race.carried.splice(0));
+    if (viewersRacing(race)) race.queue.push(...race.carried.splice(0));
   }
   else if (race.phase === 'racing') drive(race);
 }

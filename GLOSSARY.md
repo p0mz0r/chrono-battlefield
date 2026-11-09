@@ -165,7 +165,7 @@ A paid event that leaves radiation on the course just ahead of the leading tank.
 _Avoid_: Rad cannon, slow trap
 
 **Chrono swap**:
-A paid event, also set off by a cheer, that swaps the places of two random tanks still racing, one from the front half of them in the standings and one from the back half.
+A paid event, also set off by a cheer of exactly the operator's price (any other amount does nothing), that swaps the places of two random tanks still racing, one from the front half of them in the standings and one from the back half. A cheer-paid one with no valid pair waits for the next race.
 _Avoid_: Chronosphere, teleport, switch
 
 ### Chat
@@ -187,7 +187,7 @@ The race's word back to the chat source on a redemption: fulfilled when its even
 _Avoid_: Ack, receipt
 
 **Cheer**:
-A viewer spending bits to set off an audience interaction; bits are never refunded, so a cheer's interaction cannot fail during a race.
+A viewer spending bits to set off an audience interaction; bits are never refunded, so a cheer's interaction cannot fail during a race. It queues ahead of waiting redemptions, and one that can't play this race (still waiting at race end, arriving between races, or with no valid pair) takes the first turn after the next start countdown.
 _Avoid_: Bits, donation, redemption
 
 **Command list**:

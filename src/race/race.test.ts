@@ -1132,6 +1132,16 @@ describe('cheers', () => {
     endRace(race);
     expect(eventChips(race).map((c) => c.label)).toEqual(['CHRONO SWAP · Cleo · next race']);
   });
+
+  it('keeps a carried cheer for a real race, not an editor simulation run by bots alone', () => {
+    const race = calm();
+    endRace(race);
+    cheer(race, 'Cleo');
+    simulateRace(race, race.course, 4);
+    ticks(race, 3 * TICK_HZ + 2);
+    expect(cheer(race, 'Cy')).toEqual({ ok: true, reason: 'next race' });
+    expect([race.queue, eventChips(race).map((c) => c.label)]).toEqual([[], ['CHRONO SWAP · Cleo · next race', 'CHRONO SWAP · Cy · next race']]);
+  });
 });
 
 describe('nuke', () => {
