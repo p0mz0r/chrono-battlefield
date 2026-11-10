@@ -1,5 +1,5 @@
 import { chat, paid, REWARDS, type BigEvent, type Race } from '../race/race.js';
-import type { ChatSource } from './streamerBot.js';
+import { heldRedemptions, RETRY, type ChatSource } from './streamerBot.js';
 
 /** The game's registered public Twitch app (#115). Forks register their own. */
 export const TWITCH_CLIENT_ID = '5cm8euhmabzd9g4mnkwidz07sftngy';
@@ -16,8 +16,8 @@ const HELIX = 'https://api.twitch.tv/helix';
 export const EVENTSUB_URL = 'wss://eventsub.wss.twitch.tv/ws';
 /** Channel points a reward starts at; the streamer sets the real cost in Twitch's dashboard (ADR 0008). */
 const STARTING_COST = 1000;
-/** Seconds before the first reconnect, doubling to the longest. */
-const RETRY = { first: 1, longest: 30 };
+/** Seconds past the keepalive before a silent connection counts as gone, so a late keepalive doesn't drop it. */
+const KEEPALIVE_SLACK = 2;
 /** Twitch asks apps to validate their token on start and hourly. */
 const VALIDATE_EVERY = 60 * 60_000;
 type PaidEvent = Exclude<BigEvent, 'nuke'>;
@@ -35,6 +35,8 @@ interface Login { access: string; refresh: string; userId: string; login: string
 const form = (fields: Record<string, string>) => ({ method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: TWITCH_CLIENT_ID, ...fields }).toString() });
 const stored = (): Login | undefined => { try { return JSON.parse(localStorage.getItem(LOGIN_KEY) ?? '') || undefined; } catch { return undefined; } };
 
+/** Twitch answered, but not OK. */
+class HelixError extends Error { constructor(readonly status: number) { super(`Twitch replied ${status}`); } }
 const text = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 500;
 const storedRewards = (): Partial<Record<PaidEvent, string>> => { try { return JSON.parse(localStorage.getItem(REWARDS_KEY) ?? '{}') ?? {}; } catch { return {}; } };
 
@@ -48,7 +50,9 @@ export const missingRewards = () => (Object.keys(REWARDS) as PaidEvent[]).filter
  * the tokens are stored. Rejects if the code expires or is denied.
  */
 export async function loginTwitch({ fetch = globalThis.fetch as Fetch } = {}) {
-  const device = await (await fetch(`${ID}/device`, form({ scopes: SCOPES }))).json();
+  const started = await fetch(`${ID}/device`, form({ scopes: SCOPES }));
+  if (!started.ok) throw new Error(`Twitch login failed: ${started.status}`);
+  const device = await started.json();
   const done = (async () => {
     const until = Date.now() + device.expires_in * 1000;
     while (Date.now() < until) {
@@ -83,12 +87,13 @@ export function connectTwitch(race: Race, { fetch = globalThis.fetch as Fetch, S
   /** Trades the refresh token in for a new pair, once however many calls hit the expiry. A refused one logs out. */
   const refresh = () => refreshing ??= (async () => {
     const reply = await fetch(`${ID}/token`, form({ grant_type: 'refresh_token', refresh_token: login.refresh }));
-    if (!reply.ok) {
+    if (reply.status === 400 || reply.status === 401) {
       localStorage.removeItem(LOGIN_KEY);
       up = false;
       stop();
       throw new Error('Twitch login expired');
     }
+    if (!reply.ok) throw new HelixError(reply.status);
     const token = await reply.json();
     Object.assign(login, { access: token.access_token, refresh: token.refresh_token });
     localStorage.setItem(LOGIN_KEY, JSON.stringify(login));
@@ -99,7 +104,8 @@ export function connectTwitch(race: Race, { fetch = globalThis.fetch as Fetch, S
       method, headers: { Authorization: `Bearer ${login.access}`, 'Client-Id': TWITCH_CLIENT_ID, 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body),
     });
     if (reply.status === 401 && !retried) return refresh().then(() => api(method, path, query, body, true));
-    return reply.ok ? (await reply.json()).data : undefined;
+    if (!reply.ok) throw new HelixError(reply.status);
+    return (await reply.json()).data;
   };
   const validate = async () => {
     if ((await fetch(`${ID}/validate`, { headers: { Authorization: `OAuth ${login.access}` } })).status === 401) await refresh();
@@ -113,23 +119,19 @@ export function connectTwitch(race: Race, { fetch = globalThis.fetch as Fetch, S
     const mine: { id: string; title: string }[] = (await api('GET', 'channel_points/custom_rewards', { broadcaster_id, only_manageable_rewards: 'true' })) ?? [];
     for (const event of events) {
       const { title, prompt } = REWARDS[event];
-      rewards[event] = mine.find((reward) => reward.title === title)?.id ?? (await api('POST', 'channel_points/custom_rewards', { broadcaster_id }, { title, prompt, cost: STARTING_COST }))?.[0]?.id;
+      rewards[event] = mine.find((reward) => reward.title === title)?.id ?? (await api('POST', 'channel_points/custom_rewards', { broadcaster_id }, { title, prompt, cost: STARTING_COST }).catch(() => undefined))?.[0]?.id;
     }
     localStorage.setItem(REWARDS_KEY, JSON.stringify(rewards));
   };
 
-  /** Unsettled redemptions: ID to its reward's ID, which the status update needs. Kept across reloads. */
-  let pending = new Map<string, string>();
-  try { pending = new Map(JSON.parse(localStorage.getItem(PENDING_KEY) || '[]')); } catch { /* malformed: nothing to refund */ }
-  const save = () => localStorage.setItem(PENDING_KEY, JSON.stringify([...pending]));
-  // Left from before a reload: the race they were for is gone, so they are refunded, as for Streamer.bot.
-  for (const reference of pending.keys()) race.settlements.push({ reference, outcome: 'refunded' });
+  /** Unsettled redemptions: ID to its reward's ID, which the status update needs. */
+  const { held: pending, save } = heldRedemptions<string>(race, PENDING_KEY);
 
   const subscribe = async (session_id: string) => {
-    const transport = { method: 'websocket', session_id }, condition = { broadcaster_user_id: broadcaster_id };
-    await api('POST', 'eventsub/subscriptions', {}, { type: 'channel.chat.message', version: '1', condition: { ...condition, user_id: broadcaster_id }, transport });
-    await api('POST', 'eventsub/subscriptions', {}, { type: 'channel.channel_points_custom_reward_redemption.add', version: '1', condition, transport });
-    await api('POST', 'eventsub/subscriptions', {}, { type: 'channel.cheer', version: '1', condition, transport });
+    const condition = { broadcaster_user_id: broadcaster_id };
+    for (const [type, extra] of [['channel.chat.message', { user_id: broadcaster_id }], ['channel.channel_points_custom_reward_redemption.add'], ['channel.cheer']] as const) {
+      await api('POST', 'eventsub/subscriptions', {}, { type, version: '1', condition: { ...condition, ...extra }, transport: { method: 'websocket', session_id } });
+    }
   };
 
   const notified = (type: string, e: Record<string, any>) => {
@@ -166,13 +168,13 @@ export function connectTwitch(race: Race, { fetch = globalThis.fetch as Fetch, S
         keepalive = session.keepalive_timeout_seconds ?? keepalive;
         wait = RETRY.first;
         up = true;
-        if (moving) { const old = socket; socket = s; old?.close(); } else void subscribe(session.id).catch(() => {});
+        if (moving) { const old = socket; socket = s; old?.close(); } else subscribe(session.id).catch(() => s.close()); // deaf without it: drop, and try again after the wait
       }
       if (message_type === 'session_reconnect' && session?.reconnect_url) connect(session.reconnect_url, true);
       if (message_type === 'notification' && event) notified(subscription_type, event);
       // Twitch sends something within the keepalive while the connection lives; silence means it is gone.
       clearTimeout(quiet);
-      quiet = setTimeout(() => s.close(), keepalive * 1000);
+      quiet = setTimeout(() => s.close(), (keepalive + KEEPALIVE_SLACK) * 1000);
     };
     s.onclose = () => {
       clearTimeout(quiet);
@@ -192,7 +194,14 @@ export function connectTwitch(race: Race, { fetch = globalThis.fetch as Fetch, S
       pending.delete(reference);
       save();
       api('PATCH', 'channel_points/custom_rewards/redemptions', { broadcaster_id, reward_id, id: reference }, { status: outcome === 'fulfilled' ? 'FULFILLED' : 'CANCELED' })
-        .catch(() => { pending.set(reference, reward_id); save(); race.settlements.push(settlement); }); // network down: try again
+        .catch((err: unknown) => {
+          // Down or busy: try again. Refused (already settled, reward deleted): drop it.
+          // ponytail: retries every drain while Twitch is down; back off if a long outage ever floods it.
+          if (err instanceof HelixError && err.status < 500 && err.status !== 429) return;
+          pending.set(reference, reward_id);
+          save();
+          race.settlements.push(settlement);
+        });
     }
   }, 250);
 

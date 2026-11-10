@@ -247,6 +247,34 @@ describe('Twitch direct chat source', () => {
     expect(JSON.parse(storage.get('rhino-twitch-login')!).access).toBe('acc-2');
   });
 
+  it('tries a settlement again while Twitch is down, but not one it refuses', async () => {
+    let down = true;
+    twitch.on(SETTLE, ({ url }) => url.searchParams.get('id') === 'red-2' ? { status: 404 } : down ? { status: 503 } : { body: { data: [{}] } });
+    redeemKirov('red-1');
+    redeemKirov('red-2');
+    await vi.advanceTimersByTimeAsync(300);
+    down = false;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(twitch.sent(SETTLE).map((c) => c.url.searchParams.get('id'))).toEqual(['red-1', 'red-2', 'red-1']);
+  });
+
+  it('reconnects when Twitch refuses a subscription, rather than sit online but deaf', async () => {
+    twitch.on(SUBSCRIBE, () => ({ status: 429 }));
+    last().drop();
+    await vi.advanceTimersByTimeAsync(1000);
+    last().welcome('session-2');
+    await vi.advanceTimersByTimeAsync(0);
+    expect([source.online(), last().readyState]).toEqual([false, 3]);
+  });
+
+  it('stays logged in when Twitch fails to refresh the token for its own reasons', async () => {
+    expire();
+    twitch.on(TOKEN, () => ({ status: 503 }));
+    redeemKirov();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect([source.online(), storage.has('rhino-twitch-login')]).toEqual([true, true]);
+  });
+
   it('logs out and shows offline when the refresh token is no longer good', async () => {
     expire();
     twitch.on(TOKEN, () => ({ status: 400, body: { message: 'Invalid refresh token' } }));
