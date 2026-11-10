@@ -1,4 +1,4 @@
-import { BOMB_FOOTPRINT_PX, KIROV_FOOTPRINT_PX, prerenderAircraft, prerenderAnim, prerenderRhinos, prerenderRocket, prerenderTank } from './assets/rhino.js';
+import { BOMB_FOOTPRINT_PX, KIROV_FOOTPRINT_PX, prerenderAircraft, prerenderAnim, prerenderRhinos, prerenderRocket, prerenderTank, type RhinoArt } from './assets/rhino.js';
 import type { Battlefield } from './battlefield/import.js';
 import { importBattlefield } from './battlefield/import.js';
 import type { ObjectImage } from './battlefield/objects.js';
@@ -46,6 +46,8 @@ async function webp(rgba: Uint8Array | Uint8ClampedArray, width: number, height:
   return canvas.convertToBlob({ type: 'image/webp', quality: 1 });
 }
 
+const tank = async (t: RhinoArt): Promise<Tank> => ({ body: await sprite(t.body), turret: await sprite(t.turret.sprite), pivot: t.turret.pivot });
+
 const sprite = async (s: ConvertedSprite): Promise<Sprite> =>
   ({ atlasWidth: s.atlasWidth, atlasHeight: s.atlasHeight, spriteWidth: s.spriteWidth, spriteHeight: s.spriteHeight, frames: s.frames, image: await webp(s.colorRgba, s.atlasWidth, s.atlasHeight) });
 
@@ -71,12 +73,12 @@ export async function loadCourse(read: ReadFile, mapPath: string): Promise<{ map
     for (const { rgba, ...c } of terrain.chunks) chunks.push({ ...c, image: await webp(rgba, CHUNK, CHUNK) });
     const encoded: Encoded<ObjectImage>[] = [];
     for (const { rgba, ...i } of images) encoded.push({ ...i, image: await webp(rgba, i.width, i.height) });
-    const tanks: CourseArt['rhinos'] = [];
-    for (const r of rhinos) tanks.push({ body: await sprite(r.body), turret: await sprite(r.turret.sprite), pivot: r.turret.pivot, rgb: r.rgb });
+    const encodedRhinos: CourseArt['rhinos'] = [];
+    for (const r of rhinos) encodedRhinos.push({ ...await tank(r), rgb: r.rgb });
     return {
       battlefield: { ...rest, terrain: { ...terrain, chunks }, images: encoded },
-      rhinos: tanks,
-      tesla: { body: await sprite(tesla.body), turret: await sprite(tesla.turret.sprite), pivot: tesla.turret.pivot },
+      rhinos: encodedRhinos,
+      tesla: await tank(tesla),
       v3: await sprite(prerenderRocket(vfs, map.theater, 'v3rocket')),
       missile: await sprite(prerenderRocket(vfs, map.theater, 'dmisl')),
       warpOut: await sprite(prerenderAnim(vfs, 'chronofd')),

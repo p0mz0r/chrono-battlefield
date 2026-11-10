@@ -5,6 +5,13 @@ export type CameraMode = 'overview' | 'director';
 
 const esc = (value: string) => value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
+/** A house colour (0xRRGGBB), a dark one (AlliedLoad's pure blue) lifted toward white so a name in it reads on near-black. */
+export function readable(colour: number): number {
+  const rgb = [colour >> 16, (colour >> 8) & 255, colour & 255];
+  const lift = Math.max(0, 140 - (0.3 * rgb[0]! + 0.59 * rgb[1]! + 0.11 * rgb[2]!)) / 280;
+  return rgb.reduce((out, v) => out << 8 | Math.round(v + (255 - v) * lift), 0);
+}
+
 /** `text`, escaped, with every racer's name in its house colour. A name counts only as a whole word (`Kane`, not inside `Kane#2`). */
 export function paintNames(text: string, names: Map<string, string>): string {
   if (!names.size) return esc(text);
@@ -18,12 +25,7 @@ export function mountStreamView(colours: number[]): (race: Race, shot?: Shot, ch
   root.id = 'stream-view';
   document.body.append(root);
   let previous = '';
-  // A house colour as CSS, a dark one (AlliedLoad's pure blue) lifted toward white so names read on the near-black panels.
-  const css = (colour: number) => {
-    const c = colours[colour % colours.length]!, rgb = [c >> 16, (c >> 8) & 255, c & 255];
-    const lift = Math.max(0, 140 - (0.3 * rgb[0]! + 0.59 * rgb[1]! + 0.11 * rgb[2]!)) / 280;
-    return `rgb(${rgb.map((v) => Math.round(v + (255 - v) * lift)).join(' ')})`;
-  };
+  const css = (colour: number) => `#${readable(colours[colour]!).toString(16).padStart(6, '0')}`;
   return (race, shot, chatOffline = false) => {
     const focus = shot?.racer;
     const order = race.phase === 'results' ? race.results : standings(race);

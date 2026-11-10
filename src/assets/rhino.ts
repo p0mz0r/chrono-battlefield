@@ -1,5 +1,5 @@
 import { remapped } from '../battlefield/objects.js';
-import { HvaFile, IniFile, Palette, ShpFile, VxlFile, type Vfs } from '../ra2/index.js';
+import { HvaFile, IniFile, Palette, REMAP_INDEX_START, ShpFile, VxlFile, type Vfs } from '../ra2/index.js';
 import { renderTurretToSprite, renderVoxelToSprite, type TurretRender } from '../ra2/render/voxelRender.js';
 import { convertShpToAtlas, type ConvertedSprite } from '../ra2/render/sprite.js';
 import { theaterArtExt } from '../ra2/theater.js';
@@ -50,21 +50,22 @@ export function prerenderTank(vfs: Files, theater: string, unit: string, footpri
 }
 
 /**
- * The rulesmd `[Colors]` entries tanks race in, one per tank in join order. None is orange, green or cyan, so none
- * reads as the stun tint, the boost tint or the shield ring; the most distinct come first, for small fields.
+ * The rulesmd `[Colors]` entries tanks race in, one per tank in join order. Orange, green and cyan are left out, so
+ * none reads as the stun tint, the boost tint or the shield ring; `Red` is a dark brown that only a 9-tank field reaches.
+ * The most distinct come first, for small fields.
  */
 export const HOUSE_COLOURS = ['DarkRed', 'DarkBlue', 'Gold', 'Purple', 'LightGrey', 'Magenta', 'Grey', 'Red', 'AlliedLoad', 'Yellow'];
 
 /** A Rhino per house colour, in `HOUSE_COLOURS` order, each with its colour's brightest shade as 0xRRGGBB for the labels. */
 export function prerenderRhinos(vfs: Files, theater: string, footprintPx = RHINO_FOOTPRINT_PX): (RhinoArt & { rgb: number })[] {
   const { open, pal } = reader(vfs, theater);
-  const colors = IniFile.parse(open('rulesmd.ini')).getSection('Colors'), unit = pal().rgb;
+  const colors = IniFile.parse(open('rulesmd.ini')).getSection('Colors'), unitRgb = pal().rgb;
   return HOUSE_COLOURS.map((name) => {
     const hsv = colors?.getString(name);
     if (!hsv) throw new Error(`Missing install data: rulesmd.ini [Colors] ${name}`);
-    const rgb = remapped(unit, hsv.split(',').map(Number));
-    // Index 16 is the ramp's brightest shade.
-    return { ...prerenderTank(vfs, theater, 'htnk', footprintPx, Palette.fromRgb(rgb)), rgb: rgb[48]! << 16 | rgb[49]! << 8 | rgb[50]! };
+    const rgb = remapped(unitRgb, hsv.split(',').map(Number));
+    // The ramp's first index is its brightest shade.
+    return { ...prerenderTank(vfs, theater, 'htnk', footprintPx, Palette.fromRgb(rgb)), rgb: rgb[REMAP_INDEX_START * 3]! << 16 | rgb[REMAP_INDEX_START * 3 + 1]! << 8 | rgb[REMAP_INDEX_START * 3 + 2]! };
   });
 }
 
