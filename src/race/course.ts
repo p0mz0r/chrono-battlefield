@@ -71,8 +71,6 @@ export interface Course {
   forks: Map<number, { to: number; weight: number; via: Cell[]; line: LinePoint[]; along: number[]; length: number }>;
   /** Length of the ideal line in cells. */
   length: number;
-  /** Length of the course as drawn (each lap section driven once): chronosphere bands are a share of it. */
-  drawnLength: number;
 }
 
 /** Finish area radius in cells (3 tanks wide). */
@@ -121,7 +119,6 @@ export function loadCourse(file: CourseFile, mapBytes: Uint8Array, grid: CellGri
   };
   const traced = trace([...waypoints, finish]);
   traced.waypointAlong.pop(); // the finish cell
-  const drawnLength = file.laps.length ? trace([...file.waypoints.map(cell), finish]).length : traced.length;
   const forks = new Map<number, { to: number; weight: number; via: Cell[]; line: LinePoint[]; along: number[]; length: number }>();
   for (let i = 0; i < sources.length - 1; i++) {
     const fork = file.forks?.find((f) => f.from === sources[i]);
@@ -136,7 +133,7 @@ export function loadCourse(file: CourseFile, mapBytes: Uint8Array, grid: CellGri
     }
   }
 
-  return { file, startGrid, waypoints, forks, finish, finishArea: finishAreaOf(grid, finish), ...traced, drawnLength };
+  return { file, startGrid, waypoints, forks, finish, finishArea: finishAreaOf(grid, finish), ...traced };
 }
 
 /** Ground cell indices of the finish area around `finish`. */

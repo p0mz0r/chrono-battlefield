@@ -5,7 +5,7 @@ import { chat, openJoinWindow, paid, type BigEvent, type Race } from './race.js'
 
 const FAKE_NAMES = ['Tanya', 'Boris', 'Yuri', 'Kane', 'Volkov', 'Zofia', 'Carville', 'Romanov', 'Einstein', 'Dasha', 'Sputnik', 'Lt_Eva', 'bot2', 'tanya'];
 /** Chaos lines: valid commands plus noise that must stay silent. */
-const CHAOS = ['!rhino', '!RHINO', ' !rhino ', '!rhinoo', '!rhino please', 'rhino', 'gg', 'lol', '!boost', '!missile Bot1', '!tesla', '!chrono kane', '!shield', '!v3 back', '!bridge B1'];
+const CHAOS = ['!rhino', '!RHINO', ' !rhino ', '!rhinoo', '!rhino please', 'rhino', 'gg', 'lol', '!boost', '!missile Bot1', '!tesla', '!shield', '!v3 back', '!bridge B1'];
 
 /** mulberry32 for the panel's own seeded stream (never the race's). */
 function rng(seed: number) {

@@ -173,9 +173,10 @@ the title stays the word viewers know from RA2. All three are ASCII and well und
 - Short titles are more likely to clash with a reward the streamer already has (a
   duplicate is a 400 on Twitch direct, and an ambiguous match on Streamer.bot).
   The setup list should say so when creating a reward fails.
-- `Chronosphere` is also the glossary's name for the personal interaction `!chrono`
-  (GLOSSARY.md, Chronosphere; Chrono swap lists it under _Avoid_). The reward
-  title is viewer-facing only; code, banner and feed keep "Chrono swap".
+- `Chronosphere` was also the glossary's name for the personal interaction `!chrono`
+  (GLOSSARY.md, Chronosphere; Chrono swap listed it under _Avoid_). Since #130 the
+  banner and feed say "Chronosphere" too, and `!chrono` is removed; code keeps
+  "Chrono swap".
 - Considered and dropped: titles naming the target (`Kirov airship on the
   leader`), too long for the picker; a `Rhino Race:` prefix, 12 characters of
   repetition.

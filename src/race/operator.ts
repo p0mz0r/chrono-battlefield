@@ -5,7 +5,7 @@ import { BIG_EVENTS, CHAOS, endRace, openJoinWindow, type Race } from './race.js
 import type { CameraMode } from './view.js';
 
 const KEY = 'rhino-race-setup';
-const VERBS = ['boost', 'shield', 'v3', 'missile', 'tesla', 'chrono', 'bridge'] as const;
+const VERBS = ['boost', 'shield', 'v3', 'missile', 'tesla', 'bridge'] as const;
 export interface OperatorChoices {
   course: string;
   joinSeconds: number;

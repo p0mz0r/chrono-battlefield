@@ -225,7 +225,7 @@ async function main() {
     sprite.scale.set(1);
     return sprite;
   };
-  /** Tesla strikes that went off (for the discharge and chronoshift out). */
+  /** Tesla strikes that went off (for the discharge). */
   const zaps: { x: number; y: number; at: number }[] = [];
   let charging = new Set<Race['teslas'][number]>();
   const ring = (x: number, y: number, z: number, cells: number) => {
@@ -446,7 +446,7 @@ async function main() {
       const p = toScreen(x, y, level(lx, ly));
       put(v3Tex[frameOf(r.dx, r.dy)]!, p.x, p.y - 12);
     }
-    // A chronosphere warps out of the cell the tank left and in at the cell it landed on.
+    // A Chrono swap warps each tank out of the cell the tank left and in at the cell it landed on.
     for (const r of race.racers) {
       if (!r.warp) continue;
       const shown = Math.floor((race.frame + a - r.warp.at) * ANIM_FPS / TICK_HZ);

@@ -24,7 +24,7 @@ export interface CourseArt {
   /** The V3 rocket and the homing missile (Dreadnought missile), 32 facings each. */
   v3: Sprite;
   missile: Sprite;
-  /** Stock animations: the chronosphere at the cell left (`ChronoBlast`) and the cell landed on (`ChronoBlastDest`), and a stunned tank's fire. */
+  /** Stock animations: the Chrono swap warp at the cell left (`ChronoBlast`) and the cell landed on (`ChronoBlastDest`), and a stunned tank's fire. */
   warpOut: Sprite;
   warpIn: Sprite;
   fire: Sprite;
