@@ -44,7 +44,7 @@ export interface ChatResult {
  * Kirov's is open-ended: it lands with its last bomb).
  */
 // ponytail: the Kirov's Infinity build-up keeps it playing until `kirovRun` sets its real landing; a per-event phase if more events wait like this.
-export const BIG_EVENTS = { chronoSwap: { label: 'CHRONO SWAP', buildUp: 3 }, nuke: { label: 'NUKE', buildUp: 3 }, kirov: { label: 'KIROV', buildUp: Infinity }, desolator: { label: 'DESOLATOR', buildUp: 2 } } as const;
+export const BIG_EVENTS = { chronoSwap: { label: 'CHRONOSPHERE', buildUp: 3 }, nuke: { label: 'NUKE', buildUp: 3 }, kirov: { label: 'KIROV', buildUp: Infinity }, desolator: { label: 'DESOLATOR', buildUp: 2 } } as const;
 export type BigEvent = keyof typeof BIG_EVENTS;
 /**
  * The channel-point reward each paid event is redeemed with (#102): its title (ASCII, at most 45 characters, viewer-facing

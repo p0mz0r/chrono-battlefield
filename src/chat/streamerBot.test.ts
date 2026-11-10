@@ -97,7 +97,7 @@ describe('Streamer.bot chat source', () => {
     expect(eventChips(race)).toEqual([]);
     cheer(50);
     last().event('Twitch', 'Cheer', { bits: 50, user: null, text: 'Cheer50' });
-    expect(eventChips(race).map((c) => c.label)).toEqual(['CHRONO SWAP · Vera · next race', 'CHRONO SWAP · Anonymous · next race']);
+    expect(eventChips(race).map((c) => c.label)).toEqual(['CHRONOSPHERE · Vera · next race', 'CHRONOSPHERE · Anonymous · next race']);
     vi.advanceTimersByTime(1000);
     expect(last().actions()).toEqual([]);
   });

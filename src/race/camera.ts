@@ -51,7 +51,7 @@ function eventFocus(race: Race, event: Turn): { racer: Racer; reason: string } |
     ? away ? [away, 'First away'] : [event.picks[0], `Nuke by ${event.by}`]
     : event.event === 'kirov' ? [event.picks[0], `Kirov by ${event.by}`]
     : event.event === 'desolator' ? [event.picks[0], `Desolator by ${event.by}`]
-    : [event.picks[1], landed ? `Swapped up front by ${event.by}` : `Chrono swap by ${event.by}`];
+    : [event.picks[1], landed ? `Swapped up front by ${event.by}` : `Chronosphere by ${event.by}`];
   return racer && racer.finishedAt === undefined ? { racer, reason } : undefined;
 }
 

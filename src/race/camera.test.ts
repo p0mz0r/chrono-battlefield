@@ -117,7 +117,7 @@ describe('director camera', () => {
     expect(paid(r, { viewerId: 'v', name: 'Vera', event: 'chronoSwap', via: 'redemption', reference: 'r1' }).ok).toBe(true);
     const turn = step();
     const back = r.queue[0]!.picks[1]!;
-    expect(turn).toMatchObject({ racer: back, reason: 'Chrono swap by Vera', cutAt: r.frame });
+    expect(turn).toMatchObject({ racer: back, reason: 'Chronosphere by Vera', cutAt: r.frame });
     expect(step(3 * TICK_HZ - 1)).toBe(turn); // held through the build-up
     const landing = step();
     expect(landing).toMatchObject({ racer: back, reason: 'Swapped up front by Vera', cutAt: r.frame });
