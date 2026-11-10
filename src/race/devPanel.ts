@@ -1,4 +1,4 @@
-import { BIG_EVENTS, chat, openJoinWindow, paid, type BigEvent, type Race } from './race.js';
+import { chat, openJoinWindow, paid, type BigEvent, type Race } from './race.js';
 
 // Dev only (`npm run dev`): the test-chat panel (#8).
 // main.ts imports it behind `import.meta.env.DEV`, so production builds leave it out.
@@ -52,7 +52,7 @@ export function mountDevPanel(race: Race, params: URLSearchParams, drainSettleme
   const send = (event: BigEvent, bits?: number) => {
     const name = $('name').value;
     const r = paid(race, { viewerId: `test:${name}`, name, event, via: bits === undefined ? 'redemption' : 'cheer', bits, reference: `dev:${++redemptions}` });
-    logLine(`${name} ${bits === undefined ? `redeems ${BIG_EVENTS[event].label}` : `cheers ${bits}`} → ${r.ok ? 'ok' : 'no'}, ${r.reason}`);
+    logLine(`${name} ${bits === undefined ? `redeems ${event}` : `cheers ${bits}`} → ${r.ok ? 'ok' : 'no'}, ${r.reason}`);
   };
   $('redeem').onclick = () => send('chronoSwap');
   $('kirov').onclick = () => send('kirov');

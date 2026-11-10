@@ -174,7 +174,7 @@ _Avoid_: Rad cannon, slow trap
 
 **Chrono swap**:
 A paid event, also set off by a cheer of exactly the operator's price (any other amount does nothing), that swaps the places of two random tanks still racing, one from the front half of them in the standings and one from the back half. A cheer-paid one with no valid pair tries again 10 s later, keeping its place in the queue.
-On stream it shows as "Chronosphere", its channel-point reward title, so its feed line reads apart from the **Chronosphere** interaction only by case and its two tanks.
+On stream it shows as "Chronosphere", its channel-point reward title; anywhere else, Chronosphere means the interaction.
 _Avoid_: Chronosphere, teleport, switch
 
 ### Chat

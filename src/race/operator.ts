@@ -127,7 +127,7 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, i
     }
   };
   toggles(verbs, VERBS, choices.enabled, (verb) => verb);
-  toggles(chaos, CHAOS, choices.chaos, (c) => c === 'hype' ? 'hype meter & nuke' : BIG_EVENTS[c as keyof typeof BIG_EVENTS].label.toLowerCase());
+  toggles(chaos, CHAOS, choices.chaos, (c) => c === 'hype' ? 'hype meter & nuke' : c === 'chronoSwap' ? 'chrono swap' : BIG_EVENTS[c as keyof typeof BIG_EVENTS].label.toLowerCase());
   const checked = (set: HTMLFieldSetElement) => [...set.querySelectorAll<HTMLInputElement>('input:checked')].map((box) => box.name);
   const valid = () => [choices.joinSeconds, choices.finishSeconds, choices.cheerBits].every((n) => Number.isInteger(n) && n > 0);
   const update = () => {
