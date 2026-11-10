@@ -473,6 +473,25 @@ describe('joining', () => {
     expect(standings(race)).toHaveLength(10);
     expect(say(race, 'late', '!rhino')).toEqual({ ok: false, reason: 'ignored' });
   });
+
+  it('gives each tank its own house colour in join order, bots after the viewers, the same on a replay', () => {
+    const colours = (seed: number, viewers: string[]) => {
+      const race = createRace(course(), ARENA, seed);
+      openJoinWindow(race, { joinSeconds: 1 });
+      for (const v of viewers) say(race, v, '!rhino', v);
+      ticks(race, TICK_HZ);
+      return Object.fromEntries(standings(race).map((s) => [s.name, s.colour]));
+    };
+    expect(colours(1, ['Kane', 'p0mz0r'])).toEqual({ Kane: 0, p0mz0r: 1, Bot1: 2, Bot2: 3, Bot3: 4, Bot4: 5, Bot5: 6, Bot6: 7 });
+    const full = colours(7, ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j']);
+    expect(full).toEqual({ a: 0, b: 1, c: 2, d: 3, e: 4, f: 5, g: 6, h: 7, i: 8, j: 9 });
+    expect(colours(7, ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'])).toEqual(full);
+
+    // The editor's bot-only run colours its bots the same way.
+    const sim = createRace(course(), ARENA, 1);
+    simulateRace(sim, course(), 10);
+    expect(sim.racers.map((r) => r.colour)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  });
 });
 
 /** Opens a race, joins `viewers`, and ticks to the results (or `maxTicks`), recording each tank's centre every frame. */

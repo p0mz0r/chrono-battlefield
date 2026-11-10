@@ -56,7 +56,7 @@ export function overlayDy(rules: IniSection | undefined, id: number): number {
  * The unit palette with its remap ramp (16..31, pure red in the file) recoloured to a `[Colors]` entry (H,S,V, 0-255 each).
  * ponytail: ramp brightness is the red ramp's own, scaled onto the colour's V; CNCMaps' exact ramp is not read.
  */
-function remapped(rgb: Uint8Array, hsv: number[]): Uint8Array {
+export function remapped(rgb: Uint8Array, hsv: number[]): Uint8Array {
   const out = rgb.slice(), [h, s, v] = [hsv[0]! / 255 * 6, hsv[1]! / 255, hsv[2]! / 255];
   for (let i = 16; i <= 31; i++) {
     const value = v * rgb[i * 3]! / 255, f = (n: number) => { const k = (n + h) % 6; return Math.round(255 * value * (1 - s * Math.max(0, Math.min(k, 4 - k, 1)))); };

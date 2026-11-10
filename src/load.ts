@@ -1,4 +1,4 @@
-import { BOMB_FOOTPRINT_PX, KIROV_FOOTPRINT_PX, prerenderAircraft, prerenderAnim, prerenderRhino, prerenderRocket, prerenderTank } from './assets/rhino.js';
+import { BOMB_FOOTPRINT_PX, KIROV_FOOTPRINT_PX, prerenderAircraft, prerenderAnim, prerenderRhinos, prerenderRocket, prerenderTank } from './assets/rhino.js';
 import type { Battlefield } from './battlefield/import.js';
 import { importBattlefield } from './battlefield/import.js';
 import type { ObjectImage } from './battlefield/objects.js';
@@ -17,7 +17,8 @@ export interface CourseArt {
     terrain: Omit<Terrain, 'chunks'> & { chunks: Encoded<TerrainChunk>[] };
     images: Encoded<ObjectImage>[];
   };
-  rhino: Tank;
+  /** A Rhino per house colour, indexed by `Racer.colour`, with the colour as 0xRRGGBB. */
+  rhinos: (Tank & { rgb: number })[];
   /** The Tesla strike's tank, prerendered like the Rhino. */
   tesla: Tank;
   /** The V3 rocket and the homing missile (Dreadnought missile), 32 facings each. */
@@ -64,15 +65,17 @@ export async function loadCourse(read: ReadFile, mapPath: string): Promise<{ map
     cached = false;
     const vfs = await mountTheater(read, map.theater);
     const { terrain, images, ...rest } = await importBattlefield(readMapOnce, mapPath, vfs);
-    const rhino = prerenderRhino(vfs, map.theater), tesla = prerenderTank(vfs, map.theater, 'ttnk');
+    const rhinos = prerenderRhinos(vfs, map.theater), tesla = prerenderTank(vfs, map.theater, 'ttnk');
     const chunks: Encoded<TerrainChunk>[] = [];
     // One at a time, so at most one chunk's encoder buffers are alive.
     for (const { rgba, ...c } of terrain.chunks) chunks.push({ ...c, image: await webp(rgba, CHUNK, CHUNK) });
     const encoded: Encoded<ObjectImage>[] = [];
     for (const { rgba, ...i } of images) encoded.push({ ...i, image: await webp(rgba, i.width, i.height) });
+    const tanks: CourseArt['rhinos'] = [];
+    for (const r of rhinos) tanks.push({ body: await sprite(r.body), turret: await sprite(r.turret.sprite), pivot: r.turret.pivot, rgb: r.rgb });
     return {
       battlefield: { ...rest, terrain: { ...terrain, chunks }, images: encoded },
-      rhino: { body: await sprite(rhino.body), turret: await sprite(rhino.turret.sprite), pivot: rhino.turret.pivot },
+      rhinos: tanks,
       tesla: { body: await sprite(tesla.body), turret: await sprite(tesla.turret.sprite), pivot: tesla.turret.pivot },
       v3: await sprite(prerenderRocket(vfs, map.theater, 'v3rocket')),
       missile: await sprite(prerenderRocket(vfs, map.theater, 'dmisl')),

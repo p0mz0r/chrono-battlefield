@@ -1,4 +1,5 @@
-import { HvaFile, Palette, ShpFile, VxlFile, type Vfs } from '../ra2/index.js';
+import { remapped } from '../battlefield/objects.js';
+import { HvaFile, IniFile, Palette, ShpFile, VxlFile, type Vfs } from '../ra2/index.js';
 import { renderTurretToSprite, renderVoxelToSprite, type TurretRender } from '../ra2/render/voxelRender.js';
 import { convertShpToAtlas, type ConvertedSprite } from '../ra2/render/sprite.js';
 import { theaterArtExt } from '../ra2/theater.js';
@@ -34,10 +35,13 @@ function reader(vfs: Files, theater: string) {
   };
 }
 
-/** Prerenders `<unit>`, `<unit>tur` and (when present) `<unit>barl` with the theater's unit palette. Pure, no DOM. */
-export function prerenderTank(vfs: Files, theater: string, unit: string, footprintPx = RHINO_FOOTPRINT_PX): RhinoArt {
-  const { has, vxl, hva, pal } = reader(vfs, theater);
-  const hull = vxl(unit), palette = pal(), barrel = has(`${unit}barl`);
+/**
+ * Prerenders `<unit>`, `<unit>tur` and (when present) `<unit>barl` with the theater's unit palette, its remap ramp
+ * in `palette` when given. Pure, no DOM.
+ */
+export function prerenderTank(vfs: Files, theater: string, unit: string, footprintPx = RHINO_FOOTPRINT_PX, palette = reader(vfs, theater).pal()): RhinoArt {
+  const { has, vxl, hva } = reader(vfs, theater);
+  const hull = vxl(unit), barrel = has(`${unit}barl`);
   return {
     body: renderVoxelToSprite(unit, hull, hva(unit), palette, { footprintPx }),
     turret: renderTurretToSprite(`${unit}tur`, hull, vxl(`${unit}tur`), hva(`${unit}tur`), palette,
@@ -45,7 +49,24 @@ export function prerenderTank(vfs: Files, theater: string, unit: string, footpri
   };
 }
 
-export const prerenderRhino = (vfs: Files, theater: string, footprintPx = RHINO_FOOTPRINT_PX) => prerenderTank(vfs, theater, 'htnk', footprintPx);
+/**
+ * The rulesmd `[Colors]` entries tanks race in, one per tank in join order. None is orange, green or cyan, so none
+ * reads as the stun tint, the boost tint or the shield ring; the most distinct come first, for small fields.
+ */
+export const HOUSE_COLOURS = ['DarkRed', 'DarkBlue', 'Gold', 'Purple', 'LightGrey', 'Magenta', 'Grey', 'Red', 'AlliedLoad', 'Yellow'];
+
+/** A Rhino per house colour, in `HOUSE_COLOURS` order, each with its colour's brightest shade as 0xRRGGBB for the labels. */
+export function prerenderRhinos(vfs: Files, theater: string, footprintPx = RHINO_FOOTPRINT_PX): (RhinoArt & { rgb: number })[] {
+  const { open, pal } = reader(vfs, theater);
+  const colors = IniFile.parse(open('rulesmd.ini')).getSection('Colors'), unit = pal().rgb;
+  return HOUSE_COLOURS.map((name) => {
+    const hsv = colors?.getString(name);
+    if (!hsv) throw new Error(`Missing install data: rulesmd.ini [Colors] ${name}`);
+    const rgb = remapped(unit, hsv.split(',').map(Number));
+    // Index 16 is the ramp's brightest shade.
+    return { ...prerenderTank(vfs, theater, 'htnk', footprintPx, Palette.fromRgb(rgb)), rgb: rgb[48]! << 16 | rgb[49]! << 8 | rgb[50]! };
+  });
+}
 
 /** 32 facings of the V3 rocket (`v3rocket`) or the Dreadnought missile (`dmisl`); each falls back to the other when missing. */
 export function prerenderRocket(vfs: Files, theater: string, prefer: 'v3rocket' | 'dmisl', footprintPx = ROCKET_FOOTPRINT_PX): ConvertedSprite {
