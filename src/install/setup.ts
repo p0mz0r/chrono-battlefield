@@ -89,13 +89,19 @@ $('.close').addEventListener('click', () => dialog.close());
 
 $('.twitch-login').addEventListener('click', async () => {
   const code = $('.twitch-code');
+  // Opened before the await, while the click still counts: browsers block a popup opened later. OBS may block it anyway.
+  const popup = open('', 'twitch-login', 'popup,width=520,height=760');
   try {
     const login = await loginTwitch();
-    code.innerHTML = `On any device, open <b>twitch.tv/activate</b> and enter <b></b>`;
+    // Twitch's link carries the code, so the window goes straight to Activate, then the scopes to authorize.
+    if (popup) popup.location.href = login.uri;
+    code.innerHTML = `${popup ? 'In the Twitch window, click Activate, then Authorize. No window? ' : ''}On any device, open <b>twitch.tv/activate</b> and enter <b></b>`;
     code.querySelector('b:last-child')!.textContent = login.code;
     await login.done;
+    popup?.close();
     location.reload();
   } catch (err) {
+    popup?.close();
     code.textContent = String((err as Error).message ?? err);
   }
 });
