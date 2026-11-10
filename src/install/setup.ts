@@ -18,7 +18,11 @@ dialog.innerHTML = `
   <button value="use">Use this folder</button>
 </form>
 <p class="stored"></p>
-<p><label>Chat source <select name="chat"><option value="">None (chronoChat events only)</option><option value="streamerbot">Streamer.bot (ws://127.0.0.1:8080)</option><option value="twitch">Twitch direct</option></select></label></p>
+<fieldset class="chat"><legend>Chat source</legend>
+  <label><input type="radio" name="chat" value=""> None (chronoChat events only)</label>
+  <label><input type="radio" name="chat" value="streamerbot"> Streamer.bot (ws://127.0.0.1:8080)</label>
+  <label><input type="radio" name="chat" value="twitch"> Twitch direct</label>
+</fieldset>
 <div class="rewards">
   <p>In Streamer.bot, create these rewards with its Create Reward button (rewards made in Twitch's dashboard can't be refunded), then import the action <b>${SETTLE_ACTION}</b> (Import, paste the string below). Click a field to select it for copying.</p>
   ${Object.values(REWARDS).map(({ title, prompt }) => `<p><input readonly size="14" value="${title}"> <input readonly size="60" value="${prompt}"></p>`).join('')}
@@ -33,7 +37,8 @@ dialog.style.cssText = 'font:20px/1.5 sans-serif;background:#111;color:#ddd;bord
 const $ = <T extends Element>(sel: string) => dialog.querySelector<T>(sel)!;
 const pathInput = $<HTMLInputElement>('input[name=path]');
 const fileInput = $<HTMLInputElement>('input[type=file]');
-const chatInput = $<HTMLSelectElement>('select[name=chat]');
+// Radio buttons, not a select: OBS Interact never opens a select's list.
+const chatInputs = [...dialog.querySelectorAll<HTMLInputElement>('input[name=chat]')];
 const CHAT_KEY = 'rhino-chat-source';
 for (const input of dialog.querySelectorAll<HTMLInputElement>('.rewards input')) input.addEventListener('focus', () => input.select());
 
@@ -43,8 +48,8 @@ export const chatSource = (): '' | 'streamerbot' | 'twitch' => {
   return picked === 'streamerbot' || picked === 'twitch' ? picked : '';
 };
 
-chatInput.addEventListener('change', () => {
-  localStorage.setItem(CHAT_KEY, chatInput.value);
+$('.chat').addEventListener('change', (e) => {
+  localStorage.setItem(CHAT_KEY, (e.target as HTMLInputElement).value);
   location.reload();
 });
 
@@ -99,9 +104,10 @@ $('.twitch-login').addEventListener('click', async () => {
 export function showSetup(problems: string[] = []) {
   if (!dialog.isConnected) document.body.append(dialog);
   pathInput.value = savedPath();
-  chatInput.value = chatSource();
-  $<HTMLElement>('.rewards').hidden = chatInput.value !== 'streamerbot';
-  $<HTMLElement>('.twitch').hidden = chatInput.value !== 'twitch';
+  const source = chatSource();
+  for (const input of chatInputs) input.checked = input.value === source;
+  $<HTMLElement>('.rewards').hidden = source !== 'streamerbot';
+  $<HTMLElement>('.twitch').hidden = source !== 'twitch';
   const login = twitchLogin(), missing = missingRewards();
   $('.twitch-status').textContent = !login ? `Not logged in. Log in once as the channel that streams; the game then creates its rewards. Set their cost and turn them on or off in Twitch's dashboard.`
     : missing.length ? `Logged in as ${login}. Rewards not created yet: ${missing.join(', ')}. If Twitch already has a reward with that title, delete or rename it, then reload.`
