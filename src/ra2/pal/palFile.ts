@@ -69,6 +69,12 @@ export class Palette {
     return new Palette(out);
   }
 
+  /** A palette from 768 packed 8-bit RGB bytes (e.g. one recoloured from {@link rgb}). */
+  static fromRgb(rgb: Uint8Array): Palette {
+    if (rgb.length !== PAL_FILE_SIZE) throw new Error(`RGB palette must be exactly ${PAL_FILE_SIZE} bytes, got ${rgb.length}`);
+    return new Palette(rgb.slice());
+  }
+
   /** Number of entries (always 256). */
   get length(): number {
     return PALETTE_ENTRY_COUNT;

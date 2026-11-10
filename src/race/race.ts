@@ -153,6 +153,8 @@ export interface Racer {
   /** Label on the tank: display name (`#2` on a collision) or `Bot1`… */
   name: string;
   bot: boolean;
+  /** House colour: an index into the course art's coloured Rhinos, in join order (bots after the viewers). */
+  colour: number;
   tank: Tank | undefined;
   /** Index into `course.waypoints` of the next waypoint; `waypoints.length` = heading for the finish. */
   next: number;
@@ -230,6 +232,7 @@ export interface Race {
 export interface Standing {
   name: string;
   bot: boolean;
+  colour: number;
   /** Course progress as a fraction of the whole race (1 when finished). */
   progress: number;
   /** Seconds from GO to finishing, or undefined (DNF). */
@@ -694,7 +697,7 @@ function move(race: Race, r: Racer, { landing, next }: Shift): void {
 }
 
 const racer = (race: Race, name: string, viewerId?: string): Racer =>
-  ({ viewerId, name, bot: viewerId === undefined, tank: undefined, next: 0, fork: undefined, progress: 0, finishedAt: undefined, tie: random(race.field), boostUntil: 0, shieldUntil: 0, stunUntil: 0, immunityUntil: 0, protectedUntil: 0, botNext: 0, botV3Next: false, warp: undefined });
+  ({ viewerId, name, bot: viewerId === undefined, colour: race.racers.length, tank: undefined, next: 0, fork: undefined, progress: 0, finishedAt: undefined, tie: random(race.field), boostUntil: 0, shieldUntil: 0, stunUntil: 0, immunityUntil: 0, protectedUntil: 0, botNext: 0, botV3Next: false, warp: undefined });
 
 function launchV3(race: Race, firer: Racer, back: boolean): void {
   race.sounds.push('cannon', 'v3Launch');
@@ -911,5 +914,5 @@ const ranked = (race: Race) => [...race.racers]
 /** Every tank: finished ones in finish order, then by course progress; ties broken by seed. */
 export function standings(race: Race): Standing[] {
   const len = race.course.length || 1;
-  return ranked(race).map((r) => ({ name: r.name, bot: r.bot, progress: r.finishedAt === undefined ? Math.min(r.progress / len, 1) : 1, finishTime: r.finishedAt === undefined ? undefined : r.finishedAt / TICK_HZ }));
+  return ranked(race).map((r) => ({ name: r.name, bot: r.bot, colour: r.colour, progress: r.finishedAt === undefined ? Math.min(r.progress / len, 1) : 1, finishTime: r.finishedAt === undefined ? undefined : r.finishedAt / TICK_HZ }));
 }

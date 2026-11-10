@@ -52,6 +52,10 @@ _Avoid_: Unit, vehicle, car
 A tank in the race that no racer owns, added to fill a thin field and labelled as a bot; it competes and places like any other tank.
 _Avoid_: AI racer, NPC, racer
 
+**House colour**:
+The colour a tank races in, given in join order (bots after the racers) from a fixed set of ten of the game's own house colours, no two alike, with the ones nearest a shield or boost only in the largest fields; the tank's tag, standings row, lower third, feed lines and results row show it too.
+_Avoid_: Team colour, player colour
+
 **Finish area**:
 The marked circle of cells, three tanks wide, around a course's finish cell; a tank that enters it with no waypoints left has finished and leaves the battlefield.
 _Avoid_: Finish line, goal

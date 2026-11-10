@@ -2,7 +2,8 @@ import { beforeAll, expect, it } from 'vitest';
 import { describeInstall, readFromDir } from '../../test/install.js';
 import { mountTheater } from '../ra2/mount.js';
 import type { Vfs } from '../ra2/index.js';
-import { prerenderAircraft, prerenderAnim, prerenderRocket, prerenderTank } from './rhino.js';
+import { MAX_TANKS } from '../race/race.js';
+import { prerenderAircraft, prerenderAnim, prerenderRhinos, prerenderRocket, prerenderTank } from './rhino.js';
 
 const painted = (rgba: Uint8Array | Uint8ClampedArray) => rgba.some((v, i) => i % 4 === 3 && v > 0);
 
@@ -15,6 +16,27 @@ describeInstall('interaction art from the install', () => {
     expect(tesla.body.frames).toHaveLength(32);
     expect(tesla.turret.sprite.frames).toHaveLength(32);
     expect(painted(tesla.body.colorRgba)).toBe(true);
+  });
+
+  it('prerenders a Rhino per house colour from rulesmd [Colors]: enough for a full field, recolouring only the house-colour area', () => {
+    const rhinos = prerenderRhinos(vfs, 'temperate');
+    expect(rhinos.length).toBeGreaterThanOrEqual(MAX_TANKS);
+    expect(new Set(rhinos.map((r) => r.rgb)).size).toBe(rhinos.length);
+    const [a, b] = rhinos.map((r) => r.body.colorRgba);
+    let same = 0, differ = 0, red = 0;
+    for (let p = 0; p < a!.length; p += 4) {
+      if (!a![p + 3]) continue;
+      if (a![p] === b![p] && a![p + 1] === b![p + 1] && a![p + 2] === b![p + 2]) same++; else differ++;
+      if (a![p]! > 128 && !a![p + 1] && !a![p + 2]) red++;
+    }
+    // Most of the hull keeps its own colours; the house-colour area takes the colour, shaded.
+    expect(differ).toBeGreaterThan(50);
+    expect(same).toBeGreaterThan(differ);
+    expect(red).toBe(0);
+    // A colour's tank is shaded: its house-colour pixels are not one flat value.
+    const shades = new Set<number>();
+    for (let p = 0; p < a!.length; p += 4) if (a![p + 3] === 255 && (a![p] !== b![p] || a![p + 1] !== b![p + 1])) shades.add(a![p]! << 16 | a![p + 1]! << 8 | a![p + 2]!);
+    expect(shades.size).toBeGreaterThan(5);
   });
 
   it('takes the V3 rocket for the V3 and the Dreadnought missile for the homing missile, each falling back to the other', () => {

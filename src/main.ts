@@ -10,7 +10,7 @@ import { facingAngle, projectModelPoint } from './ra2/render/voxelRender.js';
 import { loadCourse, mapHash, type CourseFile, type LinePoint } from './race/course.js';
 import { chat, commandList, createRace, DESOLATOR, KIROV, kirovDrops, kirovImpacts, latestEvent, NUKE_FALL, playingEvent, secondsLeft, standings, tickRace, type Race, type Racer, type Turn } from './race/race.js';
 import { directorShot, type Shot } from './race/camera.js';
-import { mountStreamView, type CameraMode } from './race/view.js';
+import { mountStreamView, readable, type CameraMode } from './race/view.js';
 import { mountOperator, readChoices } from './race/operator.js';
 import { importedCourses } from './race/courseFile.js';
 
@@ -127,7 +127,7 @@ async function main() {
     return offset === undefined ? bytes : bytes.subarray(offset, offset + length!);
   } : readInstall;
   const started = performance.now();
-  const { map, mapBytes, art: { battlefield, rhino, tesla, v3, missile, warpOut, warpIn, fire, nuke, mushroom, kirov, bomb, kirovBlast }, cached } = await loadCourseArt(read, mapPath);
+  const { map, mapBytes, art: { battlefield, rhinos, tesla, v3, missile, warpOut, warpIn, fire, nuke, mushroom, kirov, bomb, kirovBlast }, cached } = await loadCourseArt(read, mapPath);
   if (edit && params.get('map')) {
     const first = battlefield.grid.speed.findIndex((speed, i) => speed > 0 && !battlefield.grid.blocked[i] && battlefield.grid.deck[i]! < 0);
     if (first < 0) throw new Error('Map has no drivable ground cells');
@@ -260,7 +260,9 @@ async function main() {
   }
 
   // The Rhinos: one view per racer once its tank is on the start grid, labelled with its name.
-  const bodyTex = await frameTextures(rhino.body), turretTex = await frameTextures(rhino.turret);
+  // One Rhino per house colour; a racer drives the one its join order gave it.
+  const rhinoTex = await Promise.all(rhinos.map(async (t) => ({ body: await frameTextures(t.body), turret: await frameTextures(t.turret) })));
+  const colourOf = (r: Racer) => rhinos[r.colour]!.rgb;
   // Labels sit on their own layer over everything, at a constant screen size: number chips zoomed out, names zoomed in.
   const tags = new Container();
   world.addChild(tags);
@@ -268,12 +270,12 @@ async function main() {
   const viewOf = (r: Racer) => {
     let v = views.get(r);
     if (!v) {
-      const body = new Sprite(bodyTex[0]), turret = new Sprite(turretTex[0]);
+      const body = new Sprite(rhinoTex[0]!.body[0]), turret = new Sprite(rhinoTex[0]!.turret[0]);
       body.anchor.set(0.5);
       turret.anchor.set(0.5);
-      const label = new Text({ text: r.name, style: { fill: r.bot ? 0xdddddd : 0xffff80, fontSize: 20, fontWeight: '700', fontFamily: 'Segoe UI, sans-serif', stroke: { color: 0x000000, width: 4 } } });
+      const label = new Text({ text: r.name, style: { fill: readable(colourOf(r)), fontSize: 20, fontWeight: '700', fontFamily: 'Segoe UI, sans-serif', stroke: { color: 0x000000, width: 4 } } });
       label.anchor.set(0.5, 1);
-      const chip = new Graphics().circle(0, -16, 16).fill(r.bot ? 0x5d6b7d : 0xbd2020).stroke({ color: 0xffffff, width: 2 });
+      const chip = new Graphics().circle(0, -16, 16).fill(colourOf(r)).stroke({ color: 0xffffff, width: 2 });
       const tag = new Container();
       tag.addChild(chip, label);
       tags.addChild(tag);
@@ -290,7 +292,7 @@ async function main() {
   const focus = cellParam('cell');
   const zoom = Number(params.get('zoom')) || (focus ? 1 : 0);
   let cameraMode: CameraMode = 'overview';
-  const drawOverlay = edit ? undefined : mountStreamView();
+  const drawOverlay = edit ? undefined : mountStreamView(rhinos.map((t) => t.rgb));
   let chatLink: ChatSource | undefined;
   if (edit) world.scale.set(Math.min(app.screen.width / terrain.width, app.screen.height / terrain.height));
   const bounds = [...course.line, ...[...course.forks.values()].flatMap((fork) => fork.line)]
@@ -340,8 +342,9 @@ async function main() {
       const fx = (prev.x + (tank.x - prev.x) * a) / LEPTONS_PER_CELL, fy = (prev.y + (tank.y - prev.y) * a) / LEPTONS_PER_CELL;
       // The prerender's frame 0 looks along -x (screen up-left); movement facing 0 is -y (up-right).
       const f = (Math.round(tank.facing / 2048) + 8) % 32;
-      body.texture = bodyTex[f]!;
-      turret.texture = turretTex[f]!;
+      const tex = rhinoTex[r.colour]!;
+      body.texture = tex.body[f]!;
+      turret.texture = tex.turret[f]!;
       const stunned = r.stunUntil > race.frame, shielded = r.shieldUntil > race.frame, boosted = r.boostUntil > race.frame;
       body.tint = turret.tint = stunned ? 0xff6030 : boosted ? 0x60ff60 : 0xffffff;
       fire.visible = stunned; // burning until the stun ends
@@ -350,7 +353,7 @@ async function main() {
       if (shielded) effects.circle(0, -5, 22).stroke({ color: 0x50caff, width: 2, alpha: 0.9 });
       if (r.immunityUntil > race.frame && !stunned) effects.circle(0, -5, 25).stroke({ color: 0xffc030, width: 1, alpha: 0.8 });
       if (r.protectedUntil > race.frame) effects.circle(0, -5, 28).stroke({ color: 0xff55ff, width: 1, alpha: 0.7 });
-      const ang = facingAngle(f), [px, py, pz] = rhino.pivot;
+      const ang = facingAngle(f), [px, py, pz] = rhinos[0]!.pivot;
       const tp = projectModelPoint(px * Math.cos(ang) - py * Math.sin(ang), px * Math.sin(ang) + py * Math.cos(ang), pz);
       turret.position.set(tp.sx, tp.sy);
       const p = toScreen(fx, fy, spotLevel(grid, tank.cell));
@@ -361,6 +364,7 @@ async function main() {
       const text = chip.visible ? String(ordered.findIndex((s) => s.name === r.name) + 1) : r.name;
       if (label.text !== text) label.text = text;
       label.style.fontSize = chip.visible ? 18 : 20;
+      label.style.fill = chip.visible ? 0xffffff : readable(colourOf(r)); // the number on its colour's chip, the name in its colour
       label.y = chip.visible ? -4 : 0;
       tag.position.set(p.x, p.y - 22);
       tag.scale.set(1 / world.scale.x);
