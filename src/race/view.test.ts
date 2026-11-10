@@ -10,5 +10,5 @@ it('paints whole racer names in their colour, escaped, and leaves the rest of a 
 
 it('lifts only a dark house colour toward white, for names on the near-black panels', () => {
   expect(readable(0xfcff10)).toBe(0xfcff10); // Gold, already light
-  expect(readable(0x0024ff)).toBe(0x536bff); // AlliedLoad's pure blue
+  expect(readable(0x000000)).toBe(0x808080); // black, half way to white
 });

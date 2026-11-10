@@ -5,7 +5,7 @@ export type CameraMode = 'overview' | 'director';
 
 const esc = (value: string) => value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
-/** A house colour (0xRRGGBB), a dark one (AlliedLoad's pure blue) lifted toward white so a name in it reads on near-black. */
+/** A house colour (0xRRGGBB), a dark one (black) lifted toward white so a name in it reads on near-black. */
 export function readable(colour: number): number {
   const rgb = [colour >> 16, (colour >> 8) & 255, colour & 255];
   const lift = Math.max(0, 140 - (0.3 * rgb[0]! + 0.59 * rgb[1]! + 0.11 * rgb[2]!)) / 280;
