@@ -108,10 +108,6 @@ _Avoid_: Green shell, missile
 An audience interaction in which a Tesla tank chronoshifts in beside a tank, stuns every tank near it after a short visible charge, and chronoshifts out.
 _Avoid_: Area strike, nuke, artillery
 
-**Chronosphere**:
-An audience interaction that moves one tank a random distance back along the course, or sometimes, as a misfire, a shorter random distance forward.
-_Avoid_: Teleport
-
 **Knockback**:
 A move a few cells back along the course that comes with a stun from a big event, for every tank caught in it, intended target or not; personal interactions never knock back.
 _Avoid_: Pushback, recoil
@@ -133,7 +129,7 @@ A short, visible spell in which a tank stuck behind other tanks for too long dri
 _Avoid_: Noclip, unstuck
 
 **Audience interaction**:
-Any chat-triggered effect on the race, such as a homing missile, the chronosphere, or a boost. Harmful ones delay or move a tank; boost and shield help one.
+Any chat-triggered effect on the race, such as a homing missile, a Tesla strike, or a boost. Harmful ones delay or move a tank; boost and shield help one.
 _Avoid_: Superweapon, command, power
 
 **Personal interaction**:
@@ -174,7 +170,8 @@ _Avoid_: Rad cannon, slow trap
 
 **Chrono swap**:
 A paid event, also set off by a cheer of exactly the operator's price (any other amount does nothing), that swaps the places of two random tanks still racing, one from the front half of them in the standings and one from the back half. A cheer-paid one with no valid pair tries again 10 s later, keeping its place in the queue.
-_Avoid_: Chronosphere, teleport, switch
+On stream it shows as "Chronosphere", its channel-point reward title.
+_Avoid_: Teleport, switch
 
 ### Chat
 

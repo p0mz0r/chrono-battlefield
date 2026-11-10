@@ -208,89 +208,6 @@ describe('audience interactions', () => {
     expect(trace(7).some((event) => event.startsWith('v3'))).toBe(true);
   });
 
-  const kaneOf = (race: Race) => race.racers.find((r) => r.name === 'Kane')!;
-  const cellIndex = (race: Race, r: Racer) => r.tank!.cell.y * race.field.grid.width + r.tank!.cell.x;
-  /** Every other tank's spots, to check a move never lands on one. */
-  const othersHeld = (race: Race, r: Racer) => new Set(race.field.tanks.filter((t) => t !== r.tank).flatMap((t) => [t.cell, ...t.ahead]).map((s) => `${s.x},${s.y},${s.deck}`));
-
-  it('sends a named tank back 15–30% of the course as drawn, or on a misfire forward 5–10%, and it drives on', () => {
-    const shares: number[] = [];
-    for (let seed = 1; seed <= 40; seed++) {
-      const race = racing(seed);
-      ticks(race, 500);
-      const kane = kaneOf(race), before = kane.progress, held = othersHeld(race, kane), left = { x: kane.tank!.cell.x, y: kane.tank!.cell.y };
-      kane.tank!.stunnedUntil = race.field.frame + 20;
-      expect(say(race, 'viewer', '!chrono Kane')).toEqual({ ok: true, reason: 'chrono Kane' });
-      expect(kane.warp).toEqual({ from: left, to: { x: kane.tank!.cell.x, y: kane.tank!.cell.y }, at: race.frame }); // drawn as a warp at both cells
-      shares.push((kane.progress - before) / race.course.drawnLength);
-      expect(held.has(`${kane.tank!.cell.x},${kane.tank!.cell.y},false`)).toBe(false);
-      expect(kane.tank!.cell.deck).toBe(false);
-      expect(kane.tank!.stunnedUntil).toBe(race.field.frame + 20);
-      const landed = kane.progress;
-      ticks(race, 150);
-      expect(kane.progress).toBeGreaterThan(landed + 2);
-    }
-    // ±1 cell: the landing is the cell nearest the spot on the ideal line.
-    const slack = 1 / course().drawnLength;
-    for (const share of shares) expect((share >= -0.30 - slack && share <= -0.15 + slack) || (share >= 0.05 - slack && share <= 0.10 + slack), `share ${share}`).toBe(true);
-    const misfires = shares.filter((share) => share > 0).length;
-    expect(misfires).toBeGreaterThan(2);
-    expect(misfires).toBeLessThan(16);
-  });
-
-  it('never lets a misfire reach the finish area', () => {
-    let misfires = 0;
-    for (let seed = 1; seed <= 30; seed++) {
-      const race = racing(seed);
-      const kane = kaneOf(race);
-      // Close enough to the finish that any misfire would overshoot it.
-      while (race.phase === 'racing' && !(kane.next === race.course.waypoints.length && race.course.length - kane.progress < race.course.drawnLength * 0.05)) tickRace(race);
-      if (race.phase !== 'racing') continue; // Kane ran last: the race ended as the one before finished
-      const before = kane.progress;
-      say(race, 'viewer', '!chrono Kane');
-      if (kane.progress <= before) continue;
-      misfires++;
-      expect(race.course.finishArea.has(cellIndex(race, kane))).toBe(false);
-      expect(kane.finishedAt).toBeUndefined();
-    }
-    expect(misfires).toBeGreaterThan(0);
-  });
-
-  it('drops a lap when a tank is sent back across a lap section', () => {
-    const lapEnd = 3; // unrolled index of the last waypoint of lap 1
-    let sentBack = 0;
-    for (let seed = 1; seed <= 10; seed++) {
-      const race = racing(seed);
-      const kane = kaneOf(race);
-      // Lap 2 just begun: any send-back crosses the end of lap 1.
-      while (!(kane.next === lapEnd + 1 && kane.progress - race.course.waypointAlong[lapEnd]! > 1)) tickRace(race);
-      expect(kane.progress - race.course.waypointAlong[lapEnd]!).toBeLessThan(race.course.drawnLength * 0.15);
-      const before = kane.progress;
-      say(race, 'viewer', '!chrono Kane');
-      if (kane.progress > before) continue;
-      sentBack++;
-      expect(kane.next).toBeLessThanOrEqual(lapEnd);
-      expect(kane.progress).toBeLessThan(race.course.waypointAlong[lapEnd]!);
-      for (let i = 0; i < 4000 && kane.next <= lapEnd; i++) tickRace(race);
-      expect(kane.next).toBeGreaterThan(lapEnd); // drove lap 1's end again
-    }
-    expect(sentBack).toBeGreaterThan(0);
-  });
-
-  it('rejects a named chronosphere on a shielded or protected tank without spending cooldown', () => {
-    const race = racing();
-    ticks(race, 100);
-    expect(commandList(race)).toContain('!chrono [name]');
-    say(race, 'a', '!shield');
-    expect(say(race, 'viewer', '!chrono Kane')).toEqual({ ok: false, reason: 'target unable' });
-    expect(say(race, 'viewer', '!chrono Kara').ok).toBe(true);
-    expect(say(race, 'other', '!chrono Kara')).toEqual({ ok: false, reason: 'target protected' });
-    // Random targets reroll past the shield; protection doesn't stop a random hit.
-    const hit = Array.from({ length: 20 }, (_, i) => say(race, `random${i}`, '!chrono').reason);
-    expect(hit).not.toContain('chrono Kane');
-    expect(hit).toContain('chrono Kara');
-  });
-
   it('parses names, rejects ambiguous targets without spending cooldown, and shows phase commands', () => {
     const race = createRace(course(), ARENA, 1);
     expect(commandList(race)).toEqual([]);
@@ -369,14 +286,13 @@ describe('audience interactions', () => {
     for (const r of race.racers) if (r.bot) r.botNext = Infinity;
     expect(say(race, 'v', '!boost Kane', 'Vera').ok).toBe(true);
     expect(say(race, 'b', '!shield', 'Kara').ok).toBe(true);
-    expect(say(race, 'w', '!chrono Bot1', 'Wes').ok).toBe(true);
-    expect(race.feed).toEqual(['Vera ▸ boost ▸ Kane', 'Kara ▸ shield ▸ Kara', 'Wes ▸ chrono ▸ Bot1']);
+    expect(race.feed).toEqual(['Vera ▸ boost ▸ Kane', 'Kara ▸ shield ▸ Kara']);
     expect(say(race, 'x', '!missile Bot2', 'Xan').ok).toBe(true);
-    expect(race.feed).toHaveLength(3); // a missile lands on impact
+    expect(race.feed).toHaveLength(2); // a missile lands on impact
     ticks(race, Math.round(1.5 * TICK_HZ));
     expect(race.feed.at(-1)).toBe('Xan ▸ missile ▸ Bot2');
     expect(say(race, 'z', '!boost missing', 'Zed').ok).toBe(false);
-    expect(race.feed).toEqual(['Vera ▸ boost ▸ Kane', 'Kara ▸ shield ▸ Kara', 'Wes ▸ chrono ▸ Bot1', 'Xan ▸ missile ▸ Bot2', 'Zed: unknown name']);
+    expect(race.feed).toEqual(['Vera ▸ boost ▸ Kane', 'Kara ▸ shield ▸ Kara', 'Xan ▸ missile ▸ Bot2', 'Zed: unknown name']);
     expect(say(race, 'y', '!missile Kara', 'Yan').ok).toBe(true);
     ticks(race, Math.round(1.5 * TICK_HZ));
     expect(race.feed.at(-1)).toBe('Zed: unknown name'); // Kara's shield stopped it: nothing landed
@@ -616,7 +532,7 @@ describe('ending', () => {
       say(race, 'a', '!rhino'); say(race, 'b', '!rhino');
       for (let i = 0; i < 20_000 && race.phase !== 'results'; i++) {
         tickRace(race);
-        if (race.frame === 10 * TICK_HZ) say(race, 'a', '!chrono b');
+        if (race.frame === 10 * TICK_HZ) say(race, 'a', '!missile b');
       }
       return race.results;
     };
@@ -687,7 +603,7 @@ describe('paid events', () => {
     expect(race.sounds).toContain('chrono');
     expect(race.settlements).toEqual([{ reference: 'r1', outcome: 'fulfilled' }]);
     const line = race.feed.at(-1)!;
-    const [, a, b] = line.match(/^Vera ▸ CHRONO SWAP ▸ (\S+) ⇄ (\S+)$/)!;
+    const [, a, b] = line.match(/^Vera ▸ CHRONOSPHERE ▸ (\S+) ⇄ (\S+)$/)!;
     const half = before.length / 2;
     expect([before.indexOf(a!) < half, before.indexOf(b!) < half].sort()).toEqual([false, true]);
     const ra = race.racers.find((r) => r.name === a)!;
@@ -713,7 +629,7 @@ describe('paid events', () => {
     }
     expect(turns).toHaveLength(2);
     expect(turns[1]! - turns[0]!).toBe(13 * TICK_HZ); // 3 s build-up, then the 10 s gap
-    expect(race.feed.filter((l) => l.includes('CHRONO SWAP')).map((l) => l.split(' ')[0])).toEqual(['Vera', 'Wes']);
+    expect(race.feed.filter((l) => l.includes('CHRONOSPHERE')).map((l) => l.split(' ')[0])).toEqual(['Vera', 'Wes']);
     expect(race.settlements).toEqual([{ reference: 'r1', outcome: 'fulfilled' }, { reference: 'r2', outcome: 'fulfilled' }]);
   });
 
@@ -742,7 +658,7 @@ describe('paid events', () => {
     redeem(race, 'v', 'Vera', 'r1');
     ticks(race, 3 * TICK_HZ + 1);
     expect(race.settlements).toEqual([{ reference: 'r1', outcome: 'fulfilled' }]);
-    const [, a, b] = race.feed.at(-1)!.match(/^Vera ▸ CHRONO SWAP ▸ (\S+) ⇄ (\S+)$/)!;
+    const [, a, b] = race.feed.at(-1)!.match(/^Vera ▸ CHRONOSPHERE ▸ (\S+) ⇄ (\S+)$/)!;
     expect([4, 5]).toContain(order.indexOf(a!));
     expect([6, 7]).toContain(order.indexOf(b!));
   });
@@ -758,7 +674,7 @@ describe('paid events', () => {
     tickRace(race);
     expect(race.queue[0]!.picks[0]).not.toBe(front); // at once, so the target ring follows
     ticks(race, 3 * TICK_HZ - 1);
-    const [, a, b] = race.feed.at(-1)!.match(/^Vera ▸ CHRONO SWAP ▸ (\S+) ⇄ (\S+)$/)!;
+    const [, a, b] = race.feed.at(-1)!.match(/^Vera ▸ CHRONOSPHERE ▸ (\S+) ⇄ (\S+)$/)!;
     expect(b).toBe(back!.name);
     expect(a).not.toBe(front!.name);
     expect(order.indexOf(a!)).toBeLessThan(order.length / 2);
@@ -770,7 +686,7 @@ describe('paid events', () => {
     redeem(race, 'v', 'Vera', 'r1');
     tickRace(race);
     expect(race.settlements).toEqual([{ reference: 'r1', outcome: 'refunded' }]);
-    expect(race.feed.at(-1)).toBe('Vera ▸ CHRONO SWAP · refunded');
+    expect(race.feed.at(-1)).toBe('Vera ▸ CHRONOSPHERE · refunded');
     expect(say(race, 'w', '!boost nobody', 'Wes').ok).toBe(false);
     redeem(race, 'w', 'Wes', 'r2');
     tickRace(race);
@@ -1216,7 +1132,7 @@ describe('cheers', () => {
     expect(cheer(race, 'v')).toEqual({ ok: true, reason: 'queued' });
     expect(race.hype.points).toBe(3);
     ticks(race, 3 * TICK_HZ + 1);
-    expect(race.feed.at(-1)).toMatch(/^v ▸ CHRONO SWAP ▸ \S+ ⇄ \S+$/);
+    expect(race.feed.at(-1)).toMatch(/^v ▸ CHRONOSPHERE ▸ \S+ ⇄ \S+$/);
     expect(race.settlements).toEqual([]); // never settled
   });
 
@@ -1264,7 +1180,7 @@ describe('cheers', () => {
     endRace(race);
     expect(race.settlements).toEqual([{ reference: 'r1', outcome: 'refunded' }]);
     expect(cheer(race, 'Cy')).toEqual({ ok: true, reason: 'next race' });
-    const next = ['CHRONO SWAP · Cleo · next race', 'CHRONO SWAP · Cy · next race'];
+    const next = ['CHRONOSPHERE · Cleo · next race', 'CHRONOSPHERE · Cy · next race'];
     expect(eventChips(race).map((c) => c.label)).toEqual(next);
     openJoinWindow(race, { joinSeconds: 1 });
     say(race, 'a', '!rhino', 'Kane');
@@ -1273,10 +1189,10 @@ describe('cheers', () => {
     expect(race.sounds).not.toContain('chronoSelect');
     tickRace(race); // its turn comes on the first race frame
     expect(race.sounds).toContain('chronoSelect');
-    expect(eventChips(race)).toEqual([{ label: 'CHRONO SWAP · Cleo', playing: true }, { label: 'CHRONO SWAP · Cy', playing: false }]);
+    expect(eventChips(race)).toEqual([{ label: 'CHRONOSPHERE · Cleo', playing: true }, { label: 'CHRONOSPHERE · Cy', playing: false }]);
     expect(race.hype.points).toBe(0); // the meter was not live when they arrived
     ticks(race, 3 * TICK_HZ);
-    expect(race.feed.at(-1)).toMatch(/^Cleo ▸ CHRONO SWAP ▸ /);
+    expect(race.feed.at(-1)).toMatch(/^Cleo ▸ CHRONOSPHERE ▸ /);
     expect(race.settlements).toHaveLength(1);
   });
 
@@ -1287,9 +1203,9 @@ describe('cheers', () => {
     redeem(race, 'r1');
     tickRace(race);
     const failed = race.frame;
-    expect(race.feed.at(-1)).toBe('Cleo ▸ CHRONO SWAP · retrying');
+    expect(race.feed.at(-1)).toBe('Cleo ▸ CHRONOSPHERE · retrying');
     tickRace(race); // r1 isn't held up
-    expect(eventChips(race)).toEqual([{ label: 'CHRONO SWAP · r1', playing: true }, { label: 'CHRONO SWAP · Cleo', playing: false }]);
+    expect(eventChips(race)).toEqual([{ label: 'CHRONOSPHERE · r1', playing: true }, { label: 'CHRONOSPHERE · Cleo', playing: false }]);
     redeem(race, 'r2');
     let retried: number | undefined;
     for (let i = 0; i < 20 * TICK_HZ && retried === undefined; i++) {
@@ -1300,7 +1216,7 @@ describe('cheers', () => {
     expect(race.queue.map((t) => t.by)).toEqual(['Cleo', 'r2']);
     expect(retried! - failed).toBe(1 + 3 * TICK_HZ + 10 * TICK_HZ); // after r1's build-up and the gap, which outlast the 10 s
     ticks(race, 3 * TICK_HZ);
-    expect(race.feed.at(-1)).toMatch(/^Cleo ▸ CHRONO SWAP ▸ /);
+    expect(race.feed.at(-1)).toMatch(/^Cleo ▸ CHRONOSPHERE ▸ /);
     expect(race.settlements).toEqual([{ reference: 'r1', outcome: 'fulfilled' }]);
   });
 
@@ -1316,7 +1232,7 @@ describe('cheers', () => {
     expect(race.sounds).toContain('chronoSelect');
     endRace(race); // during its build-up
     expect(race.queue).toEqual([]);
-    expect(eventChips(race).map((c) => c.label)).toEqual(['CHRONO SWAP · Cleo · next race']);
+    expect(eventChips(race).map((c) => c.label)).toEqual(['CHRONOSPHERE · Cleo · next race']);
   });
 
   it('keeps a carried cheer waiting through a race with Chrono swap switched off', () => {
@@ -1327,7 +1243,7 @@ describe('cheers', () => {
     openJoinWindow(race, { joinSeconds: 1 });
     say(race, 'a', '!rhino', 'Kane');
     untilPhase(race, 'racing');
-    expect([race.queue, eventChips(race).map((c) => c.label)]).toEqual([[], ['CHRONO SWAP · Cleo · next race']]);
+    expect([race.queue, eventChips(race).map((c) => c.label)]).toEqual([[], ['CHRONOSPHERE · Cleo · next race']]);
   });
 
   it('keeps a carried cheer for a real race, not an editor simulation run by bots alone', () => {
@@ -1338,7 +1254,7 @@ describe('cheers', () => {
     untilPhase(race, 'racing');
     tickRace(race);
     expect(cheer(race, 'Cy')).toEqual({ ok: true, reason: 'next race' });
-    expect([race.queue, eventChips(race).map((c) => c.label)]).toEqual([[], ['CHRONO SWAP · Cleo · next race', 'CHRONO SWAP · Cy · next race']]);
+    expect([race.queue, eventChips(race).map((c) => c.label)]).toEqual([[], ['CHRONOSPHERE · Cleo · next race', 'CHRONOSPHERE · Cy · next race']]);
   });
 });
 

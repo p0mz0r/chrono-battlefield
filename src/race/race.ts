@@ -16,7 +16,6 @@ const COMMANDS = {
   missile: { hint: ' [name]', cooldown: 30, racers: false },
   v3: { hint: ' [back|fwd]', cooldown: 20, racers: true },
   tesla: { hint: ' [name]', cooldown: 45, racers: false },
-  chrono: { hint: ' [name]', cooldown: 45, racers: false },
   bridge: { hint: ' B1', cooldown: 60, racers: false },
 } as const;
 type Interaction = Exclude<keyof typeof COMMANDS, 'rhino'>;
@@ -44,7 +43,7 @@ export interface ChatResult {
  * Kirov's is open-ended: it lands with its last bomb).
  */
 // ponytail: the Kirov's Infinity build-up keeps it playing until `kirovRun` sets its real landing; a per-event phase if more events wait like this.
-export const BIG_EVENTS = { chronoSwap: { label: 'CHRONO SWAP', buildUp: 3 }, nuke: { label: 'NUKE', buildUp: 3 }, kirov: { label: 'KIROV', buildUp: Infinity }, desolator: { label: 'DESOLATOR', buildUp: 2 } } as const;
+export const BIG_EVENTS = { chronoSwap: { label: 'CHRONOSPHERE', buildUp: 3 }, nuke: { label: 'NUKE', buildUp: 3 }, kirov: { label: 'KIROV', buildUp: Infinity }, desolator: { label: 'DESOLATOR', buildUp: 2 } } as const;
 export type BigEvent = keyof typeof BIG_EVENTS;
 /**
  * The channel-point reward each paid event is redeemed with (#102): its title (ASCII, at most 45 characters, viewer-facing
@@ -173,7 +172,7 @@ export interface Racer {
   protectedUntil: number;
   botNext: number;
   botV3Next: boolean;
-  /** The last chronosphere: the cells left and landed on, and the race frame. */
+  /** The last Chrono swap: the cells left and landed on, and the race frame. */
   warp: { from: Cell; to: Cell; at: number } | undefined;
 }
 
@@ -325,7 +324,6 @@ export function chat(race: Race, line: ChatLine): ChatResult {
   }
   let target: Racer | undefined;
   let named = false;
-  let shift: Shift | undefined;
   if (verb === 'shield' || verb === 'v3') {
     target = race.racers.find((r) => r.viewerId === line.viewerId && r.finishedAt === undefined);
     if (!target) return reject('not a racing racer');
@@ -340,17 +338,11 @@ export function chat(race: Race, line: ChatLine): ChatResult {
       target = matches[0];
     }
     if (!target) return reject('unknown name');
-    if ((verb === 'missile' || verb === 'tesla' || verb === 'chrono') && target.protectedUntil > race.frame) return reject('target protected');
+    if ((verb === 'missile' || verb === 'tesla') && target.protectedUntil > race.frame) return reject('target protected');
     if ((verb === 'missile' || verb === 'tesla') && target.immunityUntil > race.frame && target.shieldUntil <= race.frame) return reject('target unable');
-    if (verb === 'chrono' && (target.shieldUntil > race.frame || !(shift = chronoshift(race, target)))) return reject('target unable');
   } else {
-    const candidates = race.racers.filter((r) => r.finishedAt === undefined && ((verb !== 'missile' && verb !== 'tesla') || r.immunityUntil <= race.frame || r.shieldUntil > race.frame) && (verb !== 'chrono' || r.shieldUntil <= race.frame));
+    const candidates = race.racers.filter((r) => r.finishedAt === undefined && ((verb !== 'missile' && verb !== 'tesla') || r.immunityUntil <= race.frame || r.shieldUntil > race.frame));
     target = candidates[Math.floor(random(race.field) * candidates.length)];
-    // A random chronosphere rerolls among tanks a move can land.
-    while (verb === 'chrono' && target && !(shift = chronoshift(race, target))) {
-      candidates.splice(candidates.indexOf(target), 1);
-      target = candidates[Math.floor(random(race.field) * candidates.length)];
-    }
     if (!target) return reject('no target available');
   }
   race.cooldowns.set(line.viewerId, race.frame + COMMANDS[verb].cooldown * TICK_HZ);
@@ -365,13 +357,6 @@ export function chat(race: Race, line: ChatLine): ChatResult {
     launchV3(race, target, back);
   } else if (verb === 'tesla') { race.teslas.push({ by: line.name, target, named, x: target.tank!.x / 256, y: target.tank!.y / 256, arrives: race.frame + 2 * TICK_HZ }); race.sounds.push('teslaCharge'); }
   else if (verb === 'missile') { race.missiles.push({ by: line.name, target, named, launched: race.frame, arrives: race.frame + Math.round(1.5 * TICK_HZ), x: target.tank!.x / 256 - 6, y: target.tank!.y / 256 - 6 }); race.sounds.push('missileLaunch'); }
-  else if (verb === 'chrono') {
-    target.warp = { from: { x: target.tank!.cell.x, y: target.tank!.cell.y }, to: { x: shift!.landing.x, y: shift!.landing.y }, at: race.frame };
-    move(race, target, shift!);
-    if (named) target.protectedUntil = race.frame + 15 * TICK_HZ;
-    race.sounds.push('chrono');
-    post(race, `${line.name} ▸ chrono ▸ ${target.name}`);
-  }
   addHype(race, HYPE.command);
   return { ok: true, reason: `${verb} ${target.name}` };
 }
@@ -656,17 +641,6 @@ function chronoSwap(race: Race, a: Racer, b: Racer): boolean {
 }
 
 type Shift = { landing: Spot; next: number };
-
-/**
- * Rolls a chronosphere on `racer` from the race seed: back 15–30% of the course as drawn, or 20% of the time
- * forward 5–10%, never behind the start or into the finish area. Measured on the unrolled ideal line, so a tank
- * sent back across a lap drops it. Undefined if no cell near the spot can take the tank.
- */
-function chronoshift(race: Race, racer: Racer): Shift | undefined {
-  const forward = random(race.field) < 0.2;
-  const share = forward ? 0.05 + random(race.field) * 0.05 : -(0.15 + random(race.field) * 0.15);
-  return shiftTo(race, racer, racer.progress + share * race.course.drawnLength);
-}
 
 /** The point `along` cells into the ideal line (clamped to it), in cells, and the waypoint next from there (-1: the finish). */
 function lineAt(course: Course, along: number): { x: number; y: number; next: number } {
