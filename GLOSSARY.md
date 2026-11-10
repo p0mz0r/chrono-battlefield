@@ -53,7 +53,7 @@ A tank in the race that no racer owns, added to fill a thin field and labelled a
 _Avoid_: AI racer, NPC, racer
 
 **House colour**:
-The colour a tank races in, given in join order (bots after the racers) from a fixed set of the game's own house colours, none of which looks like a stun, boost or shield; the tank's tag, standings row, lower third, feed lines and results row show it too.
+The colour a tank races in, given in join order (bots after the racers) from a fixed set of ten of the game's own house colours, no two alike and none that looks like a stun or boost; the tank's tag, standings row, lower third, feed lines and results row show it too.
 _Avoid_: Team colour, player colour
 
 **Finish area**:

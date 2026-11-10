@@ -50,11 +50,11 @@ export function prerenderTank(vfs: Files, theater: string, unit: string, footpri
 }
 
 /**
- * The rulesmd `[Colors]` entries tanks race in, one per tank in join order. Orange, green and cyan are left out, so
- * none reads as the stun tint, the boost tint or the shield ring; `Red` is a dark brown that only a 9-tank field reaches.
- * The most distinct come first, for small fields.
+ * The rulesmd `[Colors]` entries tanks race in, one per tank in join order, no two alike. Orange and green are left out,
+ * so none reads as the stun or boost tint. The most distinct come first, for small fields: `NeonGreen` is black (0,0,0),
+ * and `DarkSky`, the one cyan, comes last, as only its stripes take it while the shield is a ring round the tank.
  */
-export const HOUSE_COLOURS = ['DarkRed', 'DarkBlue', 'Gold', 'Purple', 'LightGrey', 'Magenta', 'Grey', 'Red', 'AlliedLoad', 'Yellow'];
+export const HOUSE_COLOURS = ['DarkRed', 'DarkBlue', 'Yellow', 'Purple', 'LightGrey', 'Magenta', 'NeonGreen', 'Red', 'Grey', 'DarkSky'];
 
 /** A Rhino per house colour, in `HOUSE_COLOURS` order, each with its colour's brightest shade as 0xRRGGBB for the labels. */
 export function prerenderRhinos(vfs: Files, theater: string, footprintPx = RHINO_FOOTPRINT_PX): (RhinoArt & { rgb: number })[] {
