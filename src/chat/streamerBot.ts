@@ -16,7 +16,19 @@ const BY_TITLE = new Map(Object.entries(REWARDS).map(([event, { title }]) => [ti
 /** Where unsettled redemptions survive a page reload. */
 const PENDING_KEY = 'rhino-streamerbot-redemptions';
 /** Seconds before the first reconnect, doubling to the longest. */
-const RETRY = { first: 1, longest: 30 };
+export const RETRY = { first: 1, longest: 30 };
+
+/**
+ * Unsettled redemptions by ID, kept under `key` across page reloads. Those left from before a reload are refunded, as if
+ * still waiting at race end: the race they were for is gone.
+ */
+export function heldRedemptions<T>(race: Race, key: string) {
+  let held = new Map<string, T>();
+  try { held = new Map(JSON.parse(localStorage.getItem(key) || '[]')); } catch { /* malformed: nothing to refund */ }
+  // ponytail: one whose event landed just before the reload is refunded too (its "fulfilled" never went out); rare, and in the viewer's favour.
+  for (const reference of held.keys()) race.settlements.push({ reference, outcome: 'refunded' });
+  return { held, save: () => localStorage.setItem(key, JSON.stringify([...held])) };
+}
 
 /** The part of a WebSocket the source uses, so tests can stand in for Streamer.bot. */
 interface Socket {
@@ -38,13 +50,8 @@ const text = (v: unknown): v is string => typeof v === 'string' && v.length > 0 
 export function connectStreamerBot(race: Race, { url = STREAMER_BOT_URL, Socket = WebSocket as new (url: string) => Socket } = {}): ChatSource {
   // Online until the first drop: the first connection is still opening at page load.
   let socket: Socket | undefined, wait = RETRY.first, closed = false, up = true, retry: ReturnType<typeof setTimeout> | undefined;
-  /** Unsettled redemptions: ID to its reward, which `DoAction` hands back to Streamer.bot. Kept across reloads. */
-  let rewards = new Map<string, { id: string; title: string }>();
-  try { rewards = new Map(JSON.parse(localStorage.getItem(PENDING_KEY) || '[]')); } catch { /* malformed: nothing to refund */ }
-  const save = () => localStorage.setItem(PENDING_KEY, JSON.stringify([...rewards]));
-  // Left from before a reload: the race they were for is gone, so they are refunded, as if still waiting at race end.
-  // ponytail: one whose event landed just before the reload is refunded too (its "fulfilled" never went out); rare, and in the viewer's favour.
-  for (const reference of rewards.keys()) race.settlements.push({ reference, outcome: 'refunded' });
+  /** Unsettled redemptions: ID to its reward, which `DoAction` hands back to Streamer.bot. */
+  const { held: rewards, save } = heldRedemptions<{ id: string; title: string }>(race, PENDING_KEY);
   const open = () => socket?.readyState === 1;
   const viewer = (platform: string, user: User | null | undefined) => {
     const id = typeof user?.id === 'number' ? String(user.id) : user?.id;

@@ -3,6 +3,7 @@ import type { CellGrid } from './battlefield/grid.js';
 import { openInstall, readInstall } from './install/read.js';
 import { bindSetupKey, chatSource, showSetup } from './install/setup.js';
 import { connectStreamerBot, type ChatSource } from './chat/streamerBot.js';
+import { connectTwitch } from './chat/twitch.js';
 import { LEPTONS_PER_CELL, spotLevel, tankCell, TICK_HZ, type Cell } from './movement/index.js';
 import { loadCourse as loadCourseArt, type Sprite as CachedSprite } from './load.js';
 import { loadSounds } from './audio.js';
@@ -515,6 +516,7 @@ async function main() {
   else {
     mountOperator(race, courses, imported, Object.entries(courses).find(([, candidate]) => candidate === file)?.[0] ?? '', (mode) => { cameraMode = mode; }, sounds.mute);
     if (chatSource() === 'streamerbot') chatLink = connectStreamerBot(race);
+    if (chatSource() === 'twitch') chatLink = connectTwitch(race);
     // The fallback when no chat source is picked, so no line arrives twice: chat from outside the page (e.g. Streamer.bot
     // via obs-websocket obs-browser emit_event), `chronoChat` with { viewerId, name, text }.
     if (!chatLink) addEventListener('chronoChat', (event) => {
