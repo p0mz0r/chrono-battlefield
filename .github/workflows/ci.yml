@@ -1,4 +1,4 @@
-# Typecheck and tests on every PR and push to main. Install tests skip here: CI has no RA2_DIR.
+# Typecheck and tests (web and launcher) on every PR and push to main. Install tests skip here: CI has no RA2_DIR.
 name: CI
 on:
   pull_request:
@@ -17,3 +17,13 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
+  launcher:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: launcher/go.mod
+      - run: test -z "$(gofmt -l .)" && go vet . && go test -timeout 60s .
+        shell: bash
+        working-directory: launcher

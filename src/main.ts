@@ -99,6 +99,8 @@ async function main() {
     const next = sessionStorage.getItem('courseEditorNext');
     if (next) { sessionStorage.removeItem('courseEditorNext'); location.href = next; return; }
   }
+  // Held open while the page runs: the launcher quits once no page has held it for 30 s (ADR 0009).
+  if (!import.meta.env.DEV) new EventSource('/__alive');
   let live: Race | undefined; // install setup stays off stream while a race runs
   bindSetupKey(() => !live || ['idle', 'results', 'cancelled'].includes(live.phase));
   const problems = await openInstall();
@@ -532,12 +534,6 @@ async function main() {
     mountOperator(race, courses, imported, Object.entries(courses).find(([, candidate]) => candidate === file)?.[0] ?? '', (mode) => { cameraMode = mode; }, sounds.mute);
     if (chatSource() === 'streamerbot') chatLink = connectStreamerBot(race);
     if (chatSource() === 'twitch') chatLink = connectTwitch(race);
-    // The fallback when no chat source is picked, so no line arrives twice: chat from outside the page (e.g. Streamer.bot
-    // via obs-websocket obs-browser emit_event), `chronoChat` with { viewerId, name, text }.
-    if (!chatLink) addEventListener('chronoChat', (event) => {
-      const { viewerId, name, text } = (event as CustomEvent).detail ?? {};
-      if ([viewerId, name, text].every((v) => typeof v === 'string' && v.length <= 500)) chat(race, { viewerId, name, text });
-    });
     if (import.meta.env.DEV) (await import('./race/devPanel.js')).mountDevPanel(race, params, !chatLink);
   }
   document.body.dataset.ready = String(terrain.missing === 0);

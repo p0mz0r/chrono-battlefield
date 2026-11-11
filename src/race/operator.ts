@@ -45,16 +45,6 @@ function estimatedSeconds(file: CourseFile): number {
   return Math.ceil(cells * 256 / (Math.floor(6 * 256 / 100) * 1.6 * 30) * 1.15);
 }
 
-/** True when the same action already arrived from the other source (page key vs OBS hotkey) within 200 ms. */
-export function duplicateFilter(): (action: string, source: string, now: number) => boolean {
-  let lastAction = '', lastSource = '', lastAt = -Infinity;
-  return (action, source, now) => {
-    const duplicate = action === lastAction && source !== lastSource && now - lastAt < 200;
-    if (!duplicate) { lastAction = action; lastSource = source; lastAt = now; }
-    return duplicate;
-  };
-}
-
 /**
  * In-page operator controls. Selection reloads only when the chosen course needs another battlefield.
  * `courses` holds bundled and `imported` courses by id; the Courses screen adds and removes imported ones.
@@ -156,22 +146,19 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, i
       race.chaos = new Set(CHAOS.filter((c) => choices.chaos.includes(c)));
       race.cheerBits = choices.cheerBits;
       openJoinWindow(race, { joinSeconds: choices.joinSeconds, finishSeconds: choices.finishSeconds });
-      // Off stream, in the OBS log (Help > Log Files): obs-browser logs only console errors.
-      console.error(`Rhino Race seed ${race.seed}: replay with ?course=${current.replace(/^.*\/|\.json$/g, '')}&seed=${race.seed}`);
+      // Off stream, in rhino-race.log beside the launcher.
+      const seedLine = `Rhino Race seed ${race.seed}: replay with ?course=${current.replace(/^.*\/|\.json$/g, '')}&seed=${race.seed}`;
+      console.info(seedLine);
+      if (!import.meta.env.DEV) navigator.sendBeacon('/__log', seedLine);
       root.hidden = true;
     }
   };
   let endPromptUntil = 0;
   const prompt = document.createElement('div'); prompt.id = 'end-prompt'; document.body.append(prompt);
-  const duplicate = duplicateFilter();
-  const act = (action: string, source: string) => {
+  const act = (action: string) => {
     const now = performance.now();
-    if (duplicate(action, source, now)) return;
     if (action === 'setup' && ['idle', 'results', 'cancelled'].includes(race.phase)) { root.hidden = false; showCourses(false); prompt.textContent = ''; }
-    else if (action === 'start') {
-      if (source === 'hotkey' && !choices.course && root.hidden) root.hidden = false;
-      else start();
-    }
+    else if (action === 'start') start();
     else if (action === 'pause' && ['join', 'countdown', 'racing'].includes(race.phase)) race.paused = !race.paused;
     else if (action === 'end' && ['join', 'countdown', 'racing'].includes(race.phase)) {
       if (now < endPromptUntil) { endRace(race); endPromptUntil = 0; prompt.textContent = ''; }
@@ -179,17 +166,13 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, i
     } else if (action === 'camera') { choices.camera = choices.camera === 'overview' ? 'director' : 'overview'; switchCamera(choices.camera); save(); }
     else if (action === 'mute') toggleMute();
   };
-  addEventListener('chronoOperator', (event) => {
-    const action = (event as CustomEvent).detail?.action;
-    if (typeof action === 'string') act(action, 'hotkey');
-  });
   addEventListener('keydown', (event) => {
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
     const target = event.target as HTMLElement;
     if (target.closest('input, select, textarea') && (event.key !== 'Enter' || !root.contains(target))) return;
     const key = event.key.toLowerCase();
     const action = key === 's' ? 'setup' : event.key === 'Enter' ? 'start' : key === 'p' ? 'pause' : key === 'e' ? 'end' : key === 'c' ? 'camera' : key === 'm' ? 'mute' : '';
-    if (action) act(action, 'key');
+    if (action) act(action);
   });
   if (new URL(location.href).searchParams.has('start')) {
     const url = new URL(location.href); url.searchParams.delete('start'); history.replaceState(null, '', url);

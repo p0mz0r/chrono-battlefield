@@ -9,7 +9,7 @@ We dropped anonymous `justinfan` IRC, although it needs no setup at all ([resear
 
 `viewerId` is the platform plus that platform's user ID (`twitch:123`). The same person on two platforms is two viewers, since nothing links their accounts. Other platforms get chat commands only for now. Their paid events (Super Chats, Kick's paid items) are ignored until a later ticket maps them.
 
-The `chronoChat` page event, which Streamer.bot can fire through obs-websocket, stays. It carries chat only and can't settle a redemption. It is the fallback if OBS starts blocking the loopback socket, which today works only through obs-browser changes OBS calls temporary ([OBS socket test](../research/obs-local-file-sockets.md)).
+The `chronoChat` page event, which Streamer.bot could fire through obs-websocket, went with the browser source ([ADR 0009](0009-launcher-runs-the-game-in-an-edge-app-window.md)); it was chat only, and the fallback if OBS started blocking the loopback socket, which today works only through obs-browser changes OBS calls temporary ([OBS socket test](../research/obs-local-file-sockets.md)).
 
 ## Considered Options
 

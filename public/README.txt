@@ -2,58 +2,48 @@ RHINO RACE
 ==========
 
 A chat-driven race of RA2 Rhino tanks over a real Red Alert 2 / Yuri's Revenge
-battlefield, shown as an OBS browser source. It reads the art, maps and sounds
-from your own RA2 + Yuri's Revenge install; no EA file is in this download.
+battlefield, run in its own window that OBS captures. It reads the art, maps
+and sounds from your own RA2 + Yuri's Revenge install; no EA file is in this
+download.
 
-Needs OBS Studio 30 or later and an RA2 + Yuri's Revenge install.
+Needs Windows 10 or 11 (with Microsoft Edge, which Windows includes), OBS
+Studio and an RA2 + Yuri's Revenge install.
 
 
-SET UP IN OBS
--------------
+START THE GAME
+--------------
 
 1. Unzip this folder somewhere it can stay, e.g. Documents\rhino-race.
-2. In OBS, add a source: Sources > + > Browser. Name it "Rhino Race".
-   - Tick "Local file" and browse to index.html in this folder.
-   - Width 1920, height 1080.
-   - Tick "Control audio via OBS" (the game gets its own mixer channel).
-   - Untick "Shutdown source when not visible".
-3. The page looks for the install by itself. If it shows the install setup
-   screen instead, right-click the source > Interact, and choose the install
-   folder (the one with ra2.mix and ra2md.mix). Choosing copies the files the
-   game needs (about 600 MB) into OBS once; typing the folder's path instead
-   reads it in place.
-   F2 in Interact opens that screen again later, between races.
-4. Add the hotkey script: Tools > Scripts > + > chrono-battlefield.lua (in
-   this folder). Pick the "Rhino Race" source in the script settings.
-5. In Settings > Hotkeys, bind the six "Rhino Race" actions: Start race,
-   Race setup, Pause / resume, End race, Camera mode, Mute. They work while OBS is
-   unfocused and from a Stream Deck System > Hotkey button. Choose key
-   combinations no other app uses, and don't bind the plain Enter, P, E, C or
-   M keys (those are the page keys below).
+2. Double-click rhino-race.exe. The first time, Windows may say "Windows
+   protected your PC": click More info > Run anyway.
+   The game opens in its own window (an Edge window with no tabs or address
+   bar). Closing that window stops the game. Starting rhino-race.exe again
+   while it runs just brings the window back.
+3. The game looks for the install by itself. If it shows the install setup
+   screen instead, type the folder that holds ra2.mix and ra2md.mix and click
+   "Use this folder". F2 opens that screen again later, between races.
+
+Setup, chat login and race choices are kept for this Windows user (in
+%LOCALAPPDATA%\Rhino Race), also when you unzip a newer release elsewhere.
+
+
+SET UP OBS
+----------
+
+1. Video: Sources > + > Window Capture. Window: "[msedge.exe]: Rhino Race".
+   Capture method: Windows 10 (1903 and up). Untick "Capture Cursor".
+2. Sound: Sources > + > Application Audio Capture. Window: the same
+   "[msedge.exe]: Rhino Race". The game gets its own mixer channel.
+3. Size the game window to fill your canvas (e.g. maximise it on a 1920x1080
+   screen), or right-click the capture > Transform > Fit to screen.
+Leave the game window open while streaming. Behind other windows is fine (it
+keeps full speed); minimised is not: OBS then shows a black screen.
 
 
 RUNNING A RACE
 --------------
 
-Start race opens the join window with the last race setup, or opens race
-setup the first time; Race setup opens it between races. The results screen
-shows both keys (Enter next race, S race setup). Viewers join with !rhino in chat; empty places are
-filled with bots. Press End race twice within three seconds to end or cancel
-a race.
-
-Each race writes its seed to the OBS log (Help > Log Files > View Current
-Log), never on stream: "Rhino Race seed N: replay with ?course=...&seed=N".
-Include that line when reporting a race that went wrong.
-
-The game doesn't connect to Twitch, YouTube or other chat itself. A chat
-tool such as Streamer.bot passes chat lines in through obs-websocket: request
-CallVendorRequest, vendor "obs-browser", request "emit_event", data
-  {"event_name": "chronoChat",
-   "event_data": {"viewerId": "twitch:123", "name": "Viewer", "text": "!rhino"}}
-viewerId must be unique per viewer (e.g. platform + user id). Without chat
-lines, a join window with no viewers closes and the game goes back to waiting.
-
-Keys inside Interact:
+Click into the game window; the keys work while it has focus:
   S       race setup (course, join window, finish timer, audience interactions)
   Enter   start: open the join window
   P       pause / resume
@@ -62,15 +52,27 @@ Keys inside Interact:
   M       mute (remembered)
   F2      install setup (between races)
 
+Enter opens the join window with the last race setup, or opens race setup the
+first time. The results screen shows both keys (Enter next race, S race setup).
+Viewers join with !rhino in chat; empty places are filled with bots. Press E
+twice within three seconds to end or cancel a race.
+
+Chat comes in through Streamer.bot or by logging in to Twitch directly: pick
+one under Chat source in install setup (F2).
+
+Each race writes its seed to rhino-race.log beside rhino-race.exe, never on
+stream: "Rhino Race seed N: replay with ?course=...&seed=N". Include that line
+when reporting a race that went wrong.
+
 
 ADDING COURSES
 --------------
 
 Ask the course maker for the course's .rhino-course.json file (one file per
-course; a course on a custom map has the map inside). In Interact, press S
-for race setup, choose Import courses..., and pick the file(s). Imported
+course; a course on a custom map has the map inside). In the game window,
+press S for race setup, choose Import courses..., and pick the file(s). Imported
 courses appear in the course list marked "imported" and stay until you
-Remove them there, also after an OBS restart or a newer release.
+Remove them there, also after a restart or a newer release.
 
 LICENCE
 -------

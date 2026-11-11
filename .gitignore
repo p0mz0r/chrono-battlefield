@@ -1,5 +1,5 @@
 node_modules/
-dist/
+/dist/
 __pycache__/
 release/
 
@@ -18,3 +18,7 @@ courses/maps/2_arctic_circle.map
 
 # Agent scratch files (screenshot step modules, one-off scripts)
 .scratch/
+
+# The built game, copied in for the launcher to embed
+launcher/dist/*
+!launcher/dist/.gitkeep

@@ -1,6 +1,8 @@
 // After `vite build`: credit shipped custom maps in the operator README (ADR 0006), refuse any EA file type,
-// and zip dist/ plus LICENSE as release/rhino-race.zip (one rhino-race/ folder inside).
-import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+// build the launcher with dist/ inside (ADR 0009, needs Go on PATH), and zip it with the README and LICENSE as
+// release/rhino-race.zip (one rhino-race/ folder inside).
+import { execFileSync } from 'node:child_process';
+import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { crc32, deflateRawSync } from 'node:zlib';
 
@@ -9,9 +11,18 @@ const credits = courses.filter((c) => c.source === 'shipped').map((c) => `  ${c.
 if (credits.length) writeFileSync('dist/README.txt', readFileSync('dist/README.txt', 'utf8') + `\n\nCUSTOM MAPS\n-----------\n\n${credits.join('\n')}\n`);
 
 const walk = (dir) => readdirSync(dir).flatMap((f) => statSync(join(dir, f)).isDirectory() ? walk(join(dir, f)) : [join(dir, f)]);
-const files = [...walk('dist').map((path) => [relative('dist', path).replaceAll('\\', '/'), path]), ['LICENSE', 'LICENSE']];
-const ea = files.filter(([name]) => /\.(mix|mmx|yro|bag|idx|shp|vxl|hva|tmp|tem|sno|urb|ubn|des|lun|pal|csf|wav|aud)$/i.test(name));
-if (ea.length) throw new Error(`EA file types in the build: ${ea.map(([name]) => name).join(', ')}`);
+const ea = walk('dist').filter((name) => /\.(mix|mmx|yro|bag|idx|shp|vxl|hva|tmp|tem|sno|urb|ubn|des|lun|pal|csf|wav|aud)$/i.test(name));
+if (ea.length) throw new Error(`EA file types in the build: ${ea.map((name) => relative('dist', name)).join(', ')}`);
+
+// The launcher embeds launcher/dist (go:embed); its .gitkeep lets it compile before a build.
+rmSync('launcher/dist', { recursive: true, force: true });
+cpSync('dist', 'launcher/dist', { recursive: true });
+writeFileSync('launcher/dist/.gitkeep', '');
+mkdirSync('release', { recursive: true });
+execFileSync('go', ['build', '-ldflags', '-H windowsgui -s -w', '-o', '../release/rhino-race.exe', '.'], {
+  cwd: 'launcher', stdio: 'inherit', env: { ...process.env, GOOS: 'windows', GOARCH: 'amd64', CGO_ENABLED: '0' },
+});
+const files = [['rhino-race.exe', 'release/rhino-race.exe'], ['README.txt', 'dist/README.txt'], ['LICENSE', 'LICENSE']];
 
 // Minimal zip: deflated entries, no extra fields, no zip64 (fine below 4 GB).
 const local = [], central = [];
@@ -30,6 +41,5 @@ for (const [name, path] of files) {
 const dir = Buffer.concat(central), end = Buffer.alloc(22);
 end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(files.length, 8); end.writeUInt16LE(files.length, 10);
 end.writeUInt32LE(dir.length, 12); end.writeUInt32LE(offset, 16);
-mkdirSync('release', { recursive: true });
 writeFileSync('release/rhino-race.zip', Buffer.concat([...local, dir, end]));
 console.log(`release/rhino-race.zip: ${files.length} files`);

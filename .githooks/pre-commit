@@ -1,3 +1,9 @@
 #!/bin/sh
 # Same gate as CI, before the commit leaves this machine. Enabled by `npm install` (prepare script).
-npm run typecheck && npm run lint && npm test
+npm run typecheck && npm run lint && npm test || exit 1
+# The launcher's gate, when it is part of the commit (Go must be on PATH).
+if git diff --cached --name-only | grep -q '^launcher/'; then
+  unformatted=$(gofmt -l launcher) || exit 1
+  [ -z "$unformatted" ] || { echo "gofmt needed: $unformatted"; exit 1; }
+  (cd launcher && go vet . && go test -timeout 60s .) || exit 1
+fi
