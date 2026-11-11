@@ -8,7 +8,7 @@ Names, captions, feed lines and comments use the terms in `GLOSSARY.md`, avoidin
 
 ## Headless race
 
-All race rules live in `src/race/race.ts`: plain data stepped by `tickRace`, no rendering, replayable from the race seed. `view.ts`, `camera.ts` and `main.ts` only read race state. A fact two of them derive the same way (such as "the big event playing now") is one exported helper in `race.ts`.
+All race rules live in `src/race/race.ts`: plain data stepped by `tickRace`, no rendering, replayable from the race seed. `view.ts`, `camera.ts` and `main.ts` only read race state. A fact two of them derive the same way (such as "the big event playing now") is one exported helper in `race.ts`. A fact `main.ts` derives in two places (such as where a tank is drawn) is computed once and read by both.
 
 ## Shortcuts
 

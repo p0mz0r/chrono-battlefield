@@ -12,6 +12,20 @@ export function readable(colour: number): number {
   return rgb.reduce((out, v) => out << 8 | Math.round(v + (255 - v) * lift), 0);
 }
 
+/** Where a knocked-back tank is drawn `t` (0–1) through its throw along `path`, in cells: fast at first, then slowing (cubic ease-out). */
+export function thrownAt(path: { x: number; y: number }[], t: number): { x: number; y: number } {
+  const legs = path.slice(1).map((p, i) => Math.hypot(p.x - path[i]!.x, p.y - path[i]!.y));
+  let left = (1 - (1 - Math.min(Math.max(t, 0), 1)) ** 3) * legs.reduce((a, b) => a + b, 0);
+  for (const [i, leg] of legs.entries()) {
+    if (left <= leg && leg > 0) {
+      const a = path[i]!, b = path[i + 1]!;
+      return { x: a.x + (b.x - a.x) * left / leg, y: a.y + (b.y - a.y) * left / leg };
+    }
+    left -= leg;
+  }
+  return { ...path.at(-1)! };
+}
+
 /** `text`, escaped, with every racer's name in its house colour. A name counts only as a whole word (`Kane`, not inside `Kane#2`). */
 export function paintNames(text: string, names: Map<string, string>): string {
   if (!names.size) return esc(text);

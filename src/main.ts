@@ -4,14 +4,14 @@ import { openInstall, readInstall } from './install/read.js';
 import { bindSetupKey, chatSource, showSetup } from './install/setup.js';
 import { connectStreamerBot, type ChatSource } from './chat/streamerBot.js';
 import { connectTwitch } from './chat/twitch.js';
-import { LEPTONS_PER_CELL, spotLevel, tankCell, TICK_HZ, type Cell } from './movement/index.js';
+import { LEPTONS_PER_CELL, spotLevel, tankCell, TICK_HZ, type Cell, type Spot } from './movement/index.js';
 import { loadCourse as loadCourseArt, type Sprite as CachedSprite } from './load.js';
 import { loadSounds } from './audio.js';
 import { facingAngle, projectModelPoint } from './ra2/render/voxelRender.js';
 import { loadCourse, mapHash, type CourseFile, type LinePoint } from './race/course.js';
 import { chat, commandList, createRace, DESOLATOR, KIROV, kirovDrops, kirovImpacts, latestEvent, NUKE_FALL, playingEvent, secondsLeft, standings, tickRace, type Race, type Racer, type Turn } from './race/race.js';
 import { directorShot, type Shot } from './race/camera.js';
-import { mountStreamView, readable, type CameraMode } from './race/view.js';
+import { mountStreamView, readable, thrownAt, type CameraMode } from './race/view.js';
 import { mountOperator, readChoices } from './race/operator.js';
 import { importedCourses } from './race/courseFile.js';
 
@@ -36,6 +36,8 @@ const COURSE_MAPS = import.meta.glob<string>('../courses/maps/*', { query: '?url
 
 /** World scale under which tank labels are number chips rather than names (Overview ≈ 0.7, Director ≥ 1.8). */
 const CHIPS_BELOW = 1.2;
+/** Seconds a knockback's throw is drawn over, however far it goes. */
+const KNOCK_THROW = 0.5;
 
 /** A cached WebP decoded straight into a texture; its pixels never sit in a JS buffer. */
 const blobTexture = async (image: Blob) => Texture.from(await createImageBitmap(image));
@@ -267,7 +269,7 @@ async function main() {
   // Labels sit on their own layer over everything, at a constant screen size: number chips zoomed out, names zoomed in.
   const tags = new Container();
   world.addChild(tags);
-  const views = new Map<Racer, { view: Container; body: Sprite; turret: Sprite; fire: Sprite; effects: Graphics; tag: Container; chip: Graphics; label: Text; prev: { x: number; y: number } }>();
+  const views = new Map<Racer, { view: Container; body: Sprite; turret: Sprite; fire: Sprite; effects: Graphics; tag: Container; chip: Graphics; label: Text; prev: { x: number; y: number }; shown: { x: number; y: number } | undefined; throw: { of: Racer['knock']; path: { x: number; y: number }[] } | undefined }>();
   const viewOf = (r: Racer) => {
     let v = views.get(r);
     if (!v) {
@@ -285,7 +287,7 @@ async function main() {
       fire.anchor.set(0.5);
       view.addChild(effects, body, turret, fire);
       things.addChild(view);
-      views.set(r, (v = { view, body, turret, fire, effects, tag, chip, label, prev: { x: r.tank!.x, y: r.tank!.y } }));
+      views.set(r, (v = { view, body, turret, fire, effects, tag, chip, label, prev: { x: r.tank!.x, y: r.tank!.y }, shown: undefined, throw: undefined }));
     }
     return v;
   };
@@ -338,9 +340,18 @@ async function main() {
     for (const r of race.racers) {
       const tank = r.tank;
       if (!tank) continue;
-      const { view, body, turret, fire, effects, tag, chip, label, prev } = viewOf(r);
+      const v = viewOf(r), { view, body, turret, fire, effects, tag, chip, label, prev } = v;
       view.visible = tag.visible = r.finishedAt === undefined; // finished tanks leave the battlefield
-      const fx = (prev.x + (tank.x - prev.x) * a) / LEPTONS_PER_CELL, fy = (prev.y + (tank.y - prev.y) * a) / LEPTONS_PER_CELL;
+      let fx = (prev.x + (tank.x - prev.x) * a) / LEPTONS_PER_CELL, fy = (prev.y + (tank.y - prev.y) * a) / LEPTONS_PER_CELL, on: Spot = tank.cell;
+      // A knockback is drawn as a throw from where the tank is drawn, along its path, on to where it is now (an immune tank drives on).
+      const thrown = r.knock ? (race.frame + a - r.knock.at) / (KNOCK_THROW * TICK_HZ) : 1;
+      if (r.knock && v.throw?.of !== r.knock) v.throw = { of: r.knock, path: [v.shown ?? { x: fx, y: fy }, ...r.knock.path.map((c) => ({ x: c.x + 0.5, y: c.y + 0.5 }))] };
+      const hop = thrown < 1 ? 12 * Math.sin(Math.PI * thrown) : 0, path = thrown < 1 ? [...v.throw!.path, { x: tank.x / LEPTONS_PER_CELL, y: tank.y / LEPTONS_PER_CELL }] : [];
+      if (thrown < 1) {
+        ({ x: fx, y: fy } = thrownAt(path, thrown));
+        on = r.knock!.path.reduce((b, c) => Math.hypot(c.x + 0.5 - fx, c.y + 0.5 - fy) < Math.hypot(b.x + 0.5 - fx, b.y + 0.5 - fy) ? c : b);
+      }
+      v.shown = { x: fx, y: fy };
       // The prerender's frame 0 looks along -x (screen up-left); movement facing 0 is -y (up-right).
       const f = (Math.round(tank.facing / 2048) + 8) % 32;
       const tex = rhinoTex[r.colour]!;
@@ -354,12 +365,17 @@ async function main() {
       if (shielded) effects.circle(0, -5, 22).stroke({ color: 0x50caff, width: 2, alpha: 0.9 });
       if (r.immunityUntil > race.frame && !stunned) effects.circle(0, -5, 25).stroke({ color: 0xffc030, width: 1, alpha: 0.8 });
       if (r.protectedUntil > race.frame) effects.circle(0, -5, 28).stroke({ color: 0xff55ff, width: 1, alpha: 0.7 });
+      const p = toScreen(fx, fy, spotLevel(grid, on));
+      // Dust kicked up where the throw has been, under the hull, settling as it slows.
+      for (let k = 2; thrown < 1 && k <= 5; k++) {
+        const back = thrownAt(path, thrown - k * 0.05), q = toScreen(back.x, back.y, spotLevel(grid, on));
+        effects.circle(q.x - p.x, q.y - p.y + hop, 3 + 2 * k).fill({ color: 0xb0a080, alpha: 0.4 * (1 - thrown) * (1 - k / 6) });
+      }
       const ang = facingAngle(f), [px, py, pz] = rhinos[0]!.pivot;
       const tp = projectModelPoint(px * Math.cos(ang) - py * Math.sin(ang), px * Math.sin(ang) + py * Math.cos(ang), pz);
       turret.position.set(tp.sx, tp.sy);
-      const p = toScreen(fx, fy, spotLevel(grid, tank.cell));
-      view.position.set(p.x, p.y);
-      view.zIndex = (fx + fy + 1) * 15 + (tank.cell.deck ? 60 : 0);
+      view.position.set(p.x, p.y - hop);
+      view.zIndex = (fx + fy + 1) * 15 + (on.deck ? 60 : 0);
       view.alpha = tank.ghost ? 0.5 : 1;
       chip.visible = world.scale.x < CHIPS_BELOW;
       const text = chip.visible ? String(ordered.findIndex((s) => s.name === r.name) + 1) : r.name;
@@ -367,7 +383,7 @@ async function main() {
       label.style.fontSize = chip.visible ? 18 : 20;
       label.style.fill = chip.visible ? 0xffffff : readable(colourOf(r)); // the number on its colour's chip, the name in its colour
       label.y = chip.visible ? -4 : 0;
-      tag.position.set(p.x, p.y - 22);
+      tag.position.set(p.x, p.y - hop - 22);
       tag.scale.set(1 / world.scale.x);
     }
     for (const effect of bridgeEffects) {
@@ -476,10 +492,9 @@ async function main() {
       return { x: sx + tp.sx, y: sy + tp.sy - 8, z };
     };
     for (const strike of race.teslas) {
-      // Beside its target, interpolated like the target's own view.
-      const v = views.get(strike.target), tk = strike.target.tank!;
-      const follow = v && strike.target.finishedAt === undefined;
-      const x = follow ? (v.prev.x + (tk.x - v.prev.x) * a) / LEPTONS_PER_CELL : strike.x, y = follow ? (v.prev.y + (tk.y - v.prev.y) * a) / LEPTONS_PER_CELL : strike.y;
+      // Beside its target, where the target is drawn (thrown by a knockback, too).
+      const shown = strike.target.finishedAt === undefined ? views.get(strike.target)?.shown : undefined;
+      const { x, y } = shown ?? strike;
       const left = (strike.arrives - race.frame - a) / (2 * TICK_HZ), charge = 1 - left;
       const shiftIn = Math.min(charge / 0.15, 1);
       const pulse = 0.5 + 0.5 * Math.sin(race.frame * 1.3);

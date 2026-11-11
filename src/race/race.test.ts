@@ -817,6 +817,41 @@ describe('Kirov airship', () => {
     expect(bombingRun(race).caught.length).toBeGreaterThan(0);
   });
 
+  it.each([['the arena', 1], ['the arena', 2], ['a one-cell corridor', 1], ['a one-cell corridor', 2]] as const)('throws each tank it knocks back along drivable cells, unbroken from its cell to the one it lands on, in %s (seed %i)', (where, seed) => {
+    const corridor = grid(Array.from({ length: 9 }, (_, y) => Array.from({ length: 40 }, (_, x) => (x < 8 || y === 4 ? '.' : '#')).join('')));
+    let race: Race, field: CellGrid;
+    if (where === 'the arena') [race, field] = [calm(seed), ARENA];
+    else {
+      const file: CourseFile = { ...loopCourse(1), startGrid: [[1, 1], [3, 1], [5, 1], [1, 4], [3, 4], [5, 4], [1, 7], [3, 7], [5, 7], [6, 4]], waypoints: [[20, 4]], laps: [], finish: [37, 4] };
+      [race, field] = [createRace(loadCourse(file, MAP, corridor), corridor, seed), corridor];
+      openJoinWindow(race, { joinSeconds: 1 });
+      say(race, 'a', '!rhino', 'Kane');
+      ticks(race, 4 * TICK_HZ);
+      for (const r of race.racers) if (r.bot) r.botNext = Infinity;
+      ticks(race, 4 * TICK_HZ);
+    }
+    redeem(race);
+    let thrown = 0;
+    while (race.queue.length) {
+      const before = new Map(race.racers.map((r) => [r, { cell: { ...r.tank!.cell }, knock: r.knock }]));
+      tickRace(race);
+      for (const r of race.racers) {
+        const was = before.get(r)!;
+        if (r.knock === was.knock) continue;
+        thrown++;
+        const { path, at } = r.knock!;
+        expect(at).toBe(race.frame); // the frame the bomb landed on
+        expect(path[0]).toMatchObject({ x: was.cell.x, y: was.cell.y });
+        expect(path.at(-1)).toMatchObject({ x: r.tank!.cell.x, y: r.tank!.cell.y });
+        for (const [i, c] of path.entries()) {
+          expect(field.blocked[c.y * field.width + c.x], `${c.x},${c.y} drivable`).toBe(false);
+          if (i) expect(Math.max(Math.abs(c.x - path[i - 1]!.x), Math.abs(c.y - path[i - 1]!.y)), 'one step at a time').toBe(1);
+        }
+      }
+    }
+    expect(thrown).toBeGreaterThan(0);
+  });
+
   it('leaves, refunded, when no tank has come in range 20 s after its turn', () => {
     const race = calm();
     redeem(race);

@@ -1,3 +1,4 @@
+import { TICK_HZ } from '../movement/index.js';
 import { chat, openJoinWindow, paid, type BigEvent, type Race } from './race.js';
 
 // Dev only (`npm run dev`): the test-chat panel (#8).
@@ -82,7 +83,16 @@ export function mountDevPanel(race: Race, params: URLSearchParams, drainSettleme
     }, 1000 / Math.max(0.1, Number($('rate').value)));
   };
 
-  // URL shortcuts for headless runs: `?autoopen=1&fake=N&chaos=R` opens the window, adds N fake viewers, starts chaos.
+  // URL shortcuts for headless runs: `?autoopen=1&fake=N&chaos=R` opens the window, adds N fake viewers, starts chaos;
+  // `&redeem=kirov@6` redeems that big event 6 s after GO.
+  const [event, after] = (params.get('redeem') ?? '').split('@');
+  if (event) {
+    const due = setInterval(() => {
+      if (race.phase !== 'racing' || race.frame < Number(after ?? 0) * TICK_HZ) return;
+      clearInterval(due);
+      send(event as BigEvent);
+    }, 100);
+  }
   if (params.get('autoopen')) {
     openJoinWindow(race, { joinSeconds: Number(params.get('join') ?? 90), finishSeconds: Number(params.get('finish') ?? 60) });
     if (params.get('fake')) $('fake').click();
