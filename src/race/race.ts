@@ -1,4 +1,4 @@
-import { addTank, createField, findLanding, findRoute, isDriving, moveTank, orderMove, random, tick, TICK_HZ, type Cell, type CellGrid, type Field, type Spot, type Tank } from '../movement/index.js';
+import { addTank, createField, findLanding, findRoute, isDriving, moveTank, orderMove, random, stepTo, tick, TICK_HZ, type Cell, type CellGrid, type Field, type Spot, type Tank } from '../movement/index.js';
 import { courseProgress, forkProgress, type Course } from './course.js';
 import { repairBridge, toggleBridge, type BridgeGrid } from './bridge.js';
 
@@ -174,6 +174,8 @@ export interface Racer {
   botV3Next: boolean;
   /** The last Chrono swap: the cells left and landed on, and the race frame. */
   warp: { from: Cell; to: Cell; at: number } | undefined;
+  /** The last knockback, drawn only: the cells the tank is thrown back along, from the one it was caught on to the one it landed on, and the race frame. */
+  knock: { path: Spot[]; at: number } | undefined;
 }
 
 export interface Race {
@@ -566,7 +568,14 @@ function kirovLine(race: Race, turn: Turn): void {
 /** Knocks `r` back `KIROV.knockback` cells along the ideal line, to the nearest cell there that is at least a cell behind it. */
 function knockBack(race: Race, r: Racer): void {
   const shift = shiftTo(race, r, r.progress - KIROV.knockback, (s, next) => courseProgress(race.course, s.x + 0.5, s.y + 0.5, next) <= r.progress - 1);
-  if (shift) move(race, r, shift);
+  if (!shift) return;
+  const from = { ...r.tank!.cell }, route = findRoute(race.field.grid, from, shift.landing) ?? [];
+  const path = [from];
+  for (const face of route) path.push(stepTo(race.field.grid, path.at(-1)!, face)!);
+  // ponytail: no route (never seen: the landing reaches the next waypoint, as the caught cell does) draws a straight throw; route round it if one is seen.
+  if (!route.length) path.push(shift.landing);
+  r.knock = { path, at: race.frame };
+  move(race, r, shift);
 }
 
 /** The big event playing now: its turn has come and it hasn't landed yet. */
@@ -671,7 +680,7 @@ function move(race: Race, r: Racer, { landing, next }: Shift): void {
 }
 
 const racer = (race: Race, name: string, viewerId?: string): Racer =>
-  ({ viewerId, name, bot: viewerId === undefined, colour: race.racers.length, tank: undefined, next: 0, fork: undefined, progress: 0, finishedAt: undefined, tie: random(race.field), boostUntil: 0, shieldUntil: 0, stunUntil: 0, immunityUntil: 0, protectedUntil: 0, botNext: 0, botV3Next: false, warp: undefined });
+  ({ viewerId, name, bot: viewerId === undefined, colour: race.racers.length, tank: undefined, next: 0, fork: undefined, progress: 0, finishedAt: undefined, tie: random(race.field), boostUntil: 0, shieldUntil: 0, stunUntil: 0, immunityUntil: 0, protectedUntil: 0, botNext: 0, botV3Next: false, warp: undefined, knock: undefined });
 
 function launchV3(race: Race, firer: Racer, back: boolean): void {
   race.sounds.push('cannon', 'v3Launch');
