@@ -6,7 +6,7 @@ Issues live in GitHub Issues for `p0mz0r/chrono-battlefield`; use Git for versio
 
 ### RA2 install and OBS
 
-Reading game files, running or finding the install tests, checking a render or the editor UI in a browser, or measuring frame rate: see `docs/agents/ra2-install.md`.
+Reading game files, running or finding the install tests, checking a render or the editor UI in a browser, recording a race, or measuring frame rate: see `docs/agents/ra2-install.md`.
 
 ### Triage labels
 

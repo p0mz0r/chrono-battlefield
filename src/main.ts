@@ -492,10 +492,9 @@ async function main() {
       return { x: sx + tp.sx, y: sy + tp.sy - 8, z };
     };
     for (const strike of race.teslas) {
-      // Beside its target, interpolated like the target's own view.
-      const v = views.get(strike.target), tk = strike.target.tank!;
-      const follow = v && strike.target.finishedAt === undefined;
-      const x = follow ? (v.prev.x + (tk.x - v.prev.x) * a) / LEPTONS_PER_CELL : strike.x, y = follow ? (v.prev.y + (tk.y - v.prev.y) * a) / LEPTONS_PER_CELL : strike.y;
+      // Beside its target, where the target is drawn (thrown by a knockback, too).
+      const shown = strike.target.finishedAt === undefined ? views.get(strike.target)?.shown : undefined;
+      const { x, y } = shown ?? strike;
       const left = (strike.arrives - race.frame - a) / (2 * TICK_HZ), charge = 1 - left;
       const shiftIn = Math.min(charge / 0.15, 1);
       const pulse = 0.5 + 0.5 * Math.sin(race.frame * 1.3);
