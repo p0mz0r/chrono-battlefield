@@ -27,6 +27,10 @@ Use headless Chromium through `tools/shot.mjs`; the owner's own Chrome windows a
 
 If launch fails with "Executable doesn't exist", run `npx playwright-core install chromium-headless-shell` once.
 
+## Running the launcher
+
+`npm run build` builds `release/rhino-race.exe` (Go must be on `PATH`; `go test` in `launcher/` tests its server). Unzip `release/rhino-race.zip` and run the exe to check the real thing: it opens an Edge app window on `%LOCALAPPDATA%\Rhino Race\profile`, the operator's own profile on the owner's PC, so leave its storage alone. To see the page's console or failed requests, start the exe (the server stays up while a page holds `/__alive`), then open a second Edge on a short `--user-data-dir` (deep folders break IndexedDB) with the same flags as `launcher/main.go` plus `--remote-debugging-port=9333`, and attach with Playwright's `connectOverCDP`.
+
 ## Recording a race
 
 For a ticket that asks for a recording, the dev page plays a race unattended and `tools/shot.mjs` records it:

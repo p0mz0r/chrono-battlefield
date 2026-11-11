@@ -287,5 +287,5 @@ A bridge on the battlefield: a high bridge, with a deck tanks drive over and gro
 _Avoid_: Overpass
 
 **Install**:
-The RA2 + Yuri's Revenge files the game reads, from a folder on the operator's PC or uploaded by hand; never committed or redistributed.
+The RA2 + Yuri's Revenge files the game reads, read in place from a folder on the operator's PC; never committed or redistributed.
 _Avoid_: Game files, assets
