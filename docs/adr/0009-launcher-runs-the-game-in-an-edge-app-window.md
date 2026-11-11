@@ -16,10 +16,11 @@ Twitch login keeps the device code flow, with the code filled into Twitch's acti
 
 The exe is unsigned for now, so SmartScreen shows "Windows protected your PC" on first run (the operator README says to click More info > Run anyway), and antivirus may flag it. Signing waits until streamers other than the owner run it.
 
-## Open points
+## Checked on the owner's PC (2026-11-11)
 
-- Frame rate of the window capture against the browser source, with the window partly covered, is not yet measured.
-- Streamer.bot's WebSocket (`ws://127.0.0.1:8080`) should connect from the new origin as it did from `http://absolute`; not yet checked.
+- **Frame rate**, page `requestAnimationFrame` rate over 8 s against OBS `GetStats`, with a Window Capture of the game: in front, half covered by OBS, fully covered, and fully covered during a race, the page ran at 60.1 fps (worst frame 17 ms) and OBS at 60 fps with no skipped frames, and the preview kept moving. Minimised, the page drops to one frame a second and the capture goes black, so the operator README says to leave the window open, never minimised. The window capture holds the browser source's 60 fps.
+- **Streamer.bot** connects from the new origin and chat reaches the race.
+- **Twitch direct** logs in through the popup on the activate page, with the code filled in.
 
 ## Considered Options
 

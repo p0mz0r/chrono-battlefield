@@ -36,8 +36,8 @@ SET UP OBS
    "[msedge.exe]: Rhino Race". The game gets its own mixer channel.
 3. Size the game window to fill your canvas (e.g. maximise it on a 1920x1080
    screen), or right-click the capture > Transform > Fit to screen.
-Leave the game window open while streaming, behind other windows if you like,
-but not minimised: Windows stops drawing minimised windows.
+Leave the game window open while streaming. Behind other windows is fine (it
+keeps full speed); minimised is not: OBS then shows a black screen.
 
 
 RUNNING A RACE
