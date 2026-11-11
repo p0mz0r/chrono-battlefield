@@ -1,0 +1,3 @@
+# gofmt wants LF; core.autocrlf would check Go files out with CRLF
+*.go text eol=lf
+go.mod text eol=lf

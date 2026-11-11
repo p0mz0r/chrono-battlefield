@@ -33,6 +33,7 @@ Needs Node 24 and an RA2 + YR install. Set `RA2_DIR` to the install folder.
 | `launcher/` | The Go launcher, `rhino-race.exe`: serves the embedded build and the install, opens the Edge window. |
 | `tools/release.mjs` | Builds the launcher and zips it for operators (`npm run build`). |
 | `tools/shot.mjs` | Screenshots a dev page in headless Chromium for agents (`docs/agents/ra2-install.md`). |
+| `tools/attach.mjs` | Reads the launcher's own Edge window (errors, failed requests, screenshot) for agents (`docs/agents/ra2-install.md`). |
 | `.githooks/` | The pre-commit gate: typecheck and tests, turned on by `npm install`. |
 
 ## Licence and credits

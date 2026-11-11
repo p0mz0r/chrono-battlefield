@@ -91,6 +91,10 @@ func openWindow(url string) *exec.Cmd {
 		// Full frame rate while the window is covered; sound without a click first, as in a browser source.
 		"--disable-backgrounding-occluded-windows", "--disable-renderer-backgrounding", "--disable-background-timer-throttling",
 		"--autoplay-policy=no-user-gesture-required")
+	// For agents: tools/attach.mjs reads this window's console and requests (docs/agents/ra2-install.md).
+	if port := os.Getenv("RHINO_RACE_DEBUG_PORT"); port != "" {
+		cmd.Args = append(cmd.Args, "--remote-debugging-port="+port)
+	}
 	if err := cmd.Start(); err != nil {
 		fail("Could not start Edge: " + err.Error())
 	}

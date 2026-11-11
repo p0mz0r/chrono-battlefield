@@ -24,5 +24,6 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: launcher/go.mod
-      - run: go vet . && go test .
+      - run: test -z "$(gofmt -l .)" && go vet . && go test -timeout 60s .
+        shell: bash
         working-directory: launcher

@@ -29,7 +29,13 @@ If launch fails with "Executable doesn't exist", run `npx playwright-core instal
 
 ## Running the launcher
 
-`npm run build` builds `release/rhino-race.exe` (Go must be on `PATH`; `go test` in `launcher/` tests its server). Unzip `release/rhino-race.zip` and run the exe to check the real thing: it opens an Edge app window on `%LOCALAPPDATA%\Rhino Race\profile`, the operator's own profile on the owner's PC, so leave its storage alone. To see the page's console or failed requests, start the exe (the server stays up while a page holds `/__alive`), then open a second Edge on a short `--user-data-dir` (deep folders break IndexedDB) with the same flags as `launcher/main.go` plus `--remote-debugging-port=9333`, and attach with Playwright's `connectOverCDP`.
+`npm run build` builds `release/rhino-race.exe` (Go must be on `PATH`; `go test` in `launcher/` tests its server, and the pre-commit hook runs `gofmt`, `go vet` and `go test` when `launcher/` is staged). Unzip `release/rhino-race.zip` into a short folder and run the exe to check the real thing: it opens an Edge app window on `%LOCALAPPDATA%\Rhino Race\profile`, the operator's own profile on the owner's PC, so leave its storage alone.
+
+Check the real window, not only headless `shot.mjs`: Edge's cache, profile and flags differ, and a page that loads headless can fail there.
+
+1. Close any running game window (`tasklist` shows no `rhino-race.exe`): Edge reads the debug port only when its browser starts.
+2. Start the exe with `RHINO_RACE_DEBUG_PORT=9333` set (in Git Bash: `RHINO_RACE_DEBUG_PORT=9333 ./rhino-race.exe &`).
+3. `node tools/attach.mjs --reload --wait 15 --out .scratch/window.png` prints page errors, console errors and failed requests (the install probe's `/abs/` 404s are filtered), then screenshots the page. `--press S` or `--press E,E,F2` sends page keys first. It only disconnects, so the window stays open; closing the window stops the launcher.
 
 ## Recording a race
 
