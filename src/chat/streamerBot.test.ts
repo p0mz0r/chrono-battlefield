@@ -43,12 +43,16 @@ afterEach(() => { source.close(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 const redeem = (title: string, redemptionId = 'red-1') => last().event('Twitch', 'RewardRedemption', { redemptionId, reward: { id: 'rew-1', title }, user: { id: '7', login: 'vera', name: 'Vera' } });
 
 describe('Streamer.bot chat source', () => {
-  it('counts as online while the first connection is still opening, offline once it fails', () => {
+  it('is neither online nor offline while the first connection is still opening', () => {
     source.close();
     source = connectStreamerBot(race, { Socket: FakeSocket });
-    expect(source.online()).toBe(true);
+    expect(source.online()).toBeUndefined();
     last().drop();
     expect(source.online()).toBe(false);
+    source.close();
+    source = connectStreamerBot(race, { Socket: FakeSocket });
+    last().open();
+    expect(source.online()).toBe(true);
   });
 
   it('subscribes to chat on every platform and Twitch redemptions and cheers', () => {

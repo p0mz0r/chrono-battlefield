@@ -2,8 +2,8 @@ import { chat, paid, REWARDS, type BigEvent, type Race } from '../race/race.js';
 
 /** A chat source (#101): platform messages in as the race's chat and paid calls, its settlements out, online or not. */
 export interface ChatSource {
-  /** False while the connection is down: the stream shows the "chat offline" marker. */
-  online(): boolean;
+  /** False while the connection is down: the stream shows the "chat offline" marker. Undefined while the first one is still opening. */
+  online(): boolean | undefined;
   close(): void;
 }
 
@@ -49,7 +49,7 @@ const text = (v: unknown): v is string => typeof v === 'string' && v.length > 0 
  */
 export function connectStreamerBot(race: Race, { url = STREAMER_BOT_URL, Socket = WebSocket as new (url: string) => Socket } = {}): ChatSource {
   // Online until the first drop: the first connection is still opening at page load.
-  let socket: Socket | undefined, wait = RETRY.first, closed = false, up = true, retry: ReturnType<typeof setTimeout> | undefined;
+  let socket: Socket | undefined, wait = RETRY.first, closed = false, up = true, opened = false, retry: ReturnType<typeof setTimeout> | undefined;
   /** Unsettled redemptions: ID to its reward, which `DoAction` hands back to Streamer.bot. */
   const { held: rewards, save } = heldRedemptions<{ id: string; title: string }>(race, PENDING_KEY);
   const open = () => socket?.readyState === 1;
@@ -88,7 +88,7 @@ export function connectStreamerBot(race: Race, { url = STREAMER_BOT_URL, Socket 
     const s = socket = new Socket(url);
     s.onopen = () => {
       wait = RETRY.first;
-      up = true;
+      up = opened = true;
       s.send(JSON.stringify({ request: 'Subscribe', id: 'rhino-subscribe', events: { Twitch: ['ChatMessage', 'RewardRedemption', 'Cheer'], YouTube: ['Message'], Kick: ['ChatMessage'] } }));
     };
     s.onmessage = (e) => receive(e.data);
@@ -114,7 +114,7 @@ export function connectStreamerBot(race: Race, { url = STREAMER_BOT_URL, Socket 
 
   connect();
   return {
-    online: () => up,
+    online: () => up && !opened ? undefined : up,
     close() { closed = true; clearTimeout(retry); clearInterval(drain); socket?.close(); },
   };
 }
