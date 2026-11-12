@@ -58,7 +58,8 @@ Viewers join with !rhino in chat; empty places are filled with bots. Press E
 twice within three seconds to end or cancel a race.
 
 Chat comes in through Streamer.bot or by logging in to Twitch directly: pick
-one under Chat source in install setup (F2).
+one under Chat source in install setup (F2). Do install setup before you go
+live: OBS captures the whole game window, Twitch login code included.
 
 Each race writes its seed to rhino-race.log beside rhino-race.exe, never on
 stream: "Rhino Race seed N: replay with ?course=...&seed=N". Include that line

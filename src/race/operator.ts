@@ -3,6 +3,8 @@ import type { CourseFile } from './course.js';
 import { readCourseFile, removeImported, saveImported, type ImportedCourse } from './courseFile.js';
 import { BIG_EVENTS, CHAOS, endRace, openJoinWindow, type Race } from './race.js';
 import type { CameraMode } from './view.js';
+import mark from '../../docs/brand/final/mark.png';
+import '../panel.css';
 
 const KEY = 'rhino-race-setup';
 const VERBS = ['boost', 'shield', 'v3', 'missile', 'tesla', 'bridge'] as const;
@@ -56,9 +58,36 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, i
   const root = document.createElement('section');
   root.id = 'race-setup';
   root.hidden = true;
-  root.innerHTML = `<div class="setup"><h1>RACE SETUP</h1><label>Course <select name="course"></select></label><button type="button" name="import">Import courses…</button><label>Join window <input name="join" type="number" min="1" step="1"> s</label><label>Finish timer <input name="finish" type="number" min="1" step="1"> s</label><fieldset name="verbs"><legend>Audience interactions</legend></fieldset><fieldset name="chaos"><legend>Chaos</legend><label>Chrono swap cheer <input name="bits" type="number" min="1" step="1"> bits</label></fieldset><p>Keys: S setup · Enter start · P pause · E E end · C camera · M mute · F2 install</p></div>
-    <div class="courses" hidden><h1>COURSES</h1><label>Import course files (.rhino-course.json) <input name="files" type="file" multiple accept=".json"></label>
-    <div class="messages" role="status"></div><ul></ul><button type="button" name="back">Back to race setup</button></div>`;
+  root.innerHTML = `<div class="panel setup race"><div class="inner"><header><img class="mark" src="${mark}" alt=""><h1>Race setup</h1></header><div class="scroll">
+    <section><h2>Course</h2><select name="course" aria-label="Course"></select></section>
+    <section><h2>Timers</h2><div class="timers"><label>Join window <input name="join" type="number" min="1" step="1"> s</label><label>Finish timer <input name="finish" type="number" min="1" step="1"> s</label></div></section>
+    <section><h2>Audience interactions <b class="count"></b></h2><fieldset name="verbs" class="tiles" aria-label="Audience interactions"></fieldset></section>
+    <section><h2>Chaos <b class="count"></b></h2><fieldset name="chaos" class="tiles" aria-label="Chaos"></fieldset>
+      <div class="timers"><label>Chrono swap cheer <input name="bits" type="number" min="1" step="1"> bits</label></div></section>
+    </div><footer><span class="keys"><kbd>S</kbd> setup <kbd>P</kbd> pause <kbd>E E</kbd> end <kbd>C</kbd> camera <kbd>M</kbd> mute <kbd>F2</kbd> install</span>
+    <button type="button" name="import">Import courses…</button><button type="button" class="primary" name="start">Start race <kbd>Enter</kbd></button></footer></div></div>
+    <div class="panel setup courses" hidden><div class="inner"><header><img class="mark" src="${mark}" alt=""><h1>Courses</h1></header><div class="scroll">
+    <section><h2>Import</h2><label>Course files (.rhino-course.json) <input name="files" type="file" multiple accept=".json"></label><div class="messages report" role="status"></div></section>
+    <section><h2>Imported courses</h2><ul class="imported"></ul></section>
+    </div><footer><button type="button" class="primary" name="back">Back to race setup</button></footer></div></div>
+    <style>
+      #race-setup { position: fixed; z-index: 5; inset: 0; display: grid; place-items: center; background: #0009; }
+      #race-setup[hidden] { display: none; }
+      #race-setup .timers { display: flex; flex-wrap: wrap; gap: 8px 28px; margin-top: 10px; }
+      #race-setup .timers label { display: flex; align-items: center; gap: 8px; }
+      #race-setup .timers input { width: 5.5em; }
+      #race-setup .tiles { grid-template-columns: repeat(3, 1fr); }
+      #race-setup footer .keys { flex-basis: 100%; }
+      #race-setup footer [name=import] { margin-left: auto; }
+      #race-setup footer .primary kbd { margin-left: 6px; }
+      #race-setup .courses label { display: block; margin-bottom: 10px; }
+      #race-setup .courses input[type=file] { display: block; width: 100%; margin-top: 4px; }
+      #race-setup .messages { white-space: pre-line; }
+      #race-setup .imported { margin: 0; padding: 0; list-style: none; }
+      #race-setup .imported li { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid #ffffff14; }
+      #race-setup .imported li span { flex: 1; }
+      #race-setup .imported:empty::before { content: 'None yet.'; color: var(--dim); }
+    </style>`;
   document.body.append(root);
   const select = root.querySelector<HTMLSelectElement>('[name=course]')!;
   const fill = () => {
@@ -68,13 +97,13 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, i
     if (!select.value) select.value = current;
   };
   fill();
-  const setup = root.querySelector<HTMLElement>('.setup')!, screen = root.querySelector<HTMLElement>('.courses')!;
+  const setup = root.querySelector<HTMLElement>('.race')!, screen = root.querySelector<HTMLElement>('.courses')!;
   const files = screen.querySelector<HTMLInputElement>('[name=files]')!, messages = screen.querySelector('.messages')!, list = screen.querySelector('ul')!;
   const showCourses = (open: boolean) => { setup.hidden = open; screen.hidden = !open; };
   const listImported = () => list.replaceChildren(...imported.map((entry) => {
     const item = document.createElement('li'), remove = document.createElement('button'), { course } = entry;
     // Custom maps keep their credit (ADR 0006); the link is text, so clicking can't navigate the OBS source away.
-    item.textContent = `${course.name} · ${course.map}${course.source === 'shipped' ? ` · map by ${course.author}, ${course.link}` : ''} `;
+    item.append(Object.assign(document.createElement('span'), { textContent: `${course.name} · ${course.map}${course.source === 'shipped' ? ` · map by ${course.author}, ${course.link}` : ''}` }));
     remove.type = 'button'; remove.textContent = 'Remove';
     remove.onclick = async () => {
       await removeImported(entry.id);
@@ -107,19 +136,21 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, i
   const join = root.querySelector<HTMLInputElement>('[name=join]')!, finish = root.querySelector<HTMLInputElement>('[name=finish]')!;
   join.value = String(choices.joinSeconds); finish.value = String(choices.finishSeconds);
   const verbs = root.querySelector<HTMLFieldSetElement>('[name=verbs]')!, chaos = root.querySelector<HTMLFieldSetElement>('[name=chaos]')!;
-  const bits = chaos.querySelector<HTMLInputElement>('[name=bits]')!;
+  const bits = root.querySelector<HTMLInputElement>('[name=bits]')!;
   bits.value = String(choices.cheerBits);
   const toggles = (into: HTMLFieldSetElement, names: readonly string[], on: string[], text: (name: string) => string) => {
     for (const name of names) {
-      const label = document.createElement('label'), box = document.createElement('input');
-      box.type = 'checkbox'; box.name = name; box.checked = on.includes(name);
-      label.append(box, ` ${text(name)}`); into.append(label);
+      const label = document.createElement('label'), box = document.createElement('input'), caption = document.createElement('span');
+      label.className = 'tile'; box.type = 'checkbox'; box.name = name; box.checked = on.includes(name); caption.textContent = text(name);
+      label.append(box, caption); into.append(label);
     }
   };
   toggles(verbs, VERBS, choices.enabled, (verb) => verb);
   toggles(chaos, CHAOS, choices.chaos, (c) => c === 'hype' ? 'hype meter & nuke' : c === 'chronoSwap' ? 'chrono swap' : BIG_EVENTS[c as keyof typeof BIG_EVENTS].label.toLowerCase());
   const checked = (set: HTMLFieldSetElement) => [...set.querySelectorAll<HTMLInputElement>('input:checked')].map((box) => box.name);
   const valid = () => [choices.joinSeconds, choices.finishSeconds, choices.cheerBits].every((n) => Number.isInteger(n) && n > 0);
+  const count = () => { for (const set of [verbs, chaos]) set.closest('section')!.querySelector('.count')!.textContent = `${checked(set).length}/${set.elements.length}`; };
+  count();
   const update = () => {
     choices.course = select.value;
     choices.joinSeconds = Number(join.value);
@@ -127,6 +158,7 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, i
     choices.enabled = checked(verbs);
     choices.chaos = checked(chaos);
     choices.cheerBits = Number(bits.value);
+    count();
     if (valid()) save();
   };
   root.addEventListener('change', update);
@@ -153,6 +185,7 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, i
       root.hidden = true;
     }
   };
+  root.querySelector<HTMLButtonElement>('[name=start]')!.onclick = start;
   let endPromptUntil = 0;
   const prompt = document.createElement('div'); prompt.id = 'end-prompt'; document.body.append(prompt);
   const act = (action: string) => {

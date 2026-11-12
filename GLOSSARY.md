@@ -289,3 +289,7 @@ _Avoid_: Overpass
 **Install**:
 The RA2 + Yuri's Revenge files the game reads, read in place from a folder on the operator's PC; never committed or redistributed.
 _Avoid_: Game files, assets
+
+**Install setup**:
+The screen, outside races, where the operator points the game at the install, picks the chat source and sets it up; it can't open during a race.
+_Avoid_: Settings, config, options

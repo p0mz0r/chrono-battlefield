@@ -1,7 +1,7 @@
 import { Application, Container, Graphics, Rectangle, Sprite, Text, Texture } from 'pixi.js';
 import type { CellGrid } from './battlefield/grid.js';
 import { openInstall, readInstall } from './install/read.js';
-import { bindSetupKey, chatSource, showSetup } from './install/setup.js';
+import { bindSetupKey, chatSource, showSetup, watchChat } from './install/setup.js';
 import { connectStreamerBot, type ChatSource } from './chat/streamerBot.js';
 import { connectTwitch } from './chat/twitch.js';
 import { LEPTONS_PER_CELL, spotLevel, tankCell, TICK_HZ, type Cell, type Spot } from './movement/index.js';
@@ -534,6 +534,7 @@ async function main() {
     mountOperator(race, courses, imported, Object.entries(courses).find(([, candidate]) => candidate === file)?.[0] ?? '', (mode) => { cameraMode = mode; }, sounds.mute);
     if (chatSource() === 'streamerbot') chatLink = connectStreamerBot(race);
     if (chatSource() === 'twitch') chatLink = connectTwitch(race);
+    if (chatLink) watchChat(chatLink.online);
     if (import.meta.env.DEV) (await import('./race/devPanel.js')).mountDevPanel(race, params, !chatLink);
   }
   document.body.dataset.ready = String(terrain.missing === 0);

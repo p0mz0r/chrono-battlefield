@@ -79,7 +79,7 @@ export async function loginTwitch({ fetch = globalThis.fetch as Fetch } = {}) {
 export function connectTwitch(race: Race, { fetch = globalThis.fetch as Fetch, Socket = WebSocket as new (url: string) => Socket } = {}): ChatSource {
   const login = stored();
   // Online until the first drop: the first connection is still opening at page load.
-  let socket: Socket | undefined, wait = RETRY.first, closed = false, up = true, retry: ReturnType<typeof setTimeout> | undefined;
+  let socket: Socket | undefined, wait = RETRY.first, closed = false, up = true, opened = false, retry: ReturnType<typeof setTimeout> | undefined;
   if (!login) return { online: () => false, close() {} };
   const broadcaster_id = login.userId;
 
@@ -167,7 +167,7 @@ export function connectTwitch(race: Race, { fetch = globalThis.fetch as Fetch, S
       if (message_type === 'session_welcome' && session?.id) {
         keepalive = session.keepalive_timeout_seconds ?? keepalive;
         wait = RETRY.first;
-        up = true;
+        up = opened = true;
         if (moving) { const old = socket; socket = s; old?.close(); } else subscribe(session.id).catch(() => s.close()); // deaf without it: drop, and try again after the wait
       }
       if (message_type === 'session_reconnect' && session?.reconnect_url) connect(session.reconnect_url, true);
@@ -210,5 +210,5 @@ export function connectTwitch(race: Race, { fetch = globalThis.fetch as Fetch, S
 
   void validate().then(ensureRewards).catch(() => {}); // a network failure leaves them for the next load
   connect();
-  return { online: () => up, close: stop };
+  return { online: () => up && !opened ? undefined : up, close: stop };
 }

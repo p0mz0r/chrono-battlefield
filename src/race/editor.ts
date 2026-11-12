@@ -5,6 +5,7 @@ import { courseSlug, finishAreaOf, mapHash, type CourseFile, type LinePoint } fr
 import { exportCourse } from './courseFile.js';
 import { closestSegment, createHistory, inspectCourse, type CourseDraft } from './editorModel.js';
 import { simulateRace, type Race } from './race.js';
+import '../panel.css';
 import './editor.css';
 
 // Loaded only by the dev page. All edits stay in this draft until Save succeeds.
@@ -19,6 +20,7 @@ export function mountEditor(app: Application, world: Container, grid: CellGrid, 
   file.mapHash = mapHash(bytes);
   const panel = document.createElement('section');
   panel.id = 'course-editor';
+  panel.className = 'panel';
   panel.setAttribute('aria-label', 'Course editor');
   panel.innerHTML = `<div class="inner"><header><h1>Course editor</h1><small>dev only</small><span class="dirty" hidden>Unsaved</span></header><div class="scroll">
     <section><h2>Course</h2><div class="field">
