@@ -21,9 +21,16 @@ Most maps in `Maps\Yuri's Revenge` have a CNCMaps render beside them: `<map>.png
 
 Use headless Chromium through `tools/shot.mjs`; the owner's own Chrome windows are personal, so leave them alone.
 
-1. Start the dev server as a background task with its output in `.vite.log`: `npx vite --port 5173 --strictPort > .vite.log 2>&1`. Read the log when a request fails or the server stops.
-2. Shoot: `node tools/shot.mjs "http://localhost:5173/?edit=1&map=DeepFrze.yro" --out <file>.png`. It prints page errors, failed requests and dialogs; a clean run prints only the shot path. The default size, 2560x1270, is the owner's maximised window.
-3. To interact first, pass `--steps steps.mjs`, a module whose default export `async (page) => {}` drives the page with the Playwright API (click, keyboard, `page.evaluate`). Keep step files in `.scratch/` (gitignored).
+1. Start the dev server as a background task with its output in `.vite.log`: `npx vite --port 5173 --strictPort > .vite.log 2>&1`. Other worktrees run their own servers, so pick a free port per worktree and use it in every URL below. If `--strictPort` fails, read `.vite.log`, then check the port's owner (`netstat -ano`): it may be a server left running from this worktree, or one from another worktree serving other code. Stop your server when done.
+2. Shoot: `node tools/shot.mjs "http://localhost:5173/?edit=1&map=DeepFrze.yro" --out <file>.png`. It prints page errors, console errors (a shader that fails to compile shows here), failed requests and dialogs; a clean run prints only the shot path. The default size, 2560x1270, is the owner's maximised window.
+3. To interact first, pass `--steps steps.mjs`, a module whose default export `async (page) => {}` drives the page with the Playwright API (click, keyboard, `page.evaluate`). Keep step files in `.scratch/` (gitignored). Other sessions keep files there too, so remove only the files you created. To shoot a tank at a given cell, wait on `body.dataset.tanks` (entries `Name@x,y:wpN`) instead of guessing a `--wait`:
+
+   ```js
+   // .scratch/at-cell.mjs: shoot once any tank is on (66, 52)
+   export default (page) => page.waitForFunction(() => /@66,52:/.test(document.body.dataset.tanks ?? ''), null, { timeout: 120000, polling: 50 });
+   ```
+
+Headless SwiftShader gives Pixi a WebGL1 context. Custom GLSL must compile there (`texture`, not `textureLod`), and a shader that works with world coordinates in the thousands needs `preferredFragmentPrecision: 'highp'`, because the default `mediump` is off by pixels at that size.
 
 If launch fails with "Executable doesn't exist", run `npx playwright-core install chromium-headless-shell` once.
 

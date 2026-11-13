@@ -18,6 +18,8 @@ try {
   const context = await browser.newContext({ viewport: { width, height }, recordVideo: values.video ? { dir: values.video, size: { width, height } } : undefined });
   const page = await context.newPage();
   page.on('pageerror', (error) => console.log(`pageerror: ${error.message}`));
+  // Pixi reports a shader that fails to compile here, not as a page error.
+  page.on('console', (m) => { if (m.type() === 'error') console.log(`console.error: ${m.text().slice(0, 2000)}`); });
   page.on('response', (res) => { if (res.status() >= 400) console.log(`${res.status()} ${res.url()}`); });
   page.on('dialog', (dialog) => { console.log(`${dialog.type()}: ${dialog.message()}`); void dialog.dismiss(); });
   await page.goto(url, { waitUntil: 'networkidle' });
