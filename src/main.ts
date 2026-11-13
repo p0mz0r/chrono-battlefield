@@ -14,6 +14,7 @@ import { directorShot, type Shot } from './race/camera.js';
 import { mountStreamView, readable, thrownAt, type CameraMode } from './race/view.js';
 import { mountOperator, readChoices } from './race/operator.js';
 import { importedCourses } from './race/courseFile.js';
+import { depthTexture, silhouette, type DepthChunks } from './silhouette.js';
 
 // The race page: a bundled course over its battlefield, the race as the stream sees it (camera modes in race/camera.ts,
 // overlay in race/view.ts; the dev panel's button switches Overview / Director).
@@ -160,10 +161,12 @@ async function main() {
   document.body.prepend(app.canvas);
   const world = new Container();
   app.stage.addChild(world);
+  const depth: DepthChunks = new Map();
   for (const chunk of terrain.chunks) {
     const sprite = new Sprite(await blobTexture(chunk.image));
     sprite.position.set(chunk.x, chunk.y);
     world.addChild(sprite);
+    depth.set(`${chunk.x},${chunk.y}`, depthTexture(await createImageBitmap(chunk.depth, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' })));
   }
   // The finish area, chequered.
   const finish = new Graphics({ label: 'finish-area' }); // the editor redraws it as the finish moves
@@ -271,7 +274,7 @@ async function main() {
   // Labels sit on their own layer over everything, at a constant screen size: number chips zoomed out, names zoomed in.
   const tags = new Container();
   world.addChild(tags);
-  const views = new Map<Racer, { view: Container; body: Sprite; turret: Sprite; fire: Sprite; effects: Graphics; tag: Container; chip: Graphics; label: Text; prev: { x: number; y: number }; shown: { x: number; y: number } | undefined; throw: { of: Racer['knock']; path: { x: number; y: number }[] } | undefined }>();
+  const views = new Map<Racer, { view: Container; body: Sprite; turret: Sprite; fire: Sprite; effects: Graphics; tag: Container; chip: Graphics; label: Text; hide: ReturnType<typeof silhouette>; prev: { x: number; y: number }; shown: { x: number; y: number } | undefined; throw: { of: Racer['knock']; path: { x: number; y: number }[] } | undefined }>();
   const viewOf = (r: Racer) => {
     let v = views.get(r);
     if (!v) {
@@ -289,7 +292,7 @@ async function main() {
       fire.anchor.set(0.5);
       view.addChild(effects, body, turret, fire);
       things.addChild(view);
-      views.set(r, (v = { view, body, turret, fire, effects, tag, chip, label, prev: { x: r.tank!.x, y: r.tank!.y }, shown: undefined, throw: undefined }));
+      views.set(r, (v = { view, body, turret, fire, effects, tag, chip, label, hide: silhouette(view, depth, readable(colourOf(r))), prev: { x: r.tank!.x, y: r.tank!.y }, shown: undefined, throw: undefined }));
     }
     return v;
   };
@@ -378,6 +381,7 @@ async function main() {
       turret.position.set(tp.sx, tp.sy);
       view.position.set(p.x, p.y - hop);
       view.zIndex = (fx + fy + 1) * 15 + (on.deck ? 60 : 0);
+      v.hide({ x: world.position.x, y: world.position.y, scale: world.scale.x }, p.x, p.y - hop, on, spotLevel(grid, on));
       view.alpha = tank.ghost ? 0.5 : 1;
       chip.visible = world.scale.x < CHIPS_BELOW;
       const text = chip.visible ? String(ordered.findIndex((s) => s.name === r.name) + 1) : r.name;
