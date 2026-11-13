@@ -1,9 +1,8 @@
 import { beforeAll, expect, it } from 'vitest';
 import { describeInstall, readFromDir } from '../../test/install.js';
 import { mountTheater } from '../ra2/mount.js';
-import type { Vfs } from '../ra2/index.js';
+import { IniFile, type Vfs } from '../ra2/index.js';
 import { MAX_TANKS } from '../race/race.js';
-import { IniFile } from '../ra2/index.js';
 import { DESO_SEQUENCE, desolatorFrame, prerenderAircraft, prerenderAnim, prerenderRhinos, prerenderRocket, prerenderTank } from './rhino.js';
 
 const painted = (rgba: Uint8Array | Uint8ClampedArray) => rgba.some((v, i) => i % 4 === 3 && v > 0);
@@ -79,9 +78,9 @@ describeInstall('interaction art from the install', () => {
     const deso = prerenderAnim(vfs, 'deso', 'temperate');
     expect(painted(deso.colorRgba)).toBe(true);
     const seq = IniFile.parse(vfs.openFile('artmd.ini')!).getSection('DesoSequence')!;
-    for (const [name, [start, count]] of Object.entries(DESO_SEQUENCE)) {
-      expect(seq.getString(name).split(',').slice(0, 2).map(Number)).toEqual([start, count]);
-      expect(deso.frameCount).toBeGreaterThanOrEqual(start + count);
+    for (const [name, [start, count, facings]] of Object.entries(DESO_SEQUENCE)) {
+      expect(seq.getString(name).split(',').slice(0, 3).map(Number)).toEqual([start, count, facings]);
+      expect(deso.frameCount).toBeGreaterThanOrEqual(start + count + 7 * facings);
     }
   });
 });

@@ -83,8 +83,8 @@ export function prerenderAircraft(vfs: Files, theater: string, name: string, foo
   return renderVoxelToSprite(name, vxl(name), hva(name), pal(), { footprintPx });
 }
 
-/** `deso.shp` frames (start, count) from artmd.ini `[DesoSequence]`: Ready has 8 facings, the others one. */
-export const DESO_SEQUENCE = { Ready: [0, 1], Deploy: [299, 15], DeployedFire: [292, 7] } as const;
+/** `deso.shp` frames (start, count, frames between facings) from artmd.ini `[DesoSequence]`: only Ready turns. */
+export const DESO_SEQUENCE = { Ready: [0, 1, 1], Deploy: [299, 15, 0], DeployedFire: [292, 7, 0] } as const;
 
 /**
  * The Desolator's `deso.shp` frame `sinceLand` s from its radiation landing: standing at infantry `facing` (0–7),
