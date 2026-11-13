@@ -1,6 +1,6 @@
 # PixiJS, with Rhino voxels prerendered to sprites
 
-The game renders with PixiJS v8 (WebGL), and tanks are not drawn as 3D: at import, each Rhino voxel model (`htnk`, `htnktur`, `htnkbarl`) is prerendered into 32 hull facings plus 32 turret facings, and the battlefield's tiles are baked into chunk textures. That turns the whole scene into 2D sprites sorted by screen Y, which is how RA2 itself draws voxels (cached by facing). The [#5 prototype](https://github.com/p0mz0r/chrono-battlefield/issues/5) held 60 fps with 2,000 moving Rhinos in Edge and in an OBS Local-file browser source, and the prerender takes under 0.4 s.
+The game renders with PixiJS v8 (WebGL), and tanks are not drawn as 3D: at import, each Rhino voxel model (`htnk`, `htnktur`, `htnkbarl`) is prerendered into 32 hull facings plus 32 turret facings, and the battlefield's tiles are baked into chunk textures. That turns the whole scene into 2D sprites sorted by screen Y, which is how RA2 itself draws voxels (cached by facing). The prerender's camera lifts height more than gamemd's does (`PX_PER_UNIT_Z` 1.7 against `GAMEMD_CAMERA`'s √1.5, in `src/ra2/render/voxelRender.ts`), so voxels read taller. That means an angle or height taken from gamemd needs rescaling before it is used here: match what it looks like on screen, as the ramp tilt (#150) does, not the raw number. The [#5 prototype](https://github.com/p0mz0r/chrono-battlefield/issues/5) held 60 fps with 2,000 moving Rhinos in Edge and in an OBS Local-file browser source, and the prerender takes under 0.4 s.
 
 ## Considered Options
 
