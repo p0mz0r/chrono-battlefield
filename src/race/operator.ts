@@ -51,7 +51,7 @@ function estimatedSeconds(file: CourseFile): number {
  * In-page operator controls. Selection reloads only when the chosen course needs another battlefield.
  * `courses` holds bundled and `imported` courses by id; the Courses screen adds and removes imported ones.
  */
-export function mountOperator(race: Race, courses: Record<string, CourseFile>, imported: ImportedCourse[], current: string, switchCamera: (mode: CameraMode) => void, toggleMute: () => void): void {
+export function mountOperator(race: Race, courses: Record<string, CourseFile>, imported: ImportedCourse[], current: string, switchCamera: (mode: CameraMode) => void, toggleMute: () => void, cutTo: (place: number) => void): void {
   const choices = readChoices();
   const save = () => localStorage.setItem(KEY, JSON.stringify(choices));
   switchCamera(choices.camera);
@@ -64,7 +64,7 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, i
     <section><h2>Audience interactions <b class="count"></b></h2><fieldset name="verbs" class="tiles" aria-label="Audience interactions"></fieldset></section>
     <section><h2>Chaos <b class="count"></b></h2><fieldset name="chaos" class="tiles" aria-label="Chaos"></fieldset>
       <div class="timers"><label>Chrono swap cheer <input name="bits" type="number" min="1" step="1"> bits</label></div></section>
-    </div><footer><span class="keys"><kbd>S</kbd> setup <kbd>P</kbd> pause <kbd>E E</kbd> end <kbd>C</kbd> camera <kbd>M</kbd> mute <kbd>F2</kbd> install</span>
+    </div><footer><span class="keys"><kbd>S</kbd> setup <kbd>P</kbd> pause <kbd>E E</kbd> end <kbd>C</kbd> camera <kbd>0</kbd>–<kbd>9</kbd> cut to place <kbd>M</kbd> mute <kbd>F2</kbd> install</span>
     <button type="button" name="import">Import courses…</button><button type="button" class="primary" name="start">Start race <kbd>Enter</kbd></button></footer></div></div>
     <div class="panel setup courses" hidden><div class="inner"><header><img class="mark" src="${mark}" alt=""><h1>Courses</h1></header><div class="scroll">
     <section><h2>Import</h2><label>Course files (.rhino-course.json) <input name="files" type="file" multiple accept=".json"></label><div class="messages report" role="status"></div></section>
@@ -206,6 +206,7 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, i
     const key = event.key.toLowerCase();
     const action = key === 's' ? 'setup' : event.key === 'Enter' ? 'start' : key === 'p' ? 'pause' : key === 'e' ? 'end' : key === 'c' ? 'camera' : key === 'm' ? 'mute' : '';
     if (action) act(action);
+    else if (/^[0-9]$/.test(event.key) && root.hidden) cutTo(Number(event.key));
   });
   if (new URL(location.href).searchParams.has('start')) {
     const url = new URL(location.href); url.searchParams.delete('start'); history.replaceState(null, '', url);
