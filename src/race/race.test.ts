@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CellGrid } from '../movement/index.js';
 import { courseProgress, loadCourse, mapHash, type CourseFile } from './course.js';
-import { chat, commandList, createRace, endRace, eventChips, hypeLive, openJoinWindow, paid, simulateRace, standings, tickRace, type Race, type Racer } from './race.js';
+import { CHAT_LOG, chat, commandList, createRace, endRace, eventChips, hypeLive, openJoinWindow, paid, simulateRace, standings, tickRace, type Race, type Racer } from './race.js';
 import { TICK_HZ } from '../movement/index.js';
 import { readdirSync, readFileSync } from 'node:fs';
 import { describeInstall, readFromDir } from '../../test/install.js';
@@ -90,6 +90,17 @@ const racing = (seed = 1) => {
 };
 
 describe('audience interactions', () => {
+  it('keeps the last chat lines for the stream, plain chat and commands alike, across races', () => {
+    const race = racing();
+    for (let i = 0; i < CHAT_LOG + 5; i++) say(race, 'c', `hello ${i}`, 'Cody');
+    say(race, 'a', '!boost Kara');
+    endRace(race);
+    openJoinWindow(race);
+    expect(race.chatLog).toHaveLength(CHAT_LOG);
+    expect(race.chatLog.at(-2)).toEqual({ viewerId: 'c', name: 'Cody', text: `hello ${CHAT_LOG + 4}` });
+    expect(race.chatLog.at(-1)!.text).toBe('!boost Kara');
+  });
+
   it('emits sounds for a join and accepted effects', () => {
     const race = createRace(course(), ARENA, 1);
     openJoinWindow(race, { joinSeconds: 1 });

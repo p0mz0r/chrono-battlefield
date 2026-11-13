@@ -1,7 +1,7 @@
 import { Application, Container, Graphics, Rectangle, Sprite, Text, Texture } from 'pixi.js';
 import type { CellGrid } from './battlefield/grid.js';
 import { openInstall, readInstall } from './install/read.js';
-import { bindSetupKey, chatSource, showSetup, watchChat } from './install/setup.js';
+import { bindSetupKey, chatSource, showChat, showSetup, watchChat } from './install/setup.js';
 import { connectStreamerBot, type ChatSource } from './chat/streamerBot.js';
 import { connectTwitch } from './chat/twitch.js';
 import { LEPTONS_PER_CELL, spotLevel, tankCell, TICK_HZ, type Cell, type Spot } from './movement/index.js';
@@ -300,7 +300,7 @@ async function main() {
   const focus = cellParam('cell');
   const zoom = Number(params.get('zoom')) || (focus ? 1 : 0);
   let cameraMode: CameraMode = 'overview';
-  const drawOverlay = edit ? undefined : mountStreamView(rhinos.map((t) => t.rgb));
+  const drawOverlay = edit ? undefined : mountStreamView(rhinos.map((t) => t.rgb), showChat());
   let chatLink: ChatSource | undefined;
   if (edit) world.scale.set(Math.min(app.screen.width / terrain.width, app.screen.height / terrain.height));
   const bounds = [...course.line, ...[...course.forks.values()].flatMap((fork) => fork.line)]

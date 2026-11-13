@@ -209,6 +209,10 @@ _Avoid_: Log, chat reply, toast
 
 ### On stream
 
+**Chat panel**:
+The column under the standings showing the latest chat lines from the chat source, plain chat and chat commands alike, each with the viewer's name (in their house colour while they race); the oldest fade out at the top, and the lines stay between races. The operator can switch it off in install setup, for a streamer who keeps their own chat overlay.
+_Avoid_: Chat overlay, chat box
+
 **Camera mode**:
 How the stream's camera shows a race, switched by the operator: **Overview** or **Director**.
 _Avoid_: View, cam

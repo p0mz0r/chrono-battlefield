@@ -23,6 +23,7 @@ dialog.innerHTML = `<div class="inner"><header><img class="mark" src="${mark}" a
       <label class="tile"><input type="radio" name="chat" value="streamerbot"><span>Streamer.bot<small>ws://127.0.0.1:8080</small></span></label>
       <label class="tile"><input type="radio" name="chat" value="twitch"><span>Twitch direct</span></label>
     </fieldset>
+    <label class="show-chat"><input type="checkbox" name="show-chat"> Show chat on stream (off if you keep your own chat overlay)</label>
   </section>
   <section class="rewards"><h2>3 · Streamer.bot rewards</h2>
     <p>In Streamer.bot, create these rewards with its Create Reward button (rewards made in Twitch's dashboard can't be refunded), then import the action <b>${SETTLE_ACTION}</b>: Import, paste the string below. Click a field to copy it.</p>
@@ -42,6 +43,8 @@ dialog.innerHTML = `<div class="inner"><header><img class="mark" src="${mark}" a
   #setup .import input { font-family: Consolas, monospace; font-size: 13px; }
   #setup input.copy { cursor: copy; }
   #setup input.copied { border-color: var(--cyan); }
+  #setup .show-chat { display: flex; align-items: center; gap: 8px; margin-top: 10px; cursor: pointer; }
+  #setup .show-chat input { flex: none; width: 16px; height: 16px; margin: 0; box-shadow: none; accent-color: var(--cyan); }
 </style>`;
 const $ = <T extends HTMLElement>(sel: string) => dialog.querySelector<T>(sel)!;
 const pathInput = $<HTMLInputElement>('input[name=path]');
@@ -54,6 +57,10 @@ export const chatSource = (): '' | 'streamerbot' | 'twitch' => {
   const picked = localStorage.getItem(CHAT_KEY);
   return picked === 'streamerbot' || picked === 'twitch' ? picked : '';
 };
+
+const SHOW_CHAT_KEY = 'rhino-show-chat';
+/** Whether the stream shows chat lines (#143): on unless the operator switched it off. */
+export const showChat = () => localStorage.getItem(SHOW_CHAT_KEY) !== 'off';
 
 /** The chat source's connection, for setup's status: `online` as `ChatSource.online`. */
 export const watchChat = (online: () => boolean | undefined) => { chatOnline = online; };
@@ -79,6 +86,11 @@ function report(problems: string[], bad = true) {
   list.replaceChildren(...problems.map((p) => Object.assign(document.createElement('li'), { textContent: p })));
   list.classList.toggle('bad', bad);
 }
+
+$<HTMLInputElement>('input[name=show-chat]').addEventListener('change', (e) => {
+  localStorage.setItem(SHOW_CHAT_KEY, (e.target as HTMLInputElement).checked ? 'on' : 'off');
+  reloadIntoSetup();
+});
 
 $('.chat').addEventListener('change', (e) => {
   localStorage.setItem(CHAT_KEY, (e.target as HTMLInputElement).value);
@@ -143,6 +155,7 @@ export function showSetup(problems: string[] = []) {
   chip('.install-chip', installFound ? 'Found' : 'Not found', installFound ? 'ok' : 'bad');
   const source = chatSource();
   for (const input of chatInputs) input.checked = input.value === source;
+  $<HTMLInputElement>('input[name=show-chat]').checked = showChat();
   $('.rewards').hidden = source !== 'streamerbot';
   $('.twitch').hidden = source !== 'twitch';
   const login = twitchLogin(), missing = missingRewards();

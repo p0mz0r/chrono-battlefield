@@ -33,8 +33,8 @@ export function paintNames(text: string, names: Map<string, string>): string {
   return text.split(new RegExp(`(?<=^|\\s)(${words.join('|')})(?=$|\\s|:)`)).map((part, i) => i % 2 ? `<span style="color:${names.get(part)}">${esc(part)}</span>` : esc(part)).join('');
 }
 
-/** Fixed screen overlay: standings, phase or event banner, hype meter and event queue, commands, feed, results, the director shot's lower third and the "chat offline" marker. Tank labels stay in Pixi. */
-export function mountStreamView(colours: number[]): (race: Race, shot?: Shot, chatOffline?: boolean) => void {
+/** Fixed screen overlay: standings, chat (unless `showChat` is off), phase or event banner, hype meter and event queue, commands, feed, results, the director shot's lower third and the "chat offline" marker. Tank labels stay in Pixi. */
+export function mountStreamView(colours: number[], showChat = true): (race: Race, shot?: Shot, chatOffline?: boolean) => void {
   const root = document.createElement('div');
   root.id = 'stream-view';
   document.body.append(root);
@@ -60,7 +60,11 @@ export function mountStreamView(colours: number[]): (race: Race, shot?: Shot, ch
       : `<span class="hype" style="--fill:${Math.round(race.hype.points / HYPE.full * 100)}%">HYPE</span>`;
     const chips = eventChips(race);
     const timer = race.racers.some((r) => r.finishedAt !== undefined) ? `<small>FINISH TIMER · ${secondsLeft(race)} s</small>` : '';
-    const html = `${race.phase === 'results' ? '' : `<section class="standings"><header>${esc(race.course.file.name)}${lapLabel}</header><div class="standings-head">POS <span>RACER</span><b>PROGRESS</b></div>${rows}</section>`}
+    // A viewer racing now is named in their house colour.
+    const house = new Map(race.racers.map((r) => [r.viewerId, css(r.colour)]));
+    const chatLines = showChat ? race.chatLog.map((line) => `<div><b${house.has(line.viewerId) ? ` style="color:${house.get(line.viewerId)}"` : ''}>${esc(line.name)}</b> ${esc(line.text)}</div>`).join('') : '';
+    const html = `<div class="left">${race.phase === 'results' ? '' : `<section class="standings"><header>${esc(race.course.file.name)}${lapLabel}</header><div class="standings-head">POS <span>RACER</span><b>PROGRESS</b></div>${rows}</section>`}
+      ${chatLines ? `<section class="chat">${chatLines}</section>` : ''}</div>
       ${playing ? `<div class="phase event-banner">${esc(`${BIG_EVENTS[playing.event].label} · ${playing.by}`)}${playing.callers.length ? `<small>${esc(playing.callers.join(' · '))}</small>` : ''}${timer}</div>` : `<div class="phase">${headline}</div>`}
       ${race.paused ? '<div class="pause-banner">PAUSED</div>' : ''}
       ${race.phase === 'racing' && focus ? `<div class="lower-third" style="--house:${css(focus.colour)}"><strong>${order.findIndex((s) => s.name === focus.name) + 1}</strong><div>${esc(focus.name)}<small>${esc(shot!.reason)}</small></div></div>` : ''}

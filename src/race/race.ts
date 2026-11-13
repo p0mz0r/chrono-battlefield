@@ -228,7 +228,12 @@ export interface Race {
   carried: Turn[];
   /** Radiation the Desolator left on the course, until it fades. */
   radiation: Radiation[];
+  /** The last `CHAT_LOG` chat lines from any source, newest last, commands included; kept across races. */
+  chatLog: ChatLine[];
 }
+
+/** Chat lines the stream can show at once. */
+export const CHAT_LOG = 30;
 
 export interface Standing {
   name: string;
@@ -242,7 +247,7 @@ export interface Standing {
 
 export function createRace(course: Course, grid: CellGrid, seed: number): Race {
   const bridgeGrid = 'bridge' in grid && 'bridges' in grid ? grid as BridgeGrid : undefined;
-  return { course, field: createField(grid, seed), seed, phase: 'idle', paused: false, racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions.filter((verb) => verb !== 'bridge' || (bridgeGrid && course.file.bridges.length))), cooldowns: new Map(), feed: [], feedUntil: new Map(), sounds: [], missiles: [], v3s: [], teslas: [], lastHit: undefined, lastHitBy: undefined, lastHitFrame: -1, bridgeGrid, queue: [], nextEventAt: 0, landed: undefined, settlements: [], hype: emptyHype(), chatWide: 0, chaos: new Set(CHAOS), cheerBits: 50, carried: [], radiation: [] };
+  return { course, field: createField(grid, seed), seed, phase: 'idle', paused: false, racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions.filter((verb) => verb !== 'bridge' || (bridgeGrid && course.file.bridges.length))), cooldowns: new Map(), feed: [], feedUntil: new Map(), sounds: [], missiles: [], v3s: [], teslas: [], lastHit: undefined, lastHitBy: undefined, lastHitFrame: -1, bridgeGrid, queue: [], nextEventAt: 0, landed: undefined, settlements: [], hype: emptyHype(), chatWide: 0, chaos: new Set(CHAOS), cheerBits: 50, carried: [], radiation: [], chatLog: [] };
 }
 
 export function commandList(race: Race): string[] {
@@ -287,6 +292,8 @@ const IGNORED: ChatResult = { ok: false, reason: 'ignored' };
 
 /** The chat-command contract: every line from every source comes through here. */
 export function chat(race: Race, line: ChatLine): ChatResult {
+  race.chatLog.push(line);
+  if (race.chatLog.length > CHAT_LOG) race.chatLog.shift();
   if (race.paused) return IGNORED;
   const words = line.text.trim().toLowerCase().split(/\s+/);
   if (words.length > 2) return IGNORED;
