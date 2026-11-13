@@ -9,7 +9,7 @@ import { loadMap, mountTheater, type ReadFile } from './ra2/mount.js';
 import type { ConvertedSprite } from './ra2/render/sprite.js';
 
 type Encoded<T> = Omit<T, 'rgba'> & { image: Blob };
-export type Sprite = Pick<ConvertedSprite, 'atlasWidth' | 'atlasHeight' | 'spriteWidth' | 'spriteHeight' | 'frames'> & { image: Blob };
+export type Sprite = Pick<ConvertedSprite, 'atlasWidth' | 'atlasHeight' | 'spriteWidth' | 'spriteHeight' | 'frames' | 'origin'> & { image: Blob };
 
 /** A course's import output as cached: every image a lossless WebP, decoded only into GPU textures. */
 export interface CourseArt {
@@ -39,7 +39,7 @@ export interface CourseArt {
   desolator: Sprite;
 }
 
-type Tank = { body: Sprite; turret: Sprite; pivot: readonly [number, number, number] };
+type Tank = { body: Sprite; turret: Sprite; shadow: Sprite; pivot: readonly [number, number, number] };
 
 async function webp(rgba: Uint8Array | Uint8ClampedArray, width: number, height: number): Promise<Blob> {
   const canvas = new OffscreenCanvas(width, height);
@@ -48,10 +48,10 @@ async function webp(rgba: Uint8Array | Uint8ClampedArray, width: number, height:
   return canvas.convertToBlob({ type: 'image/webp', quality: 1 });
 }
 
-const tank = async (t: RhinoArt): Promise<Tank> => ({ body: await sprite(t.body), turret: await sprite(t.turret.sprite), pivot: t.turret.pivot });
+const tank = async (t: RhinoArt): Promise<Tank> => ({ body: await sprite(t.body), turret: await sprite(t.turret.sprite), shadow: await sprite(t.shadow), pivot: t.turret.pivot });
 
 const sprite = async (s: ConvertedSprite): Promise<Sprite> =>
-  ({ atlasWidth: s.atlasWidth, atlasHeight: s.atlasHeight, spriteWidth: s.spriteWidth, spriteHeight: s.spriteHeight, frames: s.frames, image: await webp(s.colorRgba, s.atlasWidth, s.atlasHeight) });
+  ({ atlasWidth: s.atlasWidth, atlasHeight: s.atlasHeight, spriteWidth: s.spriteWidth, spriteHeight: s.spriteHeight, frames: s.frames, origin: s.origin, image: await webp(s.colorRgba, s.atlasWidth, s.atlasHeight) });
 
 /**
  * Imports the course's battlefield and prerenders the Rhino, or takes both from the cache when this install

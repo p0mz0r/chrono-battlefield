@@ -1,6 +1,6 @@
 import { remapped } from '../battlefield/objects.js';
 import { HvaFile, IniFile, Palette, REMAP_INDEX_START, ShpFile, VxlFile, type Vfs } from '../ra2/index.js';
-import { renderTurretToSprites, renderVoxelToSprite, renderVoxelToSprites, TILTS, type TurretRender } from '../ra2/render/voxelRender.js';
+import { renderTurretToSprites, renderVoxelShadowToSprite, renderVoxelToSprite, renderVoxelToSprites, TILTS, type TurretRender } from '../ra2/render/voxelRender.js';
 import { convertShpToAtlas, type ConvertedSprite } from '../ra2/render/sprite.js';
 import { theaterArtExt } from '../ra2/theater.js';
 
@@ -16,6 +16,8 @@ export interface RhinoArt {
   body: ConvertedSprite;
   /** 32 turret (+ barrel) facings, laid out like the hull's, and the turret pivot in the hull's frame. */
   turret: TurretRender;
+  /** The hull's ground shadow, black, laid out like `body`; its `origin` goes on the body's. */
+  shadow: ConvertedSprite;
 }
 
 type Files = Pick<Vfs, 'openFile'>;
@@ -47,7 +49,8 @@ function prerenderTanks(vfs: Files, theater: string, unit: string, footprintPx: 
   const bodies = renderVoxelToSprites(unit, hull, hva(unit), palettes, { footprintPx, tilts });
   const { sprites, pivot } = renderTurretToSprites(`${unit}tur`, hull, vxl(`${unit}tur`), hva(`${unit}tur`), palettes,
     barrel ? vxl(`${unit}barl`) : undefined, barrel ? hva(`${unit}barl`) : undefined, { footprintPx, tilts });
-  return bodies.map((body, i) => ({ body, turret: { sprite: sprites[i]!, pivot } }));
+  const shadow = renderVoxelShadowToSprite(`${unit}shadow`, hull, hva(unit), { footprintPx, tilts });
+  return bodies.map((body, i) => ({ body, turret: { sprite: sprites[i]!, pivot }, shadow }));
 }
 
 /**
