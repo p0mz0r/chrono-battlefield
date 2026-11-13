@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { CellGrid } from '../movement/index.js';
+import { findRoute, moveTank, stepTo, type CellGrid, type Spot } from '../movement/index.js';
 import { courseProgress, loadCourse, mapHash, type CourseFile } from './course.js';
 import { CHAT_LOG, chat, commandList, createRace, endRace, eventChips, hypeLive, openJoinWindow, paid, simulateRace, standings, tickRace, type Race, type Racer } from './race.js';
 import { TICK_HZ } from '../movement/index.js';
@@ -923,6 +923,70 @@ describe('Kirov airship', () => {
     endRace(bombing);
     expect(bombing.settlements).toEqual([{ reference: 'v', outcome: 'fulfilled' }]);
     expect(bombing.feed.at(-1)).toMatch(/^Vera ▸ KIROV ▸ /); // its one line, though cut short
+  });
+
+  describe('on a bridge', () => {
+    /**
+     * 30×9, a bridge on row 4 over x 10–19. High: plateau (`.`) at level 4, a canyon floor (`_`) at 0 with ramps
+     * (`a`–`d`, levels 0–3) up both sides, the deck (`=`) at 4 three rows wide. Low: level-0 ground, a river (`~`)
+     * crossed by a one-row strip (`-`).
+     */
+    const bridged = (kind: 'high' | 'low') => {
+      const canyon = '..........__________..........', ramps = '..........dcba__abcd..........', river = '..........~~~~~~~~~~..........';
+      const rows = kind === 'high'
+        ? [ramps, canyon, canyon, ...Array(3).fill('..........==========..........'), canyon, canyon, ramps]
+        : [...Array(4).fill(river), '..........----------..........', ...Array(4).fill(river)];
+      const cells = rows.join(''), n = cells.length;
+      return {
+        width: 30, height: 9, speed: Array.from(cells, (c) => (c === '~' ? 0 : 1)),
+        level: Array.from(cells, (c) => (c === '.' ? (kind === 'high' ? 4 : 0) : Math.max(0, 'abcd'.indexOf(c)))),
+        ramp: Array.from(cells, (c) => ('abcd'.includes(c) ? 1 : 0)), blocked: new Array(n).fill(false),
+        deck: Array.from(cells, (c) => (c === '=' ? 4 : -1)), bridge: Array.from(cells, (c) => (c === '=' || c === '-' ? 0 : -1)),
+        bridges: [{ kind, cells: Array.from(cells).flatMap((c, i) => (c === '=' || c === '-' ? [i] : [])) }],
+      } as CellGrid;
+    };
+    /** A Kirov bomb on a tank stood mid-bridge at (15, 4), on the deck or not: the grid and the tank once it has landed. */
+    const bombed = (kind: 'high' | 'low', deck: boolean) => {
+      const g = bridged(kind);
+      const file: CourseFile = { ...loopCourse(1), startGrid: Array.from({ length: 10 }, (_, i): [number, number] => [i % 2, i >> 1]), waypoints: [[28, 4]], laps: [], finish: [29, 4] };
+      const race = createRace(loadCourse(file, MAP, g), g, 1);
+      openJoinWindow(race, { joinSeconds: 1 });
+      say(race, 'a', '!rhino', 'Kane');
+      ticks(race, 4 * TICK_HZ);
+      for (const r of race.racers) if (r.bot) r.botNext = Infinity;
+      const r = race.racers.find((r) => !r.bot)!;
+      moveTank(race.field, r.tank!, { x: 15, y: 4, deck });
+      r.tank!.stunnedUntil = race.frame + 10 * TICK_HZ; // stands still until the bomb
+      redeem(race);
+      tickRace(race);
+      Object.assign(race.queue[0]!.ship!, { x: 15.5, y: 4.5 });
+      for (let i = 0; i < 5 * TICK_HZ && !r.knock; i++) tickRace(race);
+      expect(r.knock, 'knocked back').toBeDefined();
+      expect(r.tank!.cell.x).toBeLessThan(15);
+      return { g, r };
+    };
+    /** Each spot of `path` that is mid-bridge (x 10–19). */
+    const midBridge = (path: Spot[]) => path.filter((s) => s.x >= 10 && s.x <= 19);
+
+    it('keeps a tank on a high deck on the deck, its throw and its route on to the next waypoint never leaving it', () => {
+      const { g, r } = bombed('high', true);
+      expect(r.tank!.cell.deck).toBe(true);
+      expect(r.knock!.path.every((s) => s.deck)).toBe(true);
+      const route = findRoute(g, r.tank!.cell, { x: 28, y: 4 })!, path = [r.tank!.cell];
+      for (const face of route) path.push(stepTo(g, path.at(-1)!, face)!);
+      expect(midBridge(path).every((s) => s.deck)).toBe(true);
+    });
+
+    it('keeps a tank on a low bridge on the strip', () => {
+      const { g, r } = bombed('low', false);
+      expect(g.bridge![r.tank!.cell.y * g.width + r.tank!.cell.x]).toBe(0);
+      expect(r.knock!.path.every((s) => g.bridge![s.y * g.width + s.x] === 0)).toBe(true);
+    });
+
+    it('still knocks a tank under a high bridge back on the ground', () => {
+      const { r } = bombed('high', false);
+      expect(r.tank!.cell.deck).toBe(false);
+    });
   });
 
   it.each([1, 2, 3])('lets every tank but the last still finish after Kirov knockbacks (seed %i)', (seed) => {

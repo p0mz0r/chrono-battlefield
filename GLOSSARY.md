@@ -109,7 +109,7 @@ An audience interaction in which a Tesla tank chronoshifts in beside a tank, stu
 _Avoid_: Area strike, nuke, artillery
 
 **Knockback**:
-A move a few cells back along the course that comes with a stun from a big event, for every tank caught in it, intended target or not; personal interactions never knock back. On stream the tank is thrown back over drivable ground to where it lands, sliding with its facing kept, never vanishing and reappearing.
+A move a few cells back along the course that comes with a stun from a big event, for every tank caught in it, intended target or not; personal interactions never knock back. On stream the tank is thrown back over drivable ground to where it lands, sliding with its facing kept, never vanishing and reappearing. A tank crossing a bridge stays on it if it can; one under a high bridge lands on the ground.
 _Avoid_: Pushback, recoil
 
 **Radiation**:

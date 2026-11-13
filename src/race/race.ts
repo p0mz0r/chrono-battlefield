@@ -669,12 +669,15 @@ function lineAt(course: Course, along: number): { x: number; y: number; next: nu
 
 /**
  * The cell nearest the ideal line `along` cells in that takes `racer`, outside the finish area, with a way on and
- * passing `ok`; undefined if none.
+ * passing `ok`; undefined if none. A tank on a bridge's deck or low strip lands on that bridge if it can, else on the ground.
  */
 function shiftTo(race: Race, racer: Racer, along: number, ok = (_s: Spot, _next: number) => true): Shift | undefined {
   const { course, field } = race, { x, y, next } = lineAt(course, along), to = course.waypoints[next] ?? course.finish;
-  const landing = findLanding(field, racer.tank!, { x: x - 0.5, y: y - 0.5 },
-    (s) => !course.finishArea.has(s.y * field.grid.width + s.x) && ok(s, next) && findRoute(field.grid, s, to) !== undefined);
+  const { cell } = racer.tank!, i = cell.y * field.grid.width + cell.x;
+  const id = field.grid.bridge?.[i] ?? -1, bridge = cell.deck || race.bridgeGrid?.bridges[id]?.kind === 'low' ? id : -1; // not a ground tank under (or where was) a deck
+  const land = (on: number) => findLanding(field, racer.tank!, { x: x - 0.5, y: y - 0.5 },
+    (s) => !course.finishArea.has(s.y * field.grid.width + s.x) && ok(s, next) && findRoute(field.grid, s, to) !== undefined, on);
+  const landing = (bridge >= 0 ? land(bridge) : undefined) ?? land(-1);
   return landing && { landing, next: next < 0 ? course.waypoints.length : next };
 }
 

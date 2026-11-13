@@ -119,13 +119,14 @@ export function orderMove(field: Field, tank: Tank, to: Cell): boolean {
 
 /**
  * Where a move lands: the drivable ground cell nearest `near` that is off every bridge, held by no other
- * tank and passes `ok` (e.g. can still reach the next waypoint), or undefined.
+ * tank and passes `ok` (e.g. can still reach the next waypoint), or undefined. Given a `bridge` (index into
+ * `grid.bridges`), the nearest spot on that bridge's own level instead: its deck if high, its strip if low.
  */
 // ponytail: sorts every cell of the battlefield per move; a ring search outwards if moves get frequent.
-export function findLanding(field: Field, tank: Tank, near: { x: number; y: number }, ok: (spot: Spot) => boolean): Spot | undefined {
+export function findLanding(field: Field, tank: Tank, near: { x: number; y: number }, ok: (spot: Spot) => boolean, bridge = -1): Spot | undefined {
   const { grid } = field;
-  return Array.from({ length: grid.width * grid.height }, (_, i) => ({ x: i % grid.width, y: Math.floor(i / grid.width), deck: false }))
-    .filter((s, i) => drivable(grid, s.x, s.y) && grid.deck[i]! < 0 && (grid.bridge?.[i] ?? -1) < 0 && !holder(field, s, tank))
+  return Array.from({ length: grid.width * grid.height }, (_, i) => ({ x: i % grid.width, y: Math.floor(i / grid.width), deck: bridge >= 0 && grid.deck[i]! >= 0 }))
+    .filter((s, i) => (bridge < 0 ? drivable(grid, s.x, s.y) && grid.deck[i]! < 0 && (grid.bridge?.[i] ?? -1) < 0 : grid.bridge?.[i] === bridge && (s.deck || drivable(grid, s.x, s.y))) && !holder(field, s, tank))
     .sort((a, b) => Math.hypot(a.x - near.x, a.y - near.y) - Math.hypot(b.x - near.x, b.y - near.y))
     .find(ok);
 }
