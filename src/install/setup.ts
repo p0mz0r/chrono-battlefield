@@ -43,7 +43,8 @@ dialog.innerHTML = `<div class="inner"><header><img class="mark" src="${mark}" a
   #setup .import input { font-family: Consolas, monospace; font-size: 13px; }
   #setup input.copy { cursor: copy; }
   #setup input.copied { border-color: var(--cyan); }
-  #setup .show-chat { display: block; margin-top: 10px; }
+  #setup .show-chat { display: flex; align-items: center; gap: 8px; margin-top: 10px; cursor: pointer; }
+  #setup .show-chat input { flex: none; width: 16px; height: 16px; margin: 0; box-shadow: none; accent-color: var(--cyan); }
 </style>`;
 const $ = <T extends HTMLElement>(sel: string) => dialog.querySelector<T>(sel)!;
 const pathInput = $<HTMLInputElement>('input[name=path]');
