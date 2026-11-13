@@ -253,6 +253,8 @@ Skipped: the column, tunnel and bridge fudges and the `0x704350` terrain term. T
 
 These are for the operator. The facts above inform them; they are not findings.
 
+**Decided (2026-11-13, #151 closed as wontfix):** keep the silhouette, since invisible tanks hurt an arcade race. Don't port the Z test, and take no capture. Reopen #151 if a specific spot looks wrong in a race and fix that case in the cell check.
+
 1. **Silhouette or true hiding.** Vanilla RA2/YR hides the covered pixels outright, with no outline. Neither Phobos nor Ares adds one. With RA2's rule, a Rhino on (63..68, 52) and (55, 62..64) on Hills is 100% covered for several cells in a row, and 77–100% on the cells around them.
    - True hiding matches the game, but the racer vanishes on stream. The name tag is drawn above everything (`tags`) and would still show.
    - The silhouette keeps the racer readable, but no RA2 viewer has seen it in the game.
