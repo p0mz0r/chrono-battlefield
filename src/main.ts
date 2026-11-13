@@ -309,8 +309,9 @@ async function main() {
   const minCourseY = Math.min(...bounds.map((p) => p.y)), maxCourseY = Math.max(...bounds.map((p) => p.y));
   const overviewScale = () => Math.min((app.screen.width - 440) / (maxCourseX - minCourseX + 320), (app.screen.height - 160) / (maxCourseY - minCourseY + 320));
   let shot: Shot | undefined;
-  /** Overview's frame once the operator pans or zooms it; `C` drops it back to the whole course. */
+  /** Overview's frame once the operator pans or zooms it; `C` or a new join window drops it back to the whole course. */
   let manualFrame: { scale: number; x: number; y: number } | undefined;
+  let lastPhase = race.phase;
 
   // Fixed-step simulation, drawn interpolated.
   const fast = import.meta.env.DEV ? Number(params.get('fast')) || 1 : 1;
@@ -327,6 +328,8 @@ async function main() {
       v.tag.destroy({ children: true });
       views.delete(r);
     }
+    if (race.phase === 'join' && lastPhase !== 'join') manualFrame = undefined;
+    lastPhase = race.phase;
     if (!edit) { // the camera, before anything is placed: labels counter-scale against it
     shot = cameraMode === 'director' && race.phase === 'racing' ? directorShot(race, shot) : undefined;
     const scale = zoom || (cameraMode === 'director' && race.phase === 'racing' ? Math.max(1.8, overviewScale() * 2.5) : overviewScale());

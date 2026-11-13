@@ -214,7 +214,7 @@ How the stream's camera shows a race, switched by the operator: **Overview** or 
 _Avoid_: View, cam
 
 **Overview**:
-The camera mode that holds the whole course in one still frame; tanks are small, so their labels are number chips. The operator can drag to pan it and use the wheel to zoom it; switching camera mode resets it to the whole course.
+The camera mode that holds the whole course in one still frame; tanks are small, so their labels are number chips. The operator can drag to pan it and use the wheel to zoom it; switching camera mode or starting a race resets it to the whole course.
 _Avoid_: Map view, wide shot
 
 **Director**:
