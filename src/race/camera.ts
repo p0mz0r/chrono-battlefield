@@ -93,7 +93,7 @@ export function directorShot(race: Race, prev: Shot | undefined): Shot {
 }
 
 /**
- * * The operator's number-key cut to the tank in `place` (0 the leader), held like any director shot; it follows that
+ * The operator's number-key cut to the tank in `place` (0 the leader), held like any director shot; it follows that
  * tank, not the place. Undefined while a big event holds the shot, or when no unfinished tank holds the place.
  */
 export function placeShot(race: Race, place: number): Shot | undefined {
