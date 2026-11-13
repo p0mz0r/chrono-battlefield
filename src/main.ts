@@ -10,7 +10,7 @@ import { loadSounds } from './audio.js';
 import { facingAngle, projectModelPoint } from './ra2/render/voxelRender.js';
 import { loadCourse, mapHash, type CourseFile, type LinePoint } from './race/course.js';
 import { chat, commandList, createRace, DESOLATOR, KIROV, kirovDrops, kirovImpacts, latestEvent, NUKE_FALL, playingEvent, secondsLeft, standings, tickRace, type Race, type Racer, type Turn } from './race/race.js';
-import { directorShot, type Shot } from './race/camera.js';
+import { directorShot, placeShot, type Shot } from './race/camera.js';
 import { mountStreamView, readable, thrownAt, type CameraMode } from './race/view.js';
 import { mountOperator, readChoices } from './race/operator.js';
 import { importedCourses } from './race/courseFile.js';
@@ -309,6 +309,9 @@ async function main() {
   const minCourseY = Math.min(...bounds.map((p) => p.y)), maxCourseY = Math.max(...bounds.map((p) => p.y));
   const overviewScale = () => Math.min((app.screen.width - 440) / (maxCourseX - minCourseX + 320), (app.screen.height - 160) / (maxCourseY - minCourseY + 320));
   let shot: Shot | undefined;
+  /** Overview's frame once the operator pans or zooms it; `C` or a new join window drops it back to the whole course. */
+  let manualFrame: { scale: number; x: number; y: number } | undefined;
+  let lastPhase = race.phase;
 
   // Fixed-step simulation, drawn interpolated.
   const fast = import.meta.env.DEV ? Number(params.get('fast')) || 1 : 1;
@@ -325,6 +328,8 @@ async function main() {
       v.tag.destroy({ children: true });
       views.delete(r);
     }
+    if (race.phase === 'join' && lastPhase !== 'join') manualFrame = undefined;
+    lastPhase = race.phase;
     if (!edit) { // the camera, before anything is placed: labels counter-scale against it
     shot = cameraMode === 'director' && race.phase === 'racing' ? directorShot(race, shot) : undefined;
     const scale = zoom || (cameraMode === 'director' && race.phase === 'racing' ? Math.max(1.8, overviewScale() * 2.5) : overviewScale());
@@ -333,6 +338,7 @@ async function main() {
     const target = focus ? toScreen(focus.x, focus.y, level(focus.x, focus.y)) : followed ? toScreen(followed.x / LEPTONS_PER_CELL, followed.y / LEPTONS_PER_CELL, spotLevel(grid, followed.cell)) : { x: (minCourseX + maxCourseX) / 2, y: (minCourseY + maxCourseY) / 2 };
     world.scale.set(scale);
     world.position.set((app.screen.width + (cameraMode === 'overview' ? 360 : 0)) / 2 - target.x * scale, app.screen.height / 2 - target.y * scale);
+    if (manualFrame && cameraMode === 'overview') { world.scale.set(manualFrame.scale); world.position.set(manualFrame.x, manualFrame.y); }
     }
     const a = Math.min(acc * TICK_HZ, 1);
     // A nuke's impact: a white flash and ~0.5 s of screen shake while the race runs on.
@@ -535,7 +541,25 @@ async function main() {
   status.textContent = `${course.file.name} on ${mapPath} (${map.theater}, ${cached ? 'from cache' : 'imported'} in ${loadMs} ms), ideal line ${course.length.toFixed(0)} cells. G: passability and ideal line.`;
   if (edit) (await import('./race/editor.js')).mountEditor(app, world, grid, mapBytes, file!, toScreen, params.has('map') ? '' : Object.entries(COURSES).find(([, c]) => c === file)![0].replace(/^.*\/|\.json$/g, ''), race);
   else {
-    mountOperator(race, courses, imported, Object.entries(courses).find(([, candidate]) => candidate === file)?.[0] ?? '', (mode) => { cameraMode = mode; }, sounds.mute);
+    mountOperator(race, courses, imported, Object.entries(courses).find(([, candidate]) => candidate === file)?.[0] ?? '', (mode) => { cameraMode = mode; manualFrame = undefined; }, sounds.mute,
+      (place) => { if (cameraMode === 'director' && race.phase === 'racing') shot = placeShot(race, place) ?? shot; });
+    // Overview's manual frame: drag pans, the wheel zooms toward the cursor.
+    const manual = () => (manualFrame ??= { scale: world.scale.x, x: world.position.x, y: world.position.y });
+    let drag: { x: number; y: number } | undefined;
+    app.canvas.addEventListener('pointerdown', (e) => { if (cameraMode === 'overview') drag = { x: e.clientX, y: e.clientY }; });
+    addEventListener('pointerup', () => { drag = undefined; });
+    addEventListener('pointermove', (e) => {
+      if (!drag || cameraMode !== 'overview') return;
+      const f = manual();
+      f.x += e.clientX - drag.x; f.y += e.clientY - drag.y;
+      drag = { x: e.clientX, y: e.clientY };
+    });
+    app.canvas.addEventListener('wheel', (e) => {
+      if (cameraMode !== 'overview') return;
+      e.preventDefault();
+      const f = manual(), k = Math.min(Math.max(f.scale * Math.exp(-e.deltaY / 500), overviewScale() / 2), 4) / f.scale;
+      f.x = e.clientX - (e.clientX - f.x) * k; f.y = e.clientY - (e.clientY - f.y) * k; f.scale *= k;
+    }, { passive: false });
     if (chatSource() === 'streamerbot') chatLink = connectStreamerBot(race);
     if (chatSource() === 'twitch') chatLink = connectTwitch(race);
     if (chatLink) watchChat(chatLink.online);

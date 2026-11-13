@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TICK_HZ, type CellGrid } from '../movement/index.js';
-import { currentLap, directorShot, lapOf, type Shot } from './camera.js';
+import { currentLap, directorShot, lapOf, placeShot, type Shot } from './camera.js';
 import { loadCourse, mapHash, type CourseFile } from './course.js';
 import { chat, createRace, openJoinWindow, paid, standings, tickRace, type Race } from './race.js';
 
@@ -166,6 +166,36 @@ describe('director camera', () => {
     while (r.queue.length);
     expect(step(3 * TICK_HZ - 1)).toBe(shot);
     expect(step().reason).not.toBe('Desolator by Vera');
+  });
+
+  it('cuts by key to the tank in a place, follows that tank, holds it 7 s, and ignores a place nobody holds', () => {
+    const { r, step } = calm();
+    step();
+    const third = r.racers.find((x) => x.name === standings(r)[2]!.name)!;
+    const cut = placeShot(r, 2)!;
+    expect(cut).toMatchObject({ racer: third, reason: 'Spotlight', cutAt: r.frame });
+    let shot: Shot = cut;
+    for (let i = 0; i < 7 * TICK_HZ - 1; i++) { tickRace(r); expect(shot = directorShot(r, shot)).toBe(cut); }
+    tickRace(r);
+    expect(directorShot(r, shot)).toMatchObject({ reason: 'Leader' });
+    expect(placeShot(r, r.racers.length)).toBeUndefined();
+  });
+
+  it('counts key cut places in the standings, ignoring a place a finished tank holds', () => {
+    const r = race(1);
+    while (r.racers.filter((x) => x.finishedAt !== undefined).length < 2) tickRace(r);
+    const s = standings(r), first = s.findIndex((x) => x.finishTime === undefined);
+    expect(first).toBe(2);
+    expect(placeShot(r, 0)).toBeUndefined();
+    expect(placeShot(r, 1)).toBeUndefined();
+    expect(placeShot(r, 2)!.racer.name).toBe(s[2]!.name);
+  });
+
+  it('ignores a key cut while a big event holds the shot', () => {
+    const { r, step } = calm();
+    paid(r, { viewerId: 'v', name: 'Vera', event: 'desolator', via: 'redemption', reference: 'r1' });
+    step();
+    expect(placeShot(r, 2)).toBeUndefined();
   });
 
   it('holds back hit cuts while an event plays, and drops the hits it held back', () => {
