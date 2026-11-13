@@ -218,7 +218,7 @@ The camera mode that holds the whole course in one still frame; tanks are small,
 _Avoid_: Map view, wide shot
 
 **Director**:
-The camera mode that zooms in and cuts between the leading tank, the closest fight for a place and the tank last hit, captioning the tank on screen with its name, its place and, after a hit, who hit it; labels show names. When a big event's turn comes it cuts to the event's target and holds there until a few seconds after it lands; after a nuke it holds until the first stun ends, then cuts to that tank, captioned "First away". The operator's number keys cut to a place (`0` the leader, `1` second, and so on), captioned "Spotlight": the shot follows the tank that held the place, is held like any other shot, and does nothing during a big event or for a place nobody holds.
+The camera mode that zooms in and cuts between the leading tank, the closest fight for a place and the tank last hit, captioning the tank on screen with its name, its place and, after a hit, who hit it; labels show names. When a big event's turn comes it cuts to the event's target and holds there until a few seconds after it lands; after a nuke it holds until the first stun ends, then cuts to that tank, captioned "First away". The operator's number keys cut to a place among the tanks still racing (`1` the leading one, `2` second, and so on, `0` tenth), captioned "Spotlight": the shot follows the tank that held the place, is held like any other shot, and does nothing during a big event or for a place nobody holds.
 _Avoid_: Chase cam, spectator, auto-cam
 
 **Standings**:

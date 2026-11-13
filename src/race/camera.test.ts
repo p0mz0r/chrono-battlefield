@@ -181,6 +181,13 @@ describe('director camera', () => {
     expect(placeShot(r, r.racers.length)).toBeUndefined();
   });
 
+  it('counts key cut places among the tanks still racing', () => {
+    const r = race(1);
+    while (!r.racers.some((x) => x.finishedAt !== undefined)) tickRace(r);
+    const leading = r.racers.find((x) => x.name === standings(r).find((s) => s.finishTime === undefined)!.name)!;
+    expect(placeShot(r, 0)!.racer).toBe(leading);
+  });
+
   it('ignores a key cut while a big event holds the shot', () => {
     const { r, step } = calm();
     paid(r, { viewerId: 'v', name: 'Vera', event: 'desolator', via: 'redemption', reference: 'r1' });
