@@ -4,7 +4,7 @@ import { prerenderRocket, prerenderTank } from '../../assets/rhino.js';
 import { HvaFile, Palette, VxlFile, type Vfs, type VxlSection } from '../index.js';
 import { mountTheater } from '../mount.js';
 import type { ConvertedSprite } from './sprite.js';
-import { deriveModelScale, facingAngle, GAMEMD_CAMERA, projectModelPoint, renderVoxelToSprite } from './voxelRender.js';
+import { deriveModelScale, facingAngle, GAMEMD_CAMERA, projectModelPoint, renderVoxelToSprite, tiltOf, TILTS } from './voxelRender.js';
 
 const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0];
 
@@ -88,6 +88,23 @@ describe('voxel renderer units', () => {
       expect(Math.abs(y - p.sy)).toBeLessThan(1);
       expect(Math.hypot(...fromOrigin(aboutItself, i))).toBeLessThan(1);
     }
+  });
+
+  it('tilts with the ramp: frame tilt × facings + facing, the nose up on an uphill ramp ahead, level on flat', () => {
+    // A voxel 10 units along model −x, which is cell +x on screen; ramp 1 rises toward cell +x.
+    const nose = renderVoxelToSprite('t', voxelAt([-10, 0, 0]), hva([[IDENTITY]]), palette, { facingCount: 1, footprintPx: 2, pivot: [0, 0, 0], tilts: TILTS });
+    expect(nose.frames).toHaveLength(9);
+    const lift = (i: number) => {
+      const [, y] = fromOrigin(nose, i), flat = projectModelPoint(-10, 0, 0);
+      return flat.sy - y; // px raised over the flat projection
+    };
+    expect(Math.abs(lift(0))).toBeLessThan(1);
+    // It lies along the ramp as drawn: a cell up a +x ramp is 30 px across, 15 down and 15 up, so level with the pivot.
+    expect(Math.abs(fromOrigin(nose, 1)[1])).toBeLessThan(1);
+    expect(Math.abs(lift(1) - 5)).toBeLessThan(1);
+    expect(lift(3)).toBeLessThan(-3); // ramp 3 rises toward cell −x: the nose dips
+    // Ramp types share a tilt by uphill direction; double ramps (17–20) are flat.
+    expect([0, 1, 4, 5, 9, 13, 16, 17, 20].map(tiltOf)).toEqual([0, 1, 4, 5, 5, 5, 8, 0, 0]);
   });
 
   it("draws at gamemd's scale with its camera: a ground unit √½ px across, a height unit √¾ px up", () => {

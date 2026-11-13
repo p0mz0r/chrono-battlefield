@@ -1,6 +1,6 @@
 import { remapped } from '../battlefield/objects.js';
 import { HvaFile, IniFile, Palette, REMAP_INDEX_START, ShpFile, VxlFile, type Vfs } from '../ra2/index.js';
-import { renderTurretToSprite, renderVoxelToSprite, type TurretRender } from '../ra2/render/voxelRender.js';
+import { renderTurretToSprites, renderVoxelToSprite, renderVoxelToSprites, TILTS, type TurretRender } from '../ra2/render/voxelRender.js';
 import { convertShpToAtlas, type ConvertedSprite } from '../ra2/render/sprite.js';
 import { theaterArtExt } from '../ra2/theater.js';
 
@@ -12,9 +12,9 @@ export const ROCKET_FOOTPRINT_PX = 30;
 export const KIROV_FOOTPRINT_PX = 140, BOMB_FOOTPRINT_PX = 16;
 
 export interface RhinoArt {
-  /** 32 hull facings, frame i = facing i × 360°/32 clockwise from north (-y). */
+  /** 32 hull facings, frame i = facing i × 360°/32 clockwise from north (-y); a Rhino's repeat per tilt (`tiltOf`). */
   body: ConvertedSprite;
-  /** 32 turret (+ barrel) facings and the turret pivot in the hull's frame. */
+  /** 32 turret (+ barrel) facings, laid out like the hull's, and the turret pivot in the hull's frame. */
   turret: TurretRender;
 }
 
@@ -35,18 +35,19 @@ function reader(vfs: Files, theater: string) {
   };
 }
 
-/**
- * Prerenders `<unit>`, `<unit>tur` and (when present) `<unit>barl` with the theater's unit palette, its remap ramp
- * in `palette` when given. Pure, no DOM.
- */
-export function prerenderTank(vfs: Files, theater: string, unit: string, footprintPx = RHINO_FOOTPRINT_PX, palette = reader(vfs, theater).pal()): RhinoArt {
+/** Prerenders `<unit>`, `<unit>tur` and (when present) `<unit>barl` with the theater's unit palette. Pure, no DOM. */
+export function prerenderTank(vfs: Files, theater: string, unit: string, footprintPx = RHINO_FOOTPRINT_PX): RhinoArt {
+  return prerenderTanks(vfs, theater, unit, footprintPx, [reader(vfs, theater).pal()], 1)[0]!;
+}
+
+/** {@link prerenderTank} once per palette, projecting the voxels once, tilted for tilts 0 up to `tilts`. */
+function prerenderTanks(vfs: Files, theater: string, unit: string, footprintPx: number, palettes: readonly Palette[], tilts: number): RhinoArt[] {
   const { has, vxl, hva } = reader(vfs, theater);
   const hull = vxl(unit), barrel = has(`${unit}barl`);
-  return {
-    body: renderVoxelToSprite(unit, hull, hva(unit), palette, { footprintPx }),
-    turret: renderTurretToSprite(`${unit}tur`, hull, vxl(`${unit}tur`), hva(`${unit}tur`), palette,
-      barrel ? vxl(`${unit}barl`) : undefined, barrel ? hva(`${unit}barl`) : undefined, { footprintPx }),
-  };
+  const bodies = renderVoxelToSprites(unit, hull, hva(unit), palettes, { footprintPx, tilts });
+  const { sprites, pivot } = renderTurretToSprites(`${unit}tur`, hull, vxl(`${unit}tur`), hva(`${unit}tur`), palettes,
+    barrel ? vxl(`${unit}barl`) : undefined, barrel ? hva(`${unit}barl`) : undefined, { footprintPx, tilts });
+  return bodies.map((body, i) => ({ body, turret: { sprite: sprites[i]!, pivot } }));
 }
 
 /**
@@ -57,16 +58,19 @@ export function prerenderTank(vfs: Files, theater: string, unit: string, footpri
  */
 export const HOUSE_COLOURS = ['DarkRed', 'DarkBlue', 'Yellow', 'Purple', 'Magenta', 'NeonGreen', 'Red', 'Purple2', 'DarkSky', 'Green'];
 
-/** A Rhino per house colour, in `HOUSE_COLOURS` order, each with its colour's brightest shade as 0xRRGGBB for the labels. */
+/** A Rhino per house colour, tilting on ramps, in `HOUSE_COLOURS` order, each with its colour's brightest shade as 0xRRGGBB for the labels. */
 export function prerenderRhinos(vfs: Files, theater: string, footprintPx = RHINO_FOOTPRINT_PX): (RhinoArt & { rgb: number })[] {
   const { open, pal } = reader(vfs, theater);
   const colors = IniFile.parse(open('rulesmd.ini')).getSection('Colors'), unitRgb = pal().rgb;
-  return HOUSE_COLOURS.map((name) => {
+  const rgbs = HOUSE_COLOURS.map((name) => {
     const hsv = colors?.getString(name);
     if (!hsv) throw new Error(`Missing install data: rulesmd.ini [Colors] ${name}`);
-    const rgb = remapped(unitRgb, hsv.split(',').map(Number));
-    // The ramp's first index is its brightest shade.
-    return { ...prerenderTank(vfs, theater, 'htnk', footprintPx, Palette.fromRgb(rgb)), rgb: rgb[REMAP_INDEX_START * 3]! << 16 | rgb[REMAP_INDEX_START * 3 + 1]! << 8 | rgb[REMAP_INDEX_START * 3 + 2]! };
+    return remapped(unitRgb, hsv.split(',').map(Number));
+  });
+  // The ramp's first index is its brightest shade.
+  return prerenderTanks(vfs, theater, 'htnk', footprintPx, rgbs.map((rgb) => Palette.fromRgb(rgb)), TILTS).map((art, i) => {
+    const rgb = rgbs[i]!;
+    return { ...art, rgb: rgb[REMAP_INDEX_START * 3]! << 16 | rgb[REMAP_INDEX_START * 3 + 1]! << 8 | rgb[REMAP_INDEX_START * 3 + 2]! };
   });
 }
 

@@ -31,6 +31,9 @@ describeInstall('interaction art from the install', () => {
   it('prerenders a Rhino per house colour from rulesmd [Colors]: enough for a full field, recolouring only the house-colour area', () => {
     const rhinos = prerenderRhinos(vfs, 'temperate');
     expect(rhinos.length).toBeGreaterThanOrEqual(MAX_TANKS);
+    // Flat plus a tilt per uphill direction, 32 facings each, hull and turret alike (#150).
+    expect(rhinos[0]!.body.frames).toHaveLength(9 * 32);
+    expect(rhinos[0]!.turret.sprite.frames).toHaveLength(9 * 32);
     expect(new Set(rhinos.map((r) => r.rgb)).size).toBe(rhinos.length);
     const [a, b] = rhinos.map((r) => r.body.colorRgba);
     let same = 0, differ = 0, red = 0;

@@ -8,7 +8,7 @@ import { floorLevel, LEPTONS_PER_CELL, spotLevel, tankCell, TICK_HZ, type Cell, 
 import { loadCourse as loadCourseArt, type Sprite as CachedSprite } from './load.js';
 import { desolatorFrame } from './assets/rhino.js';
 import { loadSounds } from './audio.js';
-import { facingAngle, projectModelPoint } from './ra2/render/voxelRender.js';
+import { facingAngle, FACING_COUNT, projectModelPoint, rampTilt, tiltOf } from './ra2/render/voxelRender.js';
 import { loadCourse, mapHash, type CourseFile, type LinePoint } from './race/course.js';
 import { BIG_EVENTS, chat, commandList, createRace, DESOLATOR, KIROV, kirovDrops, kirovImpacts, latestEvent, NUKE_FALL, playingEvent, secondsLeft, standings, tickRace, type Race, type Racer, type Turn } from './race/race.js';
 import { directorShot, placeShot, type Shot } from './race/camera.js';
@@ -368,9 +368,10 @@ async function main() {
       v.shown = { x: fx, y: fy };
       // The prerender's frame 0 looks along -x (screen up-left); movement facing 0 is -y (up-right).
       const f = (Math.round(tank.facing / 2048) + 8) % 32;
-      const tex = rhinoTex[r.colour]!;
-      body.texture = tex.body[f]!;
-      turret.texture = tex.turret[f]!;
+      // Leaning with the ramp of the cell its centre is in, as RA2's Drive locomotor does (#150); a deck is flat.
+      const tilt = on.deck ? 0 : tiltOf(grid.ramp[Math.floor(fy) * grid.width + Math.floor(fx)] ?? 0), tex = rhinoTex[r.colour]!;
+      body.texture = tex.body[tilt * FACING_COUNT + f]!;
+      turret.texture = tex.turret[tilt * FACING_COUNT + f]!;
       const stunned = r.stunUntil > race.frame, shielded = r.shieldUntil > race.frame, boosted = r.boostUntil > race.frame;
       body.tint = turret.tint = stunned ? 0xff6030 : boosted ? 0x60ff60 : 0xffffff;
       fire.visible = stunned; // burning until the stun ends
@@ -386,7 +387,7 @@ async function main() {
         effects.circle(q.x - p.x, q.y - p.y + hop, 3 + 2 * k).fill({ color: 0xb0a080, alpha: 0.4 * (1 - thrown) * (1 - k / 6) });
       }
       const ang = facingAngle(f), [px, py, pz] = rhinos[0]!.pivot;
-      const tp = projectModelPoint(px * Math.cos(ang) - py * Math.sin(ang), px * Math.sin(ang) + py * Math.cos(ang), pz);
+      const tp = projectModelPoint(...rampTilt(tilt, px * Math.cos(ang) - py * Math.sin(ang), px * Math.sin(ang) + py * Math.cos(ang), pz));
       turret.position.set(tp.sx, tp.sy);
       view.position.set(p.x, p.y - hop);
       view.zIndex = (fx + fy + 1) * 15 + (on.deck ? 60 : 0);
