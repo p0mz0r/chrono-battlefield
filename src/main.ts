@@ -6,10 +6,11 @@ import { connectStreamerBot, type ChatSource } from './chat/streamerBot.js';
 import { connectTwitch } from './chat/twitch.js';
 import { LEPTONS_PER_CELL, spotLevel, tankCell, TICK_HZ, type Cell, type Spot } from './movement/index.js';
 import { loadCourse as loadCourseArt, type Sprite as CachedSprite } from './load.js';
+import { desolatorFrame } from './assets/rhino.js';
 import { loadSounds } from './audio.js';
 import { facingAngle, projectModelPoint } from './ra2/render/voxelRender.js';
 import { loadCourse, mapHash, type CourseFile, type LinePoint } from './race/course.js';
-import { chat, commandList, createRace, DESOLATOR, KIROV, kirovDrops, kirovImpacts, latestEvent, NUKE_FALL, playingEvent, secondsLeft, standings, tickRace, type Race, type Racer, type Turn } from './race/race.js';
+import { BIG_EVENTS, chat, commandList, createRace, DESOLATOR, KIROV, kirovDrops, kirovImpacts, latestEvent, NUKE_FALL, playingEvent, secondsLeft, standings, tickRace, type Race, type Racer, type Turn } from './race/race.js';
 import { directorShot, placeShot, type Shot } from './race/camera.js';
 import { mountStreamView, readable, thrownAt, type CameraMode } from './race/view.js';
 import { mountOperator, readChoices } from './race/operator.js';
@@ -133,7 +134,7 @@ async function main() {
     return offset === undefined ? bytes : bytes.subarray(offset, offset + length!);
   } : readInstall;
   const started = performance.now();
-  const { map, mapBytes, art: { battlefield, rhinos, tesla, v3, missile, warpOut, warpIn, fire, nuke, mushroom, kirov, bomb, kirovBlast }, cached } = await loadCourseArt(read, mapPath);
+  const { map, mapBytes, art: { battlefield, rhinos, tesla, v3, missile, warpOut, warpIn, fire, nuke, mushroom, kirov, bomb, kirovBlast, desolator }, cached } = await loadCourseArt(read, mapPath);
   if (edit && params.get('map')) {
     const first = battlefield.grid.speed.findIndex((speed, i) => speed > 0 && !battlefield.grid.blocked[i] && battlefield.grid.deck[i]! < 0);
     if (first < 0) throw new Error('Map has no drivable ground cells');
@@ -211,7 +212,7 @@ async function main() {
   world.addChild(missiles, fx);
   const [v3Tex, missileTex, teslaBody, teslaTurret] = await Promise.all([frameTextures(v3), frameTextures(missile), frameTextures(tesla.body), frameTextures(tesla.turret)]);
   const [warpOutTex, warpInTex, fireTex, nukeTex, mushroomTex] = await Promise.all([animTextures(warpOut), animTextures(warpIn), animTextures(fire), animTextures(nuke), animTextures(mushroom)]);
-  const [kirovTex, bombTex, kirovBlastTex] = await Promise.all([frameTextures(kirov), frameTextures(bomb), animTextures(kirovBlast)]);
+  const [kirovTex, bombTex, kirovBlastTex, desolatorTex] = await Promise.all([frameTextures(kirov), frameTextures(bomb), animTextures(kirovBlast), animTextures(desolator)]);
   /** The Kirov's heading frame, towards its target until that is under it, so it doesn't spin there. */
   let kirovFrame = 0;
   const KIROV_UP = 110;
@@ -411,11 +412,12 @@ async function main() {
       if (effect.flash.visible) effect.flash.alpha = 0.7 * (1 - age / TICK_HZ);
     }
     targetRing.clear();
-    // Radiation glows green on the ground, brightest at its centre, fading in as it lands and out over its last 2 s.
-    for (const patch of race.radiation) {
-      const p = ground(patch.x, patch.y), now = race.frame + a;
-      const fade = Math.min(1, (now - patch.from) / (0.5 * TICK_HZ), (patch.until - now) / (2 * TICK_HZ));
-      for (let k = 5; k > 0; k--) targetRing.ellipse(p.x, p.y, DESOLATOR.radius * k / 5 * 30 * Math.SQRT2, DESOLATOR.radius * k / 5 * 15 * Math.SQRT2).fill({ color: 0x7cff3a, alpha: 0.12 * fade });
+    // Radiation glows green on the ground, brightest at its centre, spreading out from its Desolator over its first
+    // second and fading out over its last 2 s.
+    const now = race.frame + a, radiation = race.radiation.map((patch) => ({ ...patch, spread: Math.min(1, (now - patch.from) / TICK_HZ), left: Math.min(1, (patch.until - now) / (2 * TICK_HZ)) }));
+    for (const { x, y, spread, left } of radiation) {
+      const p = ground(x, y), r = DESOLATOR.radius * Math.max(spread, 0.1);
+      for (let k = 5; k > 0; k--) targetRing.ellipse(p.x, p.y, r * k / 5 * 30 * Math.SQRT2, r * k / 5 * 15 * Math.SQRT2).fill({ color: 0x7cff3a, alpha: 0.12 * Math.min(spread * 2, left) });
     }
     // A pulsing red ring under a big event's target through its build-up; Chrono swap joins its two tanks by a line; the Kirov's rings the blast on its spot, the Desolator's the radiation on its cell.
     const playing = playingEvent(race);
@@ -454,7 +456,7 @@ async function main() {
     // The Kirov hovers high over its spot, shadow below; each bomb falls onto the spot and bursts there; after its last it fades off up.
     const kirovTurn = latestEvent(race)?.event === 'kirov' ? latestEvent(race) : undefined;
     if (kirovTurn) {
-      const { x, y } = kirovTurn.ship!, p = ground(x, y), now = race.frame + a, tank = kirovTurn.picks[0]?.tank;
+      const { x, y } = kirovTurn.ship!, p = ground(x, y), tank = kirovTurn.picks[0]?.tank;
       if (kirovTurn === playing && tank && Math.hypot(tank.x / LEPTONS_PER_CELL - x, tank.y / LEPTONS_PER_CELL - y) > 1) kirovFrame = frameOf(tank.x / LEPTONS_PER_CELL - x, tank.y / LEPTONS_PER_CELL - y);
       const impacts = kirovImpacts(kirovTurn);
       kirovDrops(kirovTurn).forEach((drop, i) => {
@@ -467,6 +469,21 @@ async function main() {
         missiles.ellipse(p.x, p.y, 44, 22).fill({ color: 0x000000, alpha: 0.3 * (1 - gone) });
         put(kirovTex[kirovFrame]!, p.x, p.y - KIROV_UP - 60 * gone).alpha = 1 - gone;
       }
+    }
+    // The Desolator appears on its patch as its voice plays, facing the leading tank, deploys as the build-up ends,
+    // then erupts there while its radiation lasts, fading out with it.
+    const desolators = radiation.map(({ x, y, from, left }) => ({ x, y, lands: from, alpha: left, facing: 0 }));
+    const tank = playing?.picks[0]?.tank;
+    if (playing?.event === 'desolator' && playing.patch && tank) {
+      const called = playing.lands! - BIG_EVENTS.desolator.buildUp * TICK_HZ, p = ground(playing.patch.x, playing.patch.y), t = ground(tank.x / LEPTONS_PER_CELL, tank.y / LEPTONS_PER_CELL);
+      // deso.shp's facings run anticlockwise on screen from straight up.
+      const facing = (8 - Math.round(Math.atan2(t.x - p.x, p.y - t.y) / (Math.PI / 4)) % 8) % 8;
+      desolators.push({ ...playing.patch, lands: playing.lands!, alpha: Math.min(1, (now - called) / (0.3 * TICK_HZ)), facing });
+    }
+    for (const d of desolators) {
+      const p = ground(d.x, d.y);
+      missiles.ellipse(p.x, p.y, 10, 5).fill({ color: 0x000000, alpha: 0.3 * d.alpha });
+      put(desolatorTex[desolatorFrame((now - d.lands) / TICK_HZ, d.facing)]!, p.x, p.y).alpha = d.alpha;
     }
     const V3_STEP = 12 / (1.5 * TICK_HZ);
     for (const r of race.v3s) {

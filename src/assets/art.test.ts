@@ -1,11 +1,21 @@
 import { beforeAll, expect, it } from 'vitest';
 import { describeInstall, readFromDir } from '../../test/install.js';
 import { mountTheater } from '../ra2/mount.js';
-import type { Vfs } from '../ra2/index.js';
+import { IniFile, type Vfs } from '../ra2/index.js';
 import { MAX_TANKS } from '../race/race.js';
-import { prerenderAircraft, prerenderAnim, prerenderRhinos, prerenderRocket, prerenderTank } from './rhino.js';
+import { DESO_SEQUENCE, desolatorFrame, prerenderAircraft, prerenderAnim, prerenderRhinos, prerenderRocket, prerenderTank } from './rhino.js';
 
 const painted = (rgba: Uint8Array | Uint8ClampedArray) => rgba.some((v, i) => i % 4 === 3 && v > 0);
+
+it('the Desolator stands facing its way, deploys over the last second before its radiation lands, then erupts on a loop', () => {
+  expect(desolatorFrame(-2, 0)).toBe(0);
+  expect(desolatorFrame(-1.5, 5)).toBe(5);
+  expect(desolatorFrame(-1, 3)).toBe(299);
+  expect(desolatorFrame(-0.01, 3)).toBe(313);
+  expect(desolatorFrame(0, 3)).toBe(292);
+  expect(desolatorFrame(6 / 15, 3)).toBe(298);
+  expect(desolatorFrame(7 / 15, 3)).toBe(292);
+});
 
 describeInstall('interaction art from the install', () => {
   let vfs: Vfs;
@@ -62,5 +72,15 @@ describeInstall('interaction art from the install', () => {
       expect(painted(art.colorRgba)).toBe(true);
     }
     expect(painted(prerenderAnim(vfs, 'explolrg').colorRgba)).toBe(true);
+  });
+
+  it('prerenders the Desolator from deso.shp, its frames where artmd.ini DesoSequence puts them', () => {
+    const deso = prerenderAnim(vfs, 'deso', 'temperate');
+    expect(painted(deso.colorRgba)).toBe(true);
+    const seq = IniFile.parse(vfs.openFile('artmd.ini')!).getSection('DesoSequence')!;
+    for (const [name, [start, count, facings]] of Object.entries(DESO_SEQUENCE)) {
+      expect(seq.getString(name).split(',').slice(0, 3).map(Number)).toEqual([start, count, facings]);
+      expect(deso.frameCount).toBeGreaterThanOrEqual(start + count + 7 * facings);
+    }
   });
 });
