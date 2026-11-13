@@ -14,7 +14,7 @@ export type Sprite = Pick<ConvertedSprite, 'atlasWidth' | 'atlasHeight' | 'sprit
 /** A course's import output as cached: every image a lossless WebP, decoded only into GPU textures. */
 export interface CourseArt {
   battlefield: Omit<Battlefield, 'terrain' | 'images'> & {
-    terrain: Omit<Terrain, 'chunks'> & { chunks: Encoded<TerrainChunk>[] };
+    terrain: Omit<Terrain, 'chunks'> & { chunks: (Omit<Encoded<TerrainChunk>, 'depth'> & { depth: Blob })[] };
     images: Encoded<ObjectImage>[];
   };
   /** A Rhino per house colour, indexed by `Racer.colour`, with the colour as 0xRRGGBB. */
@@ -68,9 +68,9 @@ export async function loadCourse(read: ReadFile, mapPath: string): Promise<{ map
     const vfs = await mountTheater(read, map.theater);
     const { terrain, images, ...rest } = await importBattlefield(readMapOnce, mapPath, vfs);
     const rhinos = prerenderRhinos(vfs, map.theater), tesla = prerenderTank(vfs, map.theater, 'ttnk');
-    const chunks: Encoded<TerrainChunk>[] = [];
+    const chunks: CourseArt['battlefield']['terrain']['chunks'] = [];
     // One at a time, so at most one chunk's encoder buffers are alive.
-    for (const { rgba, ...c } of terrain.chunks) chunks.push({ ...c, image: await webp(rgba, CHUNK, CHUNK) });
+    for (const { rgba, depth, ...c } of terrain.chunks) chunks.push({ ...c, image: await webp(rgba, CHUNK, CHUNK), depth: await webp(depth, CHUNK, CHUNK) });
     const encoded: Encoded<ObjectImage>[] = [];
     for (const { rgba, ...i } of images) encoded.push({ ...i, image: await webp(rgba, i.width, i.height) });
     const encodedRhinos: CourseArt['rhinos'] = [];

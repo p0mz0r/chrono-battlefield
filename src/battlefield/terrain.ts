@@ -10,6 +10,8 @@ export interface TerrainChunk {
   y: number;
   /** CHUNK×CHUNK RGBA pixels. */
   rgba: Uint8ClampedArray<ArrayBuffer>;
+  /** Which cell painted each pixel, for hiding what stands behind it: R + G×256 = x + y, B = level + 1, A = 255; all 0 where unpainted. */
+  depth: Uint8ClampedArray<ArrayBuffer>;
 }
 
 export interface Terrain {
@@ -64,13 +66,14 @@ export function bakeTerrain(stock: Stock): Terrain {
   }
   const width = maxX - minX, height = maxY - minY;
   const cols = Math.ceil(width / CHUNK);
-  const buffers: (Uint8ClampedArray<ArrayBuffer> | undefined)[] = [];
-  const put = (x: number, y: number, v: number) => {
+  const buffers: ({ rgba: Uint8ClampedArray<ArrayBuffer>; depth: Uint8ClampedArray<ArrayBuffer> } | undefined)[] = [];
+  const put = (x: number, y: number, v: number, t: IsoTile) => {
     if (x < 0 || y < 0 || x >= width || y >= height) return;
     const ci = Math.floor(y / CHUNK) * cols + Math.floor(x / CHUNK);
-    const buf = (buffers[ci] ??= new Uint8ClampedArray(CHUNK * CHUNK * 4));
+    const { rgba, depth } = (buffers[ci] ??= { rgba: new Uint8ClampedArray(CHUNK * CHUNK * 4), depth: new Uint8ClampedArray(CHUNK * CHUNK * 4) });
     const o = ((y % CHUNK) * CHUNK + (x % CHUNK)) * 4;
-    buf[o] = rgb[v * 3]!; buf[o + 1] = rgb[v * 3 + 1]!; buf[o + 2] = rgb[v * 3 + 2]!; buf[o + 3] = 255;
+    rgba[o] = rgb[v * 3]!; rgba[o + 1] = rgb[v * 3 + 1]!; rgba[o + 2] = rgb[v * 3 + 2]!; rgba[o + 3] = 255;
+    depth[o] = (t.x + t.y) & 255; depth[o + 1] = (t.x + t.y) >> 8; depth[o + 2] = t.z + 1; depth[o + 3] = 255;
   };
 
   let missing = 0;
@@ -80,21 +83,21 @@ export function bakeTerrain(stock: Stock): Terrain {
     const ox = (t.x - t.y) * 30 - minX, oy = (t.x + t.y - t.z) * 15 - minY;
     for (let y = 0; y < 30; y++) for (let x = 0; x < 60; x++) {
       const v = tile.bitmap[y * 60 + x]!;
-      if (v) put(ox + x, oy + y, v);
+      if (v) put(ox + x, oy + y, v, t);
     }
     const e = tile.extra;
     if (e) {
       const ex = ox + e.x - tile.x, ey = oy + e.y - tile.y;
       for (let y = 0; y < e.height; y++) for (let x = 0; x < e.width; x++) {
         const v = e.bitmap[y * e.width + x]!;
-        if (v) put(ex + x, ey + y, v);
+        if (v) put(ex + x, ey + y, v, t);
       }
     }
   }
 
   const chunks: TerrainChunk[] = [];
-  buffers.forEach((rgba, i) => {
-    if (rgba) chunks.push({ x: (i % cols) * CHUNK, y: Math.floor(i / cols) * CHUNK, rgba });
+  buffers.forEach((b, i) => {
+    if (b) chunks.push({ x: (i % cols) * CHUNK, y: Math.floor(i / cols) * CHUNK, ...b });
   });
   return { width, height, chunks, originX: minX, originY: minY, missing };
 }
