@@ -35,6 +35,8 @@ export interface CourseArt {
   kirov: Sprite;
   bomb: Sprite;
   kirovBlast: Sprite;
+  /** The Desolator (`deso`), every frame of its SHP, in the theater's unit palette. */
+  desolator: Sprite;
 }
 
 type Tank = { body: Sprite; turret: Sprite; pivot: readonly [number, number, number] };
@@ -89,6 +91,7 @@ export async function loadCourse(read: ReadFile, mapPath: string): Promise<{ map
       kirov: await sprite(prerenderAircraft(vfs, map.theater, 'zep', KIROV_FOOTPRINT_PX)),
       bomb: await sprite(prerenderAircraft(vfs, map.theater, 'zbomb', BOMB_FOOTPRINT_PX)),
       kirovBlast: await sprite(prerenderAnim(vfs, 'explolrg')),
+      desolator: await sprite(prerenderAnim(vfs, 'deso', map.theater)),
     };
   });
   return { map, mapBytes, art, cached };

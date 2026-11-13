@@ -83,6 +83,20 @@ export function prerenderAircraft(vfs: Files, theater: string, name: string, foo
   return renderVoxelToSprite(name, vxl(name), hva(name), pal(), { footprintPx });
 }
 
+/** `deso.shp` frames (start, count) from artmd.ini `[DesoSequence]`: Ready has 8 facings, the others one. */
+export const DESO_SEQUENCE = { Ready: [0, 1], Deploy: [299, 15], DeployedFire: [292, 7] } as const;
+
+/**
+ * The Desolator's `deso.shp` frame `sinceLand` s from its radiation landing: standing at infantry `facing` (0–7),
+ * deploying over the last second before, then erupting on a loop at 15 frames a second.
+ */
+export function desolatorFrame(sinceLand: number, facing: number): number {
+  const { Ready, Deploy, DeployedFire } = DESO_SEQUENCE, frame = Math.floor(sinceLand * 15);
+  if (frame < -Deploy[1]) return Ready[0] + facing;
+  if (frame < 0) return Deploy[0] + Deploy[1] + frame;
+  return DeployedFire[0] + frame % DeployedFire[1];
+}
+
 /**
  * A stock SHP animation (e.g. `chronofd`, `fire01`) in the theater-independent `anim.pal`; with `theater`, an SHP
  * projectile (e.g. `nkmsldn`) in that theater's unit palette.
