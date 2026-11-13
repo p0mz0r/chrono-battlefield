@@ -181,11 +181,14 @@ describe('director camera', () => {
     expect(placeShot(r, r.racers.length)).toBeUndefined();
   });
 
-  it('counts key cut places among the tanks still racing', () => {
+  it('counts key cut places in the standings, ignoring a place a finished tank holds', () => {
     const r = race(1);
-    while (!r.racers.some((x) => x.finishedAt !== undefined)) tickRace(r);
-    const leading = r.racers.find((x) => x.name === standings(r).find((s) => s.finishTime === undefined)!.name)!;
-    expect(placeShot(r, 0)!.racer).toBe(leading);
+    while (r.racers.filter((x) => x.finishedAt !== undefined).length < 2) tickRace(r);
+    const s = standings(r), first = s.findIndex((x) => x.finishTime === undefined);
+    expect(first).toBe(2);
+    expect(placeShot(r, 0)).toBeUndefined();
+    expect(placeShot(r, 1)).toBeUndefined();
+    expect(placeShot(r, 2)!.racer.name).toBe(s[2]!.name);
   });
 
   it('ignores a key cut while a big event holds the shot', () => {

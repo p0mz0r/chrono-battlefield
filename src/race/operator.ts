@@ -206,7 +206,7 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, i
     const key = event.key.toLowerCase();
     const action = key === 's' ? 'setup' : event.key === 'Enter' ? 'start' : key === 'p' ? 'pause' : key === 'e' ? 'end' : key === 'c' ? 'camera' : key === 'm' ? 'mute' : '';
     if (action) act(action);
-    else if (/^[0-9]$/.test(event.key) && root.hidden) cutTo((Number(event.key) + 9) % 10); // 1 the leading tank … 9, then 0 for tenth
+    else if (/^[0-9]$/.test(event.key) && root.hidden) cutTo((Number(event.key) + 9) % 10); // 1 first … 9 ninth, 0 tenth
   });
   if (new URL(location.href).searchParams.has('start')) {
     const url = new URL(location.href); url.searchParams.delete('start'); history.replaceState(null, '', url);

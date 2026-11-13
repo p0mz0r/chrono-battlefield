@@ -93,14 +93,14 @@ export function directorShot(race: Race, prev: Shot | undefined): Shot {
 }
 
 /**
- * The operator's number-key cut to the tank in `place` among the tanks still racing (0 the leading one), held like any
- * director shot; it follows that tank, not the place. Undefined while a big event holds the shot, or for a place nobody holds.
+ * The operator's number-key cut to the tank in `place` of the standings (0 first), held like any director shot; it
+ * follows that tank, not the place. Undefined while a big event holds the shot, or when no unfinished tank holds the place.
  */
 export function placeShot(race: Race, place: number): Shot | undefined {
   const event = heldEvent(race);
   if (event && eventFocus(race, event)) return undefined;
-  const racer = race.racers.find((r) => r.name === standings(race).filter((s) => s.finishTime === undefined)[place]?.name);
-  if (!racer) return undefined;
+  const racer = race.racers.find((r) => r.name === standings(race)[place]?.name);
+  if (!racer || racer.finishedAt !== undefined) return undefined;
   // Hits before the key are dropped.
   return { racer, reason: 'Spotlight', cutAt: race.frame, hitSeen: race.lastHitFrame };
 }
