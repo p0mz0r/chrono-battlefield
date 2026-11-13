@@ -4,7 +4,7 @@ import { openInstall, readInstall } from './install/read.js';
 import { bindSetupKey, chatSource, showChat, showSetup, watchChat } from './install/setup.js';
 import { connectStreamerBot, type ChatSource } from './chat/streamerBot.js';
 import { connectTwitch } from './chat/twitch.js';
-import { LEPTONS_PER_CELL, spotLevel, tankCell, TICK_HZ, type Cell, type Spot } from './movement/index.js';
+import { floorLevel, LEPTONS_PER_CELL, spotLevel, tankCell, TICK_HZ, type Cell, type Spot } from './movement/index.js';
 import { loadCourse as loadCourseArt, type Sprite as CachedSprite } from './load.js';
 import { desolatorFrame } from './assets/rhino.js';
 import { loadSounds } from './audio.js';
@@ -145,6 +145,8 @@ async function main() {
   const course = loadCourse(file!, mapBytes, battlefield.grid);
   const { terrain, images, objects, grid } = battlefield;
   const level = (x: number, y: number) => grid.level[y * grid.width + x] ?? 0;
+  /** A tank's drawn height: its bridge deck, or the ground under its exact position (#149). */
+  const tankLevel = (x: number, y: number, on: Spot) => on.deck ? spotLevel(grid, on) : floorLevel(grid, x, y);
   const race = createRace(course, grid, Number(params.get('seed') ?? Date.now() % 1e9));
   live = race;
   const sounds = await loadSounds(read);
@@ -336,7 +338,7 @@ async function main() {
     const scale = zoom || (cameraMode === 'director' && race.phase === 'racing' ? Math.max(1.8, overviewScale() * 2.5) : overviewScale());
     // `?zoom` without `?cell` follows the leading unfinished tank.
     const followed = shot?.racer.tank ?? (zoom ? race.racers.find((r) => r.name === standings(race).find((s) => s.finishTime === undefined)?.name)?.tank : undefined);
-    const target = focus ? toScreen(focus.x, focus.y, level(focus.x, focus.y)) : followed ? toScreen(followed.x / LEPTONS_PER_CELL, followed.y / LEPTONS_PER_CELL, spotLevel(grid, followed.cell)) : { x: (minCourseX + maxCourseX) / 2, y: (minCourseY + maxCourseY) / 2 };
+    const target = focus ? toScreen(focus.x, focus.y, level(focus.x, focus.y)) : followed ? toScreen(followed.x / LEPTONS_PER_CELL, followed.y / LEPTONS_PER_CELL, tankLevel(followed.x / LEPTONS_PER_CELL, followed.y / LEPTONS_PER_CELL, followed.cell)) : { x: (minCourseX + maxCourseX) / 2, y: (minCourseY + maxCourseY) / 2 };
     world.scale.set(scale);
     world.position.set((app.screen.width + (cameraMode === 'overview' ? 360 : 0)) / 2 - target.x * scale, app.screen.height / 2 - target.y * scale);
     if (manualFrame && cameraMode === 'overview') { world.scale.set(manualFrame.scale); world.position.set(manualFrame.x, manualFrame.y); }
@@ -377,10 +379,10 @@ async function main() {
       if (shielded) effects.circle(0, -5, 22).stroke({ color: 0x50caff, width: 2, alpha: 0.9 });
       if (r.immunityUntil > race.frame && !stunned) effects.circle(0, -5, 25).stroke({ color: 0xffc030, width: 1, alpha: 0.8 });
       if (r.protectedUntil > race.frame) effects.circle(0, -5, 28).stroke({ color: 0xff55ff, width: 1, alpha: 0.7 });
-      const p = toScreen(fx, fy, spotLevel(grid, on));
+      const lvl = tankLevel(fx, fy, on), p = toScreen(fx, fy, lvl);
       // Dust kicked up where the throw has been, under the hull, settling as it slows.
       for (let k = 2; thrown < 1 && k <= 5; k++) {
-        const back = thrownAt(path, thrown - k * 0.05), q = toScreen(back.x, back.y, spotLevel(grid, on));
+        const back = thrownAt(path, thrown - k * 0.05), q = toScreen(back.x, back.y, lvl);
         effects.circle(q.x - p.x, q.y - p.y + hop, 3 + 2 * k).fill({ color: 0xb0a080, alpha: 0.4 * (1 - thrown) * (1 - k / 6) });
       }
       const ang = facingAngle(f), [px, py, pz] = rhinos[0]!.pivot;
@@ -388,7 +390,7 @@ async function main() {
       turret.position.set(tp.sx, tp.sy);
       view.position.set(p.x, p.y - hop);
       view.zIndex = (fx + fy + 1) * 15 + (on.deck ? 60 : 0);
-      v.hide({ x: world.position.x, y: world.position.y, scale: world.scale.x }, p.x, p.y - hop, on, spotLevel(grid, on));
+      v.hide({ x: world.position.x, y: world.position.y, scale: world.scale.x }, p.x, p.y - hop, on, lvl);
       view.alpha = tank.ghost ? 0.5 : 1;
       chip.visible = world.scale.x < CHIPS_BELOW;
       const text = chip.visible ? String(ordered.findIndex((s) => s.name === r.name) + 1) : r.name;
@@ -438,7 +440,7 @@ async function main() {
       const flight = Math.min((race.frame + a - m.launched) / (m.arrives - m.launched), 1);
       const x = m.x + (tx - m.x) * flight;
       const y = m.y + (ty - m.y) * flight;
-      const p = toScreen(x, y, spotLevel(grid, t.cell));
+      const p = toScreen(x, y, tankLevel(tx, ty, t.cell));
       put(missileTex[frameOf(tx - m.x, ty - m.y)]!, p.x, p.y - 20 * Math.sin(flight * Math.PI));
     }
     // The nuke falls on its target under the siren, then its mushroom cloud rises where it landed.
