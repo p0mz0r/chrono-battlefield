@@ -931,7 +931,7 @@ describe('Kirov airship', () => {
      * (`a`–`d`, levels 0–3) up both sides, the deck (`=`) at 4 three rows wide. Low: level-0 ground, a river (`~`)
      * crossed by a one-row strip (`-`).
      */
-    const bridged = (kind: 'high' | 'low'): CellGrid => {
+    const bridged = (kind: 'high' | 'low') => {
       const canyon = '..........__________..........', ramps = '..........dcba__abcd..........', river = '..........~~~~~~~~~~..........';
       const rows = kind === 'high'
         ? [ramps, canyon, canyon, ...Array(3).fill('..........==========..........'), canyon, canyon, ramps]
@@ -942,7 +942,8 @@ describe('Kirov airship', () => {
         level: Array.from(cells, (c) => (c === '.' ? (kind === 'high' ? 4 : 0) : Math.max(0, 'abcd'.indexOf(c)))),
         ramp: Array.from(cells, (c) => ('abcd'.includes(c) ? 1 : 0)), blocked: new Array(n).fill(false),
         deck: Array.from(cells, (c) => (c === '=' ? 4 : -1)), bridge: Array.from(cells, (c) => (c === '=' || c === '-' ? 0 : -1)),
-      };
+        bridges: [{ kind, cells: Array.from(cells).flatMap((c, i) => (c === '=' || c === '-' ? [i] : [])) }],
+      } as CellGrid;
     };
     /** A Kirov bomb on a tank stood mid-bridge at (15, 4), on the deck or not: the grid and the tank once it has landed. */
     const bombed = (kind: 'high' | 'low', deck: boolean) => {
