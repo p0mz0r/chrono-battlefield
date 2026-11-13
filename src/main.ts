@@ -369,6 +369,7 @@ async function main() {
       // The prerender's frame 0 looks along -x (screen up-left); movement facing 0 is -y (up-right).
       const f = (Math.round(tank.facing / 2048) + 8) % 32;
       // Leaning with the ramp of the cell its centre is in, as RA2's Drive locomotor does (#150); a deck is flat.
+      // ponytail: snaps to the new tilt; RA2 blends over 3 frames, cross-fade two sprites if the snap shows on stream.
       const tilt = on.deck ? 0 : tiltOf(grid.ramp[Math.floor(fy) * grid.width + Math.floor(fx)] ?? 0), tex = rhinoTex[r.colour]!;
       body.texture = tex.body[tilt * FACING_COUNT + f]!;
       turret.texture = tex.turret[tilt * FACING_COUNT + f]!;

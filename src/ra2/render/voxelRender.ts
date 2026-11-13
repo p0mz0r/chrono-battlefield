@@ -497,10 +497,9 @@ export function remapMaskValue(index: number, light: number): number {
 
 /**
  * Assemble a set of per-facing projections into a packed {@link ConvertedSprite} per palette.
- * Shared by the body and turret paths: projects every facing (via `project`),
- * finds the shared bounds, rasterizes into one canvas, and packs like the SHP
- * pipeline. Deterministic — same inputs, byte-identical output. The body path's
- * output is unchanged because it passes the exact same `project` it always did.
+ * Shared by the body and turret paths: projects every facing of every tilt (via
+ * `project`), finds the shared bounds, rasterizes into one canvas, and packs like
+ * the SHP pipeline. Deterministic — same inputs, byte-identical output.
  */
 function assembleSprites(
   name: string,
