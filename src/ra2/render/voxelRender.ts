@@ -315,7 +315,7 @@ function projectFacing(
   pivot: readonly [number, number, number],
   pxPerUnitZ = PX_PER_UNIT_Z,
   tilt = 0,
-  shadow?: number,
+  shadow = false,
 ): { voxels: ProjectedVoxel[]; minX: number; minY: number; maxX: number; maxY: number } {
   const cos = Math.cos(facingAngle(facing)), sin = Math.sin(facingAngle(facing));
   const voxels: ProjectedVoxel[] = [];
@@ -325,7 +325,7 @@ function projectFacing(
   let maxY = -Infinity;
 
   for (let si = 0; si < vxl.sections.length; si++) {
-    if (shadow !== undefined && si !== shadow) continue;
+    if (shadow && si !== 0) continue; // art ShadowIndex: 0 for every tank drawn here
     const section = vxl.sections[si]!;
     const table = normalTableFor(section.normalsMode);
     // HVA(frame, section) with its translation times the tailer scale and the grid
@@ -341,7 +341,7 @@ function projectFacing(
       const [wx, wy, z] = transformPoint(combined,
         minX0 + (v.x + 0.5) * step[0], minY0 + (v.y + 0.5) * step[1], minZ0 + (v.z + 0.5) * step[2]);
       // A shadow voxel drops straight down onto the ground, bounds z 0, before the ramp tilts it.
-      const wz = shadow === undefined ? z : -pivot[2];
+      const wz = shadow ? -pivot[2] : z;
       // Facing rotation about Z, then model-fit scale.
       const [rx, ry, rz] = rampTilt(tilt, ...rotateZ(wx, wy, wz, cos, sin));
       const px = rx * modelScale;
@@ -363,7 +363,7 @@ function projectFacing(
       const dot = (nx * LIGHT_DIR[0] + ny * LIGHT_DIR[1] + nz * LIGHT_DIR[2]) / nlen;
       const light = Math.min(1, AMBIENT + DIFFUSE * Math.max(0, dot));
 
-      voxels.push(shadow === undefined ? { sx, sy, depth, color: v.color, light } : { sx, sy, depth, color: 0, light: 1 });
+      voxels.push(shadow ? { sx, sy, depth, color: 0, light: 1 } : { sx, sy, depth, color: v.color, light });
       if (sx < minX) minX = sx;
       if (sx > maxX) maxX = sx;
       if (sy < minY) minY = sy;
@@ -633,7 +633,7 @@ export function renderVoxelToSprites(
 const BLACK = Palette.fromRgb(new Uint8Array(768));
 
 /**
- * The ground shadow of section `shadowIndex` (art `ShadowIndex`, default 0), laid out like
+ * The ground shadow of section 0 (art `ShadowIndex`, which no tank here sets), laid out like
  * {@link renderVoxelToSprite}: the section flattened onto the ground (bounds z 0) under each
  * facing, then tilted with the ramp, as RA2's `DrawVoxelShadow` does. Opaque black: the render
  * layer draws it translucent under the hull, its `origin` on the hull's.
@@ -643,14 +643,13 @@ export function renderVoxelShadowToSprite(
   vxl: VxlFile,
   hva: HvaFile,
   options: VoxelRenderOptions = {},
-  shadowIndex = 0,
 ): ConvertedSprite {
   const facingCount = options.facingCount ?? FACING_COUNT;
   const ss = options.supersample ?? SUPERSAMPLE;
   const modelScale = options.modelScale ?? deriveModelScale(vxl.sections, options.footprintPx);
   const pivot = options.pivot ?? sectionBoundsCenter(vxl.sections[0]!);
   return assembleSprites(name, facingCount, ss, [BLACK], (f, tilt) =>
-    projectFacing(vxl, hva, f, modelScale, ss, options.hvaFrame ?? 0, pivot, options.pxPerUnitZ, tilt, shadowIndex), options.tilts)[0]!;
+    projectFacing(vxl, hva, f, modelScale, ss, options.hvaFrame ?? 0, pivot, options.pxPerUnitZ, tilt, true), options.tilts)[0]!;
 }
 
 /** A prerendered turret: its 32-facing atlas plus the body-frame pivot to draw at. */

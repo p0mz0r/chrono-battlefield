@@ -212,7 +212,7 @@ What this shows:
 | Terrain over units | per-pixel Z-buffer from TMP Z data, plus `ZFudgeCliff` behind cliffs of 4 or more levels | terrain baked flat under all tanks. Since #140 a depth layer per pixel (cell x+y and level) turns covered tank pixels into a silhouette, only when the cover is 2 or more levels higher | `src/battlefield/terrain.ts:70-77`, `src/silhouette.ts:39-49`, `src/main.ts:388-390` |
 | TMP Z data | written to the Z-buffer | parsed, not used | `src/ra2/tmp/tmpFile.ts:230-249` |
 | Slope type | cell `SlopeIndex` | TMP `rampType` per cell, used for passability and the debug overlay only | `src/battlefield/grid.ts:83`, `src/movement/route.ts:62-66`, `src/main.ts:71` |
-| Tank shadow | voxel `ShadowIndex` shadow under the unit, tilted with the ramp | none (only the Kirov has one) | `src/main.ts:454` |
+| Tank shadow | voxel `ShadowIndex` shadow under the unit, tilted with the ramp | since #152 the hull's section 0 flattened onto the ground and tilted with the hull, at half alpha on a ground layer under the tanks | `src/ra2/render/voxelRender.ts` (`renderVoxelShadowToSprite`), `src/main.ts` (`shadows`) |
 | Bridge deck | floor + 416 leptons (4 levels) | `deck` = level + 4, and `zIndex + 60` on a deck | `src/movement/route.ts:52-55`, `src/main.ts:389` |
 
 ## What this means for us

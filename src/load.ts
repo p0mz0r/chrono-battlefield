@@ -19,6 +19,8 @@ export interface CourseArt {
   };
   /** A Rhino per house colour, indexed by `Racer.colour`, with the colour as 0xRRGGBB. */
   rhinos: (Tank & { rgb: number })[];
+  /** Every Rhino's ground shadow, the same in every colour, laid out like its hull. */
+  rhinoShadow: Sprite;
   /** The Tesla strike's tank, prerendered like the Rhino. */
   tesla: Tank;
   /** The V3 rocket and the homing missile (Dreadnought missile), 32 facings each. */
@@ -39,7 +41,7 @@ export interface CourseArt {
   desolator: Sprite;
 }
 
-type Tank = { body: Sprite; turret: Sprite; shadow: Sprite; pivot: readonly [number, number, number] };
+type Tank = { body: Sprite; turret: Sprite; pivot: readonly [number, number, number] };
 
 async function webp(rgba: Uint8Array | Uint8ClampedArray, width: number, height: number): Promise<Blob> {
   const canvas = new OffscreenCanvas(width, height);
@@ -48,7 +50,7 @@ async function webp(rgba: Uint8Array | Uint8ClampedArray, width: number, height:
   return canvas.convertToBlob({ type: 'image/webp', quality: 1 });
 }
 
-const tank = async (t: RhinoArt): Promise<Tank> => ({ body: await sprite(t.body), turret: await sprite(t.turret.sprite), shadow: await sprite(t.shadow), pivot: t.turret.pivot });
+const tank = async (t: RhinoArt): Promise<Tank> => ({ body: await sprite(t.body), turret: await sprite(t.turret.sprite), pivot: t.turret.pivot });
 
 const sprite = async (s: ConvertedSprite): Promise<Sprite> =>
   ({ atlasWidth: s.atlasWidth, atlasHeight: s.atlasHeight, spriteWidth: s.spriteWidth, spriteHeight: s.spriteHeight, frames: s.frames, origin: s.origin, image: await webp(s.colorRgba, s.atlasWidth, s.atlasHeight) });
@@ -80,6 +82,7 @@ export async function loadCourse(read: ReadFile, mapPath: string): Promise<{ map
     return {
       battlefield: { ...rest, terrain: { ...terrain, chunks }, images: encoded },
       rhinos: encodedRhinos,
+      rhinoShadow: await sprite(rhinos[0]!.shadow),
       tesla: await tank(tesla),
       v3: await sprite(prerenderRocket(vfs, map.theater, 'v3rocket')),
       missile: await sprite(prerenderRocket(vfs, map.theater, 'dmisl')),

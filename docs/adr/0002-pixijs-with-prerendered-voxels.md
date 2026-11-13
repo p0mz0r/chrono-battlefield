@@ -14,3 +14,7 @@ Baked terrain sits under every sprite, so a tank behind a mesa was drawn on top 
 ## Addendum: tilt on ramps (#150)
 
 The Rhinos are prerendered per tilt as well as per facing: flat plus the 8 directions a ramp rises toward, 9 × 32 hull and 9 × 32 turret frames per house colour (ramp types 5–16 rise along the same 4 diagonals, so they share frames). A tank takes the tilt of the ramp under its centre. The tilt lies along the drawn ramp, as Phobos' atan(104/256) does in gamemd's camera; ours lifts height more, so that is about 16.4° here. All house colours share one projection, so the prerender stays under 2 s. Findings: [ra2-height-level-drawing.md](../research/ra2-height-level-drawing.md) §2.
+
+## Addendum: tank shadows (#152)
+
+Each Rhino also gets a 9 × 32 shadow atlas, laid out like the hull's: the hull's section flattened onto the ground and tilted with the ramp, as RA2's `DrawVoxelShadow` does, rendered black and drawn at half alpha. One atlas serves every house colour. The shadows sit on their own ground layer under the tanks, outside the silhouette filter, so a covered tank's silhouette stays tank-shaped. Findings: [ra2-height-level-drawing.md](../research/ra2-height-level-drawing.md) §4.
