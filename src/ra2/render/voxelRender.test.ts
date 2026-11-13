@@ -4,7 +4,7 @@ import { prerenderRocket, prerenderTank } from '../../assets/rhino.js';
 import { HvaFile, Palette, VxlFile, type Vfs, type VxlSection } from '../index.js';
 import { mountTheater } from '../mount.js';
 import type { ConvertedSprite } from './sprite.js';
-import { deriveModelScale, facingAngle, GAMEMD_CAMERA, projectModelPoint, renderVoxelToSprite, tiltOf, TILTS } from './voxelRender.js';
+import { deriveModelScale, facingAngle, GAMEMD_CAMERA, projectModelPoint, renderVoxelShadowToSprite, renderVoxelToSprite, tiltOf, TILTS } from './voxelRender.js';
 
 const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0];
 
@@ -105,6 +105,18 @@ describe('voxel renderer units', () => {
     expect(lift(3)).toBeLessThan(-3); // ramp 3 rises toward cell −x: the nose dips
     // Ramp types share a tilt by uphill direction; double ramps (17–20) are flat.
     expect([0, 1, 4, 5, 9, 13, 16, 17, 20].map(tiltOf)).toEqual([0, 1, 4, 5, 5, 5, 8, 0, 0]);
+  });
+
+  it('casts a black shadow straight down onto the ground (bounds z 0), lying along the ramp when tilted', () => {
+    // A voxel 10 units up and 10 along model −x (cell +x on screen) over the pivot at the ground.
+    const shadow = renderVoxelShadowToSprite('t', voxelAt([-10, 0, 10]), hva([[IDENTITY]]), { facingCount: 1, footprintPx: 2, pivot: [0, 0, 0], tilts: TILTS });
+    expect(shadow.frames).toHaveLength(9);
+    const flat = projectModelPoint(-10, 0, 0), [x, y] = fromOrigin(shadow, 0);
+    expect(Math.abs(x - flat.sx)).toBeLessThan(1);
+    expect(Math.abs(y - flat.sy)).toBeLessThan(1);
+    // Up a +x ramp it lies on the ramp: a cell across is 15 down and 15 up, so level with the pivot.
+    expect(Math.abs(fromOrigin(shadow, 1)[1])).toBeLessThan(1);
+    for (let i = 0; i < shadow.colorRgba.length; i += 4) expect(shadow.colorRgba[i]! + shadow.colorRgba[i + 1]! + shadow.colorRgba[i + 2]!).toBe(0);
   });
 
   it("draws at gamemd's scale with its camera: a ground unit √½ px across, a height unit √¾ px up", () => {

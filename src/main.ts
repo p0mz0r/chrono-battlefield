@@ -134,7 +134,7 @@ async function main() {
     return offset === undefined ? bytes : bytes.subarray(offset, offset + length!);
   } : readInstall;
   const started = performance.now();
-  const { map, mapBytes, art: { battlefield, rhinos, tesla, v3, missile, warpOut, warpIn, fire, nuke, mushroom, kirov, bomb, kirovBlast, desolator }, cached } = await loadCourseArt(read, mapPath);
+  const { map, mapBytes, art: { battlefield, rhinos, rhinoShadow, tesla, v3, missile, warpOut, warpIn, fire, nuke, mushroom, kirov, bomb, kirovBlast, desolator }, cached } = await loadCourseArt(read, mapPath);
   if (edit && params.get('map')) {
     const first = battlefield.grid.speed.findIndex((speed, i) => speed > 0 && !battlefield.grid.blocked[i] && battlefield.grid.deck[i]! < 0);
     if (first < 0) throw new Error('Map has no drivable ground cells');
@@ -196,7 +196,11 @@ async function main() {
   }
   // The target ring sits on the ground, under the tanks.
   const targetRing = new Graphics();
-  world.addChild(targetRing, things);
+  // Tank shadows lie on the ground under everything standing on it, outside each tank's silhouette filter.
+  // ponytail: a covered tank's shadow still draws over the ground covering it, and a deck tank's under the bridge; give
+  // shadows the silhouette's depth test, and a deck layer, if either shows on stream.
+  const shadows = new Container();
+  world.addChild(shadows, targetRing, things);
   const bridgeEffects = course.file.bridges.map(([x, y]) => {
     const id = grid.bridge[y * grid.width + x]!, bridge = grid.bridges[id]!;
     const flash = new Graphics();
@@ -275,17 +279,23 @@ async function main() {
   // The Rhinos: one view per racer once its tank is on the start grid, labelled with its name.
   // One Rhino per house colour; a racer drives the one its join order gave it.
   const rhinoTex = await Promise.all(rhinos.map(async (t) => ({ body: await frameTextures(t.body), turret: await frameTextures(t.turret) })));
+  // The shadow's origin goes on the hull's, which is about the hull frame's centre.
+  const shadowTex = await frameTextures(rhinoShadow), hull = rhinos[0]!.body;
+  const shadowAt = { x: hull.origin![0] - hull.spriteWidth / 2, y: hull.origin![1] - hull.spriteHeight / 2 };
   const colourOf = (r: Racer) => rhinos[r.colour]!.rgb;
   // Labels sit on their own layer over everything, at a constant screen size: number chips zoomed out, names zoomed in.
   const tags = new Container();
   world.addChild(tags);
-  const views = new Map<Racer, { view: Container; body: Sprite; turret: Sprite; fire: Sprite; effects: Graphics; tag: Container; chip: Graphics; label: Text; hide: ReturnType<typeof silhouette>; prev: { x: number; y: number }; shown: { x: number; y: number } | undefined; throw: { of: Racer['knock']; path: { x: number; y: number }[] } | undefined }>();
+  const views = new Map<Racer, { view: Container; shadow: Sprite; body: Sprite; turret: Sprite; fire: Sprite; effects: Graphics; tag: Container; chip: Graphics; label: Text; hide: ReturnType<typeof silhouette>; prev: { x: number; y: number }; shown: { x: number; y: number } | undefined; throw: { of: Racer['knock']; path: { x: number; y: number }[] } | undefined }>();
   const viewOf = (r: Racer) => {
     let v = views.get(r);
     if (!v) {
       const body = new Sprite(rhinoTex[0]!.body[0]), turret = new Sprite(rhinoTex[0]!.turret[0]);
       body.anchor.set(0.5);
       turret.anchor.set(0.5);
+      const shadow = new Sprite(shadowTex[0]);
+      shadow.anchor.set(rhinoShadow.origin![0] / rhinoShadow.spriteWidth, rhinoShadow.origin![1] / rhinoShadow.spriteHeight);
+      shadows.addChild(shadow);
       const label = new Text({ text: r.name, style: { fill: readable(colourOf(r)), fontSize: 20, fontWeight: '700', fontFamily: 'Segoe UI, sans-serif', stroke: { color: 0x000000, width: 4 } } });
       label.anchor.set(0.5, 1);
       const chip = new Graphics().circle(0, -16, 16).fill(colourOf(r)).stroke({ color: 0xffffff, width: 2 });
@@ -297,7 +307,7 @@ async function main() {
       fire.anchor.set(0.5);
       view.addChild(effects, body, turret, fire);
       things.addChild(view);
-      views.set(r, (v = { view, body, turret, fire, effects, tag, chip, label, hide: silhouette(view, depth, readable(colourOf(r))), prev: { x: r.tank!.x, y: r.tank!.y }, shown: undefined, throw: undefined }));
+      views.set(r, (v = { view, shadow, body, turret, fire, effects, tag, chip, label, hide: silhouette(view, depth, readable(colourOf(r))), prev: { x: r.tank!.x, y: r.tank!.y }, shown: undefined, throw: undefined }));
     }
     return v;
   };
@@ -356,8 +366,8 @@ async function main() {
     for (const r of race.racers) {
       const tank = r.tank;
       if (!tank) continue;
-      const v = viewOf(r), { view, body, turret, fire, effects, tag, chip, label, prev } = v;
-      view.visible = tag.visible = r.finishedAt === undefined; // finished tanks leave the battlefield
+      const v = viewOf(r), { view, shadow, body, turret, fire, effects, tag, chip, label, prev } = v;
+      view.visible = tag.visible = shadow.visible = r.finishedAt === undefined; // finished tanks leave the battlefield
       let fx = (prev.x + (tank.x - prev.x) * a) / LEPTONS_PER_CELL, fy = (prev.y + (tank.y - prev.y) * a) / LEPTONS_PER_CELL, on: Spot = tank.cell;
       // A knockback is drawn as a throw from where the tank is drawn, along its path, on to where it is now (an immune tank drives on).
       const thrown = r.knock ? (race.frame + a - r.knock.at) / (KNOCK_THROW * TICK_HZ) : 1;
@@ -371,9 +381,10 @@ async function main() {
       // The prerender's frame 0 looks along -x (screen up-left); movement facing 0 is -y (up-right).
       const f = (Math.round(tank.facing / 2048) + 8) % 32;
       // ponytail: snaps to the new tilt; RA2 blends over 3 frames, cross-fade two sprites if the snap shows on stream.
-      const tilt = tankTilt(fx, fy, on), tex = rhinoTex[r.colour]!;
-      body.texture = tex.body[tilt * FACING_COUNT + f]!;
-      turret.texture = tex.turret[tilt * FACING_COUNT + f]!;
+      const tilt = tankTilt(fx, fy, on), tex = rhinoTex[r.colour]!, frame = tilt * FACING_COUNT + f;
+      body.texture = tex.body[frame]!;
+      turret.texture = tex.turret[frame]!;
+      shadow.texture = shadowTex[frame]!;
       const stunned = r.stunUntil > race.frame, shielded = r.shieldUntil > race.frame, boosted = r.boostUntil > race.frame;
       body.tint = turret.tint = stunned ? 0xff6030 : boosted ? 0x60ff60 : 0xffffff;
       fire.visible = stunned; // burning until the stun ends
@@ -392,9 +403,11 @@ async function main() {
       const tp = projectModelPoint(...rampTilt(tilt, px * Math.cos(ang) - py * Math.sin(ang), px * Math.sin(ang) + py * Math.cos(ang), pz));
       turret.position.set(tp.sx, tp.sy);
       view.position.set(p.x, p.y - hop);
+      shadow.position.set(p.x + shadowAt.x, p.y + shadowAt.y); // stays on the ground under a thrown tank
       view.zIndex = (fx + fy + 1) * 15 + (on.deck ? 60 : 0);
       v.hide({ x: world.position.x, y: world.position.y, scale: world.scale.x }, p.x, p.y - hop, on, lvl);
       view.alpha = tank.ghost ? 0.5 : 1;
+      shadow.alpha = view.alpha / 2;
       chip.visible = world.scale.x < CHIPS_BELOW;
       const text = chip.visible ? String(ordered.findIndex((s) => s.name === r.name) + 1) : r.name;
       if (label.text !== text) label.text = text;
