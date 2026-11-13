@@ -188,10 +188,41 @@ export function facingAngle(facing: number): number {
   return (facing / FACING_COUNT) * 2 * Math.PI;
 }
 
-/** Rotate a point about the Z (up) axis by `angle` radians. */
-function rotateZ(x: number, y: number, z: number, angle: number): [number, number, number] {
-  const c = Math.cos(angle);
-  const s = Math.sin(angle);
+/**
+ * Uphill direction in cell (x, y) of tilts 1–8: ramp types 1–4 straight, then the corners. Types 5–8, 9–12 and 13–16
+ * each rise along the same 4 diagonals (docs/research/ra2-height-level-drawing.md §1), so they share a tilt.
+ */
+const UPHILL: readonly (readonly [number, number])[] = [[1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, 1], [-1, -1], [1, -1]];
+
+/** Tilts prerendered: flat (0) and one per uphill direction. */
+export const TILTS = 1 + UPHILL.length;
+
+/** The tilt drawn on TMP ramp type `ramp`: 0 flat (types 0 and 17–20), 1–8 an uphill direction. */
+export const tiltOf = (ramp: number) => (ramp >= 1 && ramp <= 4 ? ramp : ramp >= 5 && ramp <= 16 ? (ramp - 5) % 4 + 5 : 0);
+
+/**
+ * The owner's Phobos client tilts a voxel by the ground's own slope, atan(104/256) ≈ 22.1° (vanilla: ≈ 29°), which in
+ * gamemd's camera lies along the drawn ramp: one level (15 px) up per cell (30 px across). Our camera lifts height
+ * PX_PER_UNIT_Z, more than gamemd's, so the same lie along the ramp takes atan(15/30 / PX_PER_UNIT_Z) ≈ 16.4°.
+ */
+const TILT = Math.atan((15 / 30) * PX_PER_UNIT_X / PX_PER_UNIT_Z), TILT_COS = Math.cos(TILT), TILT_SIN = Math.sin(TILT);
+
+/**
+ * Tilts a post-facing model point (x right, y forward, z up) by `tilt` (see {@link tiltOf}): a rotation by the ramp's
+ * slope that turns up toward the ground's normal, so the uphill side rises. Tilt 0 returns it as is.
+ */
+export function rampTilt(tilt: number, x: number, y: number, z: number): [number, number, number] {
+  const up = UPHILL[tilt - 1];
+  if (!up) return [x, y, z];
+  // Cell +x and +y are model −x and −y (projectModelPoint), so the normal leans along the cell's uphill direction.
+  const n = Math.hypot(up[0], up[1]), kx = -up[1] / n, ky = up[0] / n; // rotation axis: up × normal
+  const c = TILT_COS, s = TILT_SIN, dot = (kx * x + ky * y) * (1 - c);
+  // Rodrigues: v cos θ + (k × v) sin θ + k (k · v)(1 − cos θ), with k in the ground plane.
+  return [x * c + ky * z * s + kx * dot, y * c - kx * z * s + ky * dot, z * c + (kx * y - ky * x) * s];
+}
+
+/** Rotate a point about the Z (up) axis by the angle with cosine `c` and sine `s`. */
+function rotateZ(x: number, y: number, z: number, c: number, s: number): [number, number, number] {
   return [x * c - y * s, x * s + y * c, z];
 }
 
@@ -251,6 +282,8 @@ export interface VoxelRenderOptions {
   readonly supersample?: number;
   /** HVA frame index to pose (default 0). */
   readonly hvaFrame?: number;
+  /** Tilts to prerender, 0 up to this (default 1, flat only; {@link TILTS} for all): frame `tilt × facingCount + facing`. */
+  readonly tilts?: number;
   /** On-screen body width in px (default TARGET_FOOTPRINT_PX). */
   readonly footprintPx?: number;
   /** Px per bounds unit, in place of fitting `footprintPx` (see GAMEMD_CAMERA). */
@@ -281,8 +314,9 @@ function projectFacing(
   hvaFrame: number,
   pivot: readonly [number, number, number],
   pxPerUnitZ = PX_PER_UNIT_Z,
+  tilt = 0,
 ): { voxels: ProjectedVoxel[]; minX: number; minY: number; maxX: number; maxY: number } {
-  const angle = facingAngle(facing);
+  const cos = Math.cos(facingAngle(facing)), sin = Math.sin(facingAngle(facing));
   const voxels: ProjectedVoxel[] = [];
   let minX = Infinity;
   let minY = Infinity;
@@ -305,7 +339,7 @@ function projectFacing(
       const [wx, wy, wz] = transformPoint(combined,
         minX0 + (v.x + 0.5) * step[0], minY0 + (v.y + 0.5) * step[1], minZ0 + (v.z + 0.5) * step[2]);
       // Facing rotation about Z, then model-fit scale.
-      const [rx, ry, rz] = rotateZ(wx, wy, wz, angle);
+      const [rx, ry, rz] = rampTilt(tilt, ...rotateZ(wx, wy, wz, cos, sin));
       const px = rx * modelScale;
       const py = ry * modelScale;
       const pz = rz * modelScale;
@@ -320,7 +354,7 @@ function projectFacing(
       // Lighting: rotate the normal the same way, dot with the light dir.
       const nRaw = lookupNormal(table, v.normal);
       const [ndx, ndy, ndz] = transformDir(combined, nRaw[0], nRaw[1], nRaw[2]);
-      const [nx, ny, nz] = rotateZ(ndx, ndy, ndz, angle);
+      const [nx, ny, nz] = rampTilt(tilt, ...rotateZ(ndx, ndy, ndz, cos, sin));
       const nlen = Math.hypot(nx, ny, nz) || 1;
       const dot = (nx * LIGHT_DIR[0] + ny * LIGHT_DIR[1] + nz * LIGHT_DIR[2]) / nlen;
       const light = Math.min(1, AMBIENT + DIFFUSE * Math.max(0, dot));
@@ -339,29 +373,31 @@ function projectFacing(
 const IDENTITY_3X4: readonly number[] = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0];
 
 /**
- * Rasterize one facing's projected voxels into a supersampled RGBA buffer with a
- * per-pixel z-buffer (nearest-to-camera wins), then box-downsample to the final
- * frame. Returns the frame plus its offset within the shared bounding box.
+ * Rasterize one facing's projected voxels with a per-pixel z-buffer (nearest-to-camera
+ * wins) at the supersample resolution, then box-downsample to the final frame, once per
+ * palette: the z-buffer and the remap mask don't depend on the palette, so they are
+ * worked out once and shared.
  *
  * Each voxel paints a 1x1 SS "splat" expanded to `ss x ss` so no gaps appear
  * between adjacent voxels at the supersample resolution.
  */
 function rasterizeFacing(
   projected: ReturnType<typeof projectFacing>,
-  palette: Palette,
+  palettes: readonly Palette[],
   ss: number,
   sharedMinX: number,
   sharedMinY: number,
   ssWidth: number,
   ssHeight: number,
-): RenderedFrame {
+): RenderedFrame[] {
   const zbuf = new Float64Array(ssWidth * ssHeight).fill(-Infinity);
-  const colorSS = new Uint8Array(ssWidth * ssHeight * 4);
-  const maskSS = new Uint8Array(ssWidth * ssHeight * 4);
-  let anyRemap = false;
+  // The voxel that wins each SS pixel, or -1.
+  const winner = new Int32Array(ssWidth * ssHeight).fill(-1);
+  const { voxels } = projected;
 
   // Paint each voxel as an ss x ss splat so voxels tile without seams.
-  for (const v of projected.voxels) {
+  for (let vi = 0; vi < voxels.length; vi++) {
+    const v = voxels[vi]!;
     const baseX = Math.round(v.sx - sharedMinX);
     const baseY = Math.round(v.sy - sharedMinY);
     for (let dy = 0; dy < ss; dy++) {
@@ -372,38 +408,23 @@ function rasterizeFacing(
         const i = y * ssWidth + x;
         if (v.depth <= zbuf[i]!) continue;
         zbuf[i] = v.depth;
-        const c = palette.color(v.color);
-        const off = i * 4;
-        colorSS[off] = clamp255(c.r * v.light);
-        colorSS[off + 1] = clamp255(c.g * v.light);
-        colorSS[off + 2] = clamp255(c.b * v.light);
-        colorSS[off + 3] = 0xff;
-        if (isRemapIndex(v.color)) {
-          anyRemap = true;
-          // Lighting-scaled house-ramp position (see remapMaskValue): keeps team-color sections'
-          // 3D directional shading after tinting instead of collapsing to one flat house color.
-          const ramp = remapMaskValue(v.color, v.light);
-          maskSS[off] = ramp;
-          maskSS[off + 1] = ramp;
-          maskSS[off + 2] = ramp;
-          maskSS[off + 3] = 0xff;
-        } else {
-          maskSS[off + 3] = 0;
-        }
+        winner[i] = vi;
       }
     }
   }
 
-  // Box-downsample ss x ss -> 1 for both planes (alpha-weighted color average).
+  // Box-downsample ss x ss -> 1 (alpha-weighted color average); the mask plane once,
+  // the color plane per palette.
   const width = Math.ceil(ssWidth / ss);
   const height = Math.ceil(ssHeight / ss);
-  const color = new Uint8Array(width * height * 4);
+  const total = ss * ss;
   const mask = new Uint8Array(width * height * 4);
+  const colors = palettes.map(() => new Uint8Array(width * height * 4));
+  const sums = new Float64Array(palettes.length * 3);
+  let anyRemap = false;
   for (let oy = 0; oy < height; oy++) {
     for (let ox = 0; ox < width; ox++) {
-      let r = 0;
-      let g = 0;
-      let b = 0;
+      sums.fill(0);
       let aCount = 0;
       let mr = 0;
       let mCount = 0;
@@ -412,29 +433,37 @@ function rasterizeFacing(
           const sxp = ox * ss + dx;
           const syp = oy * ss + dy;
           if (sxp >= ssWidth || syp >= ssHeight) continue;
-          const off = (syp * ssWidth + sxp) * 4;
-          if (colorSS[off + 3]! > 0) {
-            r += colorSS[off]!;
-            g += colorSS[off + 1]!;
-            b += colorSS[off + 2]!;
-            aCount++;
+          const vi = winner[syp * ssWidth + sxp]!;
+          if (vi < 0) continue;
+          const v = voxels[vi]!;
+          aCount++;
+          for (let k = 0; k < palettes.length; k++) {
+            const c = palettes[k]!.color(v.color);
+            sums[k * 3]! += clamp255(c.r * v.light);
+            sums[k * 3 + 1]! += clamp255(c.g * v.light);
+            sums[k * 3 + 2]! += clamp255(c.b * v.light);
           }
-          if (maskSS[off + 3]! > 0) {
-            mr += maskSS[off]!;
+          if (isRemapIndex(v.color)) {
+            // Lighting-scaled house-ramp position (see remapMaskValue): keeps team-color sections'
+            // 3D directional shading after tinting instead of collapsing to one flat house color.
+            mr += remapMaskValue(v.color, v.light);
             mCount++;
           }
         }
       }
       const oOff = (oy * width + ox) * 4;
-      const total = ss * ss;
       if (aCount > 0) {
-        color[oOff] = Math.round(r / aCount);
-        color[oOff + 1] = Math.round(g / aCount);
-        color[oOff + 2] = Math.round(b / aCount);
-        // Coverage-based alpha so edges anti-alias against the transparent void.
-        color[oOff + 3] = Math.round((aCount / total) * 255);
+        for (let k = 0; k < palettes.length; k++) {
+          const color = colors[k]!;
+          color[oOff] = Math.round(sums[k * 3]! / aCount);
+          color[oOff + 1] = Math.round(sums[k * 3 + 1]! / aCount);
+          color[oOff + 2] = Math.round(sums[k * 3 + 2]! / aCount);
+          // Coverage-based alpha so edges anti-alias against the transparent void.
+          color[oOff + 3] = Math.round((aCount / total) * 255);
+        }
       }
       if (mCount > 0) {
+        anyRemap = true;
         const ramp = Math.round(mr / mCount);
         mask[oOff] = ramp;
         mask[oOff + 1] = ramp;
@@ -444,15 +473,7 @@ function rasterizeFacing(
     }
   }
 
-  return {
-    width,
-    height,
-    offsetX: 0,
-    offsetY: 0,
-    color,
-    mask,
-    anyRemap,
-  };
+  return colors.map((color) => ({ width, height, offsetX: 0, offsetY: 0, color, mask, anyRemap }));
 }
 
 /** Clamp a float channel value to a 0..255 byte. */
@@ -475,19 +496,19 @@ export function remapMaskValue(index: number, light: number): number {
 }
 
 /**
- * Assemble a set of per-facing projections into a packed {@link ConvertedSprite}.
- * Shared by the body and turret paths: projects every facing (via `project`),
- * finds the shared bounds, rasterizes into one canvas, and packs like the SHP
- * pipeline. Deterministic — same inputs, byte-identical output. The body path's
- * output is unchanged because it passes the exact same `project` it always did.
+ * Assemble a set of per-facing projections into a packed {@link ConvertedSprite} per palette.
+ * Shared by the body and turret paths: projects every facing of every tilt (via
+ * `project`), finds the shared bounds, rasterizes into one canvas, and packs like
+ * the SHP pipeline. Deterministic — same inputs, byte-identical output.
  */
-function assembleSprite(
+function assembleSprites(
   name: string,
   facingCount: number,
   ss: number,
-  palette: Palette,
-  project: (facing: number) => ReturnType<typeof projectFacing>,
-): ConvertedSprite {
+  palettes: readonly Palette[],
+  project: (facing: number, tilt: number) => ReturnType<typeof projectFacing>,
+  tilts = 1,
+): ConvertedSprite[] {
   // First pass: project every facing to find the SHARED screen bounds so all
   // frames use one bounding box (frames align on facing change).
   const projections = [];
@@ -495,8 +516,8 @@ function assembleSprite(
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
-  for (let f = 0; f < facingCount; f++) {
-    const p = project(f);
+  for (let f = 0; f < facingCount * tilts; f++) {
+    const p = project(f % facingCount, Math.floor(f / facingCount));
     projections.push(p);
     if (p.voxels.length > 0) {
       if (p.minX < minX) minX = p.minX;
@@ -517,15 +538,16 @@ function assembleSprite(
   const ssWidth = Math.max(1, Math.ceil(maxX - minX) + ss + 1);
   const ssHeight = Math.max(1, Math.ceil(maxY - minY) + ss + 1);
 
-  // Second pass: rasterize each facing into the shared canvas.
-  const rendered: RenderedFrame[] = projections.map((p) =>
-    rasterizeFacing(p, palette, ss, minX, minY, ssWidth, ssHeight),
-  );
+  // Second pass: rasterize each facing into the shared canvas, per palette.
+  const perFrame = projections.map((p) => rasterizeFacing(p, palettes, ss, minX, minY, ssWidth, ssHeight));
+  return palettes.map((_, k) => packSprite(name, perFrame.map((r) => r[k]!), [-minX / ss, -minY / ss]));
+}
 
+/** Pack rendered frames into one atlas (same packer the SHP path uses), `origin` marking the pivot. */
+function packSprite(name: string, rendered: readonly RenderedFrame[], origin: [number, number]): ConvertedSprite {
   const frameW = rendered[0]?.width ?? 1;
   const frameH = rendered[0]?.height ?? 1;
 
-  // Pack the facing frames into one atlas (same packer the SHP path uses).
   const inputs: PackInput[] = rendered.map((r) => ({ w: r.width, h: r.height }));
   const pack = packAtlas(inputs, 1);
 
@@ -565,7 +587,7 @@ function assembleSprite(
     atlasHeight: pack.height,
     colorRgba,
     frames,
-    origin: [-minX / ss, -minY / ss],
+    origin,
     ...(anyRemap ? { maskRgba } : {}),
   };
   return result;
@@ -584,14 +606,24 @@ export function renderVoxelToSprite(
   palette: Palette,
   options: VoxelRenderOptions = {},
 ): ConvertedSprite {
+  return renderVoxelToSprites(name, vxl, hva, [palette], options)[0]!;
+}
+
+/** {@link renderVoxelToSprite} in each of `palettes`, projecting the model once. */
+export function renderVoxelToSprites(
+  name: string,
+  vxl: VxlFile,
+  hva: HvaFile,
+  palettes: readonly Palette[],
+  options: VoxelRenderOptions = {},
+): ConvertedSprite[] {
   const facingCount = options.facingCount ?? FACING_COUNT;
   const ss = options.supersample ?? SUPERSAMPLE;
   const hvaFrame = options.hvaFrame ?? 0;
   const modelScale = options.modelScale ?? deriveModelScale(vxl.sections, options.footprintPx);
   const pivot = options.pivot ?? sectionBoundsCenter(vxl.sections[0]!);
-  return assembleSprite(name, facingCount, ss, palette, (f) =>
-    projectFacing(vxl, hva, f, modelScale, ss, hvaFrame, pivot, options.pxPerUnitZ),
-  );
+  return assembleSprites(name, facingCount, ss, palettes, (f, tilt) =>
+    projectFacing(vxl, hva, f, modelScale, ss, hvaFrame, pivot, options.pxPerUnitZ, tilt), options.tilts);
 }
 
 /** A prerendered turret: its 32-facing atlas plus the body-frame pivot to draw at. */
@@ -633,6 +665,21 @@ export function renderTurretToSprite(
   barrelHva?: HvaFile,
   options: VoxelRenderOptions = {},
 ): TurretRender {
+  const { sprites: [sprite], pivot } = renderTurretToSprites(name, bodyVxl, turret, turretHva, [palette], barrel, barrelHva, options);
+  return { sprite: sprite!, pivot };
+}
+
+/** {@link renderTurretToSprite} in each of `palettes`, projecting the model once. */
+export function renderTurretToSprites(
+  name: string,
+  bodyVxl: VxlFile,
+  turret: VxlFile,
+  turretHva: HvaFile,
+  palettes: readonly Palette[],
+  barrel?: VxlFile,
+  barrelHva?: HvaFile,
+  options: VoxelRenderOptions = {},
+): { sprites: ConvertedSprite[]; pivot: readonly [number, number, number] } {
   const facingCount = options.facingCount ?? FACING_COUNT;
   const ss = options.supersample ?? SUPERSAMPLE;
   const hvaFrame = options.hvaFrame ?? 0;
@@ -645,10 +692,10 @@ export function renderTurretToSprite(
   const bodyCenter = sectionBoundsCenter(bodyVxl.sections[0]!);
   const pivot = turretPivot.map((p, i) => (p - bodyCenter[i]!) * modelScale) as [number, number, number];
 
-  const sprite = assembleSprite(name, facingCount, ss, palette, (f) => {
-    const t = projectFacing(turret, turretHva, f, modelScale, ss, hvaFrame, turretPivot, options.pxPerUnitZ);
+  const sprites = assembleSprites(name, facingCount, ss, palettes, (f, tilt) => {
+    const t = projectFacing(turret, turretHva, f, modelScale, ss, hvaFrame, turretPivot, options.pxPerUnitZ, tilt);
     if (!barrel) return t;
-    const b = projectFacing(barrel, barrelHva ?? turretHva, f, modelScale, ss, hvaFrame, turretPivot, options.pxPerUnitZ);
+    const b = projectFacing(barrel, barrelHva ?? turretHva, f, modelScale, ss, hvaFrame, turretPivot, options.pxPerUnitZ, tilt);
     // Composite barrel voxels into the turret's projection (shared z-buffer at
     // rasterization time), and widen the shared screen bounds to include both.
     return {
@@ -658,7 +705,7 @@ export function renderTurretToSprite(
       maxX: Math.max(t.maxX, b.maxX),
       maxY: Math.max(t.maxY, b.maxY),
     };
-  });
+  }, options.tilts);
 
-  return { sprite, pivot };
+  return { sprites, pivot };
 }

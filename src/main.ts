@@ -8,7 +8,7 @@ import { floorLevel, LEPTONS_PER_CELL, spotLevel, tankCell, TICK_HZ, type Cell, 
 import { loadCourse as loadCourseArt, type Sprite as CachedSprite } from './load.js';
 import { desolatorFrame } from './assets/rhino.js';
 import { loadSounds } from './audio.js';
-import { facingAngle, projectModelPoint } from './ra2/render/voxelRender.js';
+import { facingAngle, FACING_COUNT, projectModelPoint, rampTilt, tiltOf } from './ra2/render/voxelRender.js';
 import { loadCourse, mapHash, type CourseFile, type LinePoint } from './race/course.js';
 import { BIG_EVENTS, chat, commandList, createRace, DESOLATOR, KIROV, kirovDrops, kirovImpacts, latestEvent, NUKE_FALL, playingEvent, secondsLeft, standings, tickRace, type Race, type Racer, type Turn } from './race/race.js';
 import { directorShot, placeShot, type Shot } from './race/camera.js';
@@ -147,6 +147,8 @@ async function main() {
   const level = (x: number, y: number) => grid.level[y * grid.width + x] ?? 0;
   /** A tank's drawn height: its bridge deck, or the ground under its exact position (#149). */
   const tankLevel = (x: number, y: number, on: Spot) => on.deck ? spotLevel(grid, on) : floorLevel(grid, x, y);
+  /** A tank's drawn lean: the ramp of the cell its centre is in, as RA2's Drive locomotor does (#150); a deck is flat. */
+  const tankTilt = (x: number, y: number, on: Spot) => on.deck ? 0 : tiltOf(grid.ramp[Math.floor(y) * grid.width + Math.floor(x)] ?? 0);
   const race = createRace(course, grid, Number(params.get('seed') ?? Date.now() % 1e9));
   live = race;
   const sounds = await loadSounds(read);
@@ -368,9 +370,10 @@ async function main() {
       v.shown = { x: fx, y: fy };
       // The prerender's frame 0 looks along -x (screen up-left); movement facing 0 is -y (up-right).
       const f = (Math.round(tank.facing / 2048) + 8) % 32;
-      const tex = rhinoTex[r.colour]!;
-      body.texture = tex.body[f]!;
-      turret.texture = tex.turret[f]!;
+      // ponytail: snaps to the new tilt; RA2 blends over 3 frames, cross-fade two sprites if the snap shows on stream.
+      const tilt = tankTilt(fx, fy, on), tex = rhinoTex[r.colour]!;
+      body.texture = tex.body[tilt * FACING_COUNT + f]!;
+      turret.texture = tex.turret[tilt * FACING_COUNT + f]!;
       const stunned = r.stunUntil > race.frame, shielded = r.shieldUntil > race.frame, boosted = r.boostUntil > race.frame;
       body.tint = turret.tint = stunned ? 0xff6030 : boosted ? 0x60ff60 : 0xffffff;
       fire.visible = stunned; // burning until the stun ends
@@ -386,7 +389,7 @@ async function main() {
         effects.circle(q.x - p.x, q.y - p.y + hop, 3 + 2 * k).fill({ color: 0xb0a080, alpha: 0.4 * (1 - thrown) * (1 - k / 6) });
       }
       const ang = facingAngle(f), [px, py, pz] = rhinos[0]!.pivot;
-      const tp = projectModelPoint(px * Math.cos(ang) - py * Math.sin(ang), px * Math.sin(ang) + py * Math.cos(ang), pz);
+      const tp = projectModelPoint(...rampTilt(tilt, px * Math.cos(ang) - py * Math.sin(ang), px * Math.sin(ang) + py * Math.cos(ang), pz));
       turret.position.set(tp.sx, tp.sy);
       view.position.set(p.x, p.y - hop);
       view.zIndex = (fx + fy + 1) * 15 + (on.deck ? 60 : 0);
@@ -550,7 +553,8 @@ async function main() {
       effects: `v3:${race.v3s.length} tesla:${race.teslas.length} zap:${zaps.length} sprites:${fxUsed}`,
       tanks: race.racers.filter((r) => r.tank && r.finishedAt === undefined).map((r) => {
         const c = tankCell(r.tank!);
-        return `${r.name}@${c.x},${c.y}${c.deck ? 'd' : ''}${r.tank!.ghost ? 'g' : ''}:wp${r.next}`;
+        const t = r.tank!, tilt = tankTilt(t.x / LEPTONS_PER_CELL, t.y / LEPTONS_PER_CELL, c);
+        return `${r.name}@${c.x},${c.y}${c.deck ? 'd' : ''}${t.ghost ? 'g' : ''}:wp${r.next}:t${tilt}:f${Math.round(t.facing / 2048) % 32}`;
       }).join(' '),
     });
   });

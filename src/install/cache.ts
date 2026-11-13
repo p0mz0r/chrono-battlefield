@@ -3,7 +3,7 @@ import { installIndexes, type ReadFile } from '../ra2/mount.js';
 import { idb } from './read.js';
 
 /** Bump when the import's output changes shape or content, so caches built by older code are dropped. */
-const IMPORT_VERSION = 21;
+const IMPORT_VERSION = 22;
 
 /** Identifies an install by the CRC-32 of its top-level MIX indexes (which carry each archive's body size). */
 export async function installKey(read: ReadFile): Promise<string> {
