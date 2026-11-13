@@ -147,7 +147,6 @@ async function main() {
   const level = (x: number, y: number) => grid.level[y * grid.width + x] ?? 0;
   /** A tank's drawn height: its bridge deck, or the ground under its exact position (#149). */
   const tankLevel = (x: number, y: number, on: Spot) => on.deck ? spotLevel(grid, on) : floorLevel(grid, x, y);
-  const tankPoint = (x: number, y: number, on: Spot) => toScreen(x, y, tankLevel(x, y, on));
   const race = createRace(course, grid, Number(params.get('seed') ?? Date.now() % 1e9));
   live = race;
   const sounds = await loadSounds(read);
@@ -339,7 +338,7 @@ async function main() {
     const scale = zoom || (cameraMode === 'director' && race.phase === 'racing' ? Math.max(1.8, overviewScale() * 2.5) : overviewScale());
     // `?zoom` without `?cell` follows the leading unfinished tank.
     const followed = shot?.racer.tank ?? (zoom ? race.racers.find((r) => r.name === standings(race).find((s) => s.finishTime === undefined)?.name)?.tank : undefined);
-    const target = focus ? toScreen(focus.x, focus.y, level(focus.x, focus.y)) : followed ? tankPoint(followed.x / LEPTONS_PER_CELL, followed.y / LEPTONS_PER_CELL, followed.cell) : { x: (minCourseX + maxCourseX) / 2, y: (minCourseY + maxCourseY) / 2 };
+    const target = focus ? toScreen(focus.x, focus.y, level(focus.x, focus.y)) : followed ? toScreen(followed.x / LEPTONS_PER_CELL, followed.y / LEPTONS_PER_CELL, tankLevel(followed.x / LEPTONS_PER_CELL, followed.y / LEPTONS_PER_CELL, followed.cell)) : { x: (minCourseX + maxCourseX) / 2, y: (minCourseY + maxCourseY) / 2 };
     world.scale.set(scale);
     world.position.set((app.screen.width + (cameraMode === 'overview' ? 360 : 0)) / 2 - target.x * scale, app.screen.height / 2 - target.y * scale);
     if (manualFrame && cameraMode === 'overview') { world.scale.set(manualFrame.scale); world.position.set(manualFrame.x, manualFrame.y); }
