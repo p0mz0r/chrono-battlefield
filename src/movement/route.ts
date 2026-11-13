@@ -54,6 +54,27 @@ export function spotLevel(g: CellGrid, s: Spot): number {
   return s.deck ? g.deck[i]! : g.level[i]!;
 }
 
+/**
+ * RA2's slope planes (`0x47B3A0`, docs/research/ra2-height-level-drawing.md §1), in levels over the
+ * cell's x and y in 0..1: [a, b, c, max] for `clamp(a·x + b·y + c, 0, max)`. Index = ramp type − 1.
+ */
+const SLOPES: readonly (readonly [number, number, number, number])[] = [
+  [1, 0, 0, 1], [0, 1, 0, 1], [-1, 0, 1, 1], [0, -1, 1, 1],
+  [1, 1, -1, 1], [-1, 1, 0, 1], [-1, -1, 1, 1], [1, -1, 0, 1],
+  [1, 1, 0, 1], [-1, 1, 1, 1], [-1, -1, 2, 1], [1, -1, 1, 1],
+  [1, 1, 0, 2], [-1, 1, 1, 2], [-1, -1, 2, 2], [1, -1, 1, 2],
+  [0, 0, 0.5, 0.5], [0, 0, 0.5, 0.5], [0, 0, 0.5, 0.5], [0, 0, 0.5, 0.5],
+];
+
+/** Ground height in levels at a fractional cell position, rising smoothly across the containing cell's ramp. */
+export function floorLevel(g: CellGrid, fx: number, fy: number): number {
+  const x = Math.floor(fx), y = Math.floor(fy), i = y * g.width + x;
+  const s = SLOPES[g.ramp[i]! - 1];
+  if (!s) return g.level[i]!;
+  const [a, b, c, max] = s;
+  return g.level[i]! + Math.min(Math.max(a * (fx - x) + b * (fy - y) + c, 0), max);
+}
+
 /** Speed fraction a tank drives at into a spot. */
 export function spotSpeed(g: CellGrid, s: Spot): number {
   return s.deck ? DECK_SPEED : g.speed[s.y * g.width + s.x]!;

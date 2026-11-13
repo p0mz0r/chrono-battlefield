@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addTank, createField, findLanding, findRoute, isDriving, moveTank, orderMove, tankCell, tick, type CellGrid, type Field, type Tank } from './index.js';
+import { addTank, createField, findLanding, floorLevel, findRoute, isDriving, moveTank, orderMove, tankCell, tick, type CellGrid, type Field, type Tank } from './index.js';
 
 /**
  * A grid from rows of chars: `.` clear (100%), `o` ore (70%), `#` tree (hard blocker), `~` water,
@@ -299,5 +299,28 @@ describe('movement', () => {
     expect(a.field.tanks.map(key)).toEqual(a.field.tanks.map((_, i) => `${9 + (i % 2)},${i}`));
     expect(a.trace).toEqual(b.trace);
     expect(a.trace).not.toEqual(c.trace);
+  });
+});
+
+describe('floorLevel', () => {
+  // A level-0 flat cell, then a slope-1 ramp up to level 1 (#149).
+  const g = grid(['...'], ['001'], ['.r.']);
+
+  it('is the level on a flat cell', () => {
+    expect(floorLevel(g, 0.3, 0.7)).toBe(0);
+    expect(floorLevel(g, 2.5, 0.5)).toBe(1);
+  });
+
+  it('rises across a ramp from the containing cell', () => {
+    expect(floorLevel(g, 1.25, 0.5)).toBeCloseTo(0.25);
+    expect(floorLevel(g, 1.75, 0.1)).toBeCloseTo(0.75);
+  });
+
+  it('clamps a corner ramp flat where its plane is out of range', () => {
+    const corner = { ...g, ramp: [0, 5, 0] }; // outer corner: only the far corner is up
+    expect(floorLevel(corner, 1.25, 0.25)).toBe(0);
+    expect(floorLevel(corner, 1.75, 0.75)).toBeCloseTo(0.5);
+    const steep = { ...g, ramp: [0, 13, 0] }; // two levels at the far corner
+    expect(floorLevel(steep, 1.9, 0.9)).toBeCloseTo(1.8);
   });
 });

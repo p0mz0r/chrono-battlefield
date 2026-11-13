@@ -1,7 +1,7 @@
 import { drivable, findRoute, spotIndex, stepTo, spotSpeed, type Cell, type CellGrid, type Spot } from './route.js';
 import { F_D, F_T, F_X, F_Y, RAW_TRACKS, TRACKS, TRACK_CONTROL } from './tracks.js';
 
-export { drivable, findRoute, spotLevel, stepTo, STEPS, type Cell, type CellGrid, type Spot } from './route.js';
+export { drivable, findRoute, floorLevel, spotLevel, stepTo, STEPS, type Cell, type CellGrid, type Spot } from './route.js';
 
 // Pure RA2 cell locomotion (ADR 0005): one tick = one game frame, positions in leptons, facings in
 // 1/65536 turn. Turn in place at ROT before a step, then follow RA1's curved tracks.
