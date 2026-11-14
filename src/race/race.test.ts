@@ -7,7 +7,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { describeInstall, readFromDir } from '../../test/install.js';
 import { importBattlefield } from '../battlefield/import.js';
 
-const COURSES: Record<string, CourseFile> = Object.fromEntries(readdirSync('courses').filter((f) => f.endsWith('.json')).map((f) => [f, JSON.parse(readFileSync(`courses/${f}`, 'utf8'))]));
+const COURSES: Record<string, CourseFile> = Object.fromEntries(['courses', 'release-courses'].flatMap((dir) => readdirSync(dir).filter((f) => f.endsWith('.json') && !f.endsWith('.rhino-course.json')).map((f) => [`${dir}/${f}`, JSON.parse(readFileSync(`${dir}/${f}`, 'utf8'))])));
 
 /** A grid from rows of chars: `.` clear ground, `#` blocked. */
 function grid(rows: string[]): CellGrid {
@@ -1080,7 +1080,7 @@ describe('Desolator', () => {
   });
 });
 
-describeInstall('bundled courses', () => {
+describeInstall('bundled and release courses', () => {
   it.each(Object.keys(COURSES))('%s loads over its battlefield from the install', async (path) => {
     const file = COURSES[path]!;
     const course = loadCourse(file, await readFromDir(file.map), (await importBattlefield(readFromDir, file.map)).grid);

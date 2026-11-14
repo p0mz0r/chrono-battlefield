@@ -10,7 +10,7 @@ A battlefield plus a Rhino needs `ra2.mix`, `ra2md.mix`, `expandmd01.mix` and on
 
 Tests inside `describeInstall` (`test/install.ts`) read `RA2_DIR` and skip when it is unset, as in CI. The pre-commit hook runs them on a machine with the install. Two of them answer common questions:
 
-- **Shipped courses:** `bundled courses` in `src/race/race.test.ts` loads every `courses/*.json` over its battlefield.
+- **Shipped courses:** `bundled and release courses` in `src/race/race.test.ts` loads every `courses/*.json` and `release-courses/*.json` over its battlefield.
 - **Bridges on a real map:** `src/battlefield/import.test.ts` checks Hills' bridge decks. `src/battlefield/grid.test.ts` covers the same grid rules on a synthetic map, without the install.
 
 ## One-off install probes

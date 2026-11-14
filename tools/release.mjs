@@ -1,7 +1,7 @@
 // After `vite build`: credit shipped custom maps in the operator README (ADR 0006), refuse any EA file type,
 // build the launcher with dist/ inside (ADR 0009, needs Go on PATH), and zip it with the README and LICENSE as
-// release/rhino-race.zip (one rhino-race/ folder inside). Course files the owner puts in release-courses/ (not committed, ADR 0007)
-// ship in rhino-race/courses/, which the game imports from on every start (#161).
+// release/rhino-race.zip (one rhino-race/ folder inside). The courses in release-courses/ (course files as in courses/, or
+// exported .rhino-course.json files) ship as export files in rhino-race/courses/, which the game imports on every start (#161).
 import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -23,9 +23,17 @@ mkdirSync('release', { recursive: true });
 execFileSync('go', ['build', '-ldflags', '-H windowsgui -s -w', '-o', '../release/rhino-race.exe', '.'], {
   cwd: 'launcher', stdio: 'inherit', env: { ...process.env, GOOS: 'windows', GOARCH: 'amd64', CGO_ENABLED: '0' },
 });
-const releaseCourses = existsSync('release-courses') ? readdirSync('release-courses').filter((f) => f.endsWith('.rhino-course.json')) : [];
+// A plain course on an install map becomes an export file by wrapping it; a custom map would have to travel inside it.
+rmSync('release/courses', { recursive: true, force: true });
+mkdirSync('release/courses');
+const releaseCourses = (existsSync('release-courses') ? readdirSync('release-courses') : []).filter((f) => f.endsWith('.json')).map((f) => {
+  const data = JSON.parse(readFileSync(join('release-courses', f), 'utf8')), name = `${f.replace(/(\.rhino-course)?\.json$/, '')}.rhino-course.json`;
+  if (data.format !== 'rhino-course' && data.source !== 'install') throw new Error(`release-courses/${f}: export a custom-map course from the editor (Download course file)`);
+  writeFileSync(join('release/courses', name), data.format === 'rhino-course' ? JSON.stringify(data) : JSON.stringify({ format: 'rhino-course', version: 1, course: data }));
+  return name;
+});
 const files = [['rhino-race.exe', 'release/rhino-race.exe'], ['README.txt', 'dist/README.txt'], ['LICENSE', 'LICENSE'], ['courses/'],
-  ...releaseCourses.map((f) => [`courses/${f}`, join('release-courses', f)])];
+  ...releaseCourses.map((f) => [`courses/${f}`, join('release/courses', f)])];
 
 // Minimal zip: deflated entries, no extra fields, no zip64 (fine below 4 GB).
 const local = [], central = [];

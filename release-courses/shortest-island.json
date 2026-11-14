@@ -1,0 +1,67 @@
+{
+  "name": "Shortest Island",
+  "map": "Valley.mmx",
+  "mapHash": "crc32:d3f1b69e",
+  "source": "install",
+  "author": "Westwood Studios",
+  "link": "",
+  "startGrid": [
+    [
+      98,
+      152
+    ],
+    [
+      99,
+      152
+    ],
+    [
+      99,
+      153
+    ],
+    [
+      98,
+      153
+    ],
+    [
+      98,
+      154
+    ],
+    [
+      99,
+      154
+    ],
+    [
+      99,
+      155
+    ],
+    [
+      98,
+      155
+    ],
+    [
+      98,
+      156
+    ],
+    [
+      99,
+      156
+    ]
+  ],
+  "waypoints": [
+    [
+      100,
+      120
+    ],
+    [
+      101,
+      88
+    ]
+  ],
+  "laps": [],
+  "bridges": [],
+  "forks": [],
+  "finish": [
+    108,
+    50
+  ]
+}
