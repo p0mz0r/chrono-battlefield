@@ -276,7 +276,9 @@ async function main() {
     for (const [x, y] of course.file.waypoints) overlay.poly(diamond(x, y)).fill({ color: 0xff00ff, alpha: 0.7 });
     overlay.visible = params.get('grid') === '1';
     world.addChild(overlay);
-    addEventListener('keydown', (e) => { if (e.key === 'g' || e.key === 'G') overlay.visible = !overlay.visible; });
+    addEventListener('keydown', (e) => {
+      if ((e.key === 'g' || e.key === 'G') && !(e.target as HTMLElement).closest('input, select, textarea')) overlay.visible = !overlay.visible;
+    });
   }
 
   // The Rhinos: one view per racer once its tank is on the start grid, labelled with its name.
