@@ -7,7 +7,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { describeInstall, readFromDir } from '../../test/install.js';
 import { importBattlefield } from '../battlefield/import.js';
 
-const COURSES: Record<string, CourseFile> = Object.fromEntries(readdirSync('courses').filter((f) => f.endsWith('.json')).map((f) => [f, JSON.parse(readFileSync(`courses/${f}`, 'utf8'))]));
+const COURSES: Record<string, CourseFile> = Object.fromEntries(['courses', 'release-courses'].flatMap((dir) => readdirSync(dir).filter((f) => f.endsWith('.json') && !f.endsWith('.rhino-course.json')).map((f) => [`${dir}/${f}`, JSON.parse(readFileSync(`${dir}/${f}`, 'utf8'))])));
 
 /** A grid from rows of chars: `.` clear ground, `#` blocked. */
 function grid(rows: string[]): CellGrid {
@@ -1080,7 +1080,7 @@ describe('Desolator', () => {
   });
 });
 
-describeInstall('bundled courses', () => {
+describeInstall('bundled and release courses', () => {
   it.each(Object.keys(COURSES))('%s loads over its battlefield from the install', async (path) => {
     const file = COURSES[path]!;
     const course = loadCourse(file, await readFromDir(file.map), (await importBattlefield(readFromDir, file.map)).grid);
@@ -1089,7 +1089,7 @@ describeInstall('bundled courses', () => {
   }, 30_000);
 });
 
-describe('editor simulation', () => {
+describe('trial race', () => {
   it('races ten bots and no viewers, even over a running race', () => {
     const race = racing();
     simulateRace(race, course());
@@ -1097,6 +1097,21 @@ describe('editor simulation', () => {
     expect(race.racers.map((r) => r.bot)).toEqual(new Array(10).fill(true));
     ticks(race, 3 * TICK_HZ + 1);
     expect(race.phase).toBe('racing');
+  });
+  it('is a trial race: chat commands do nothing, a redemption is refunded and a cheer waits for the next race', () => {
+    const race = createRace(course(), ARENA, 1);
+    simulateRace(race, race.course);
+    untilPhase(race, 'racing');
+    expect([commandList(race), hypeLive(race)]).toEqual([[], false]);
+    expect(say(race, 'a', '!boost Bot1')).toEqual({ ok: false, reason: 'ignored' });
+    expect(race.feed).toEqual([]);
+    paid(race, { viewerId: 'a', name: 'Kane', event: 'kirov', via: 'redemption', reference: 'r1' });
+    paid(race, { viewerId: 'b', name: 'Kara', event: 'chronoSwap', via: 'cheer', bits: 50, reference: '' });
+    expect([race.queue, race.settlements, race.carried.map((t) => t.by)]).toEqual([[], [{ reference: 'r1', outcome: 'refunded' }], ['Kara']]);
+
+    endRace(race);
+    openJoinWindow(race, { joinSeconds: 1 });
+    expect(say(race, 'a', '!rhino', 'Kane').ok).toBe(true);
   });
 });
 

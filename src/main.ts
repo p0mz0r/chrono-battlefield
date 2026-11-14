@@ -1,7 +1,7 @@
 import { Application, Container, Graphics, Rectangle, Sprite, Text, Texture } from 'pixi.js';
 import type { CellGrid } from './battlefield/grid.js';
 import { openInstall, readInstall } from './install/read.js';
-import { bindSetupKey, chatSource, showChat, showSetup, watchChat } from './install/setup.js';
+import { bindSetupKey, chatSource, lendToSetup, setupDone, showChat, showSetup, watchChat } from './install/setup.js';
 import { connectStreamerBot, type ChatSource } from './chat/streamerBot.js';
 import { connectTwitch } from './chat/twitch.js';
 import { floorLevel, LEPTONS_PER_CELL, spotLevel, tankCell, TICK_HZ, type Cell, type Spot } from './movement/index.js';
@@ -14,7 +14,7 @@ import { BIG_EVENTS, chat, commandList, createRace, DESOLATOR, KIROV, kirovDrops
 import { directorShot, placeShot, type Shot } from './race/camera.js';
 import { mountStreamView, readable, thrownAt, type CameraMode } from './race/view.js';
 import { mountOperator, readChoices } from './race/operator.js';
-import { importedCourses } from './race/courseFile.js';
+import { importedCourses, importFolder } from './race/courseFile.js';
 import { depthTexture, silhouette, type DepthChunks } from './silhouette.js';
 
 // The race page: a bundled course over its battlefield, the race as the stream sees it (camera modes in race/camera.ts,
@@ -103,7 +103,7 @@ async function main() {
   }
   // Held open while the page runs: the launcher quits once no page has held it for 30 s (ADR 0009).
   if (!import.meta.env.DEV) new EventSource('/__alive');
-  let live: Race | undefined; // install setup stays off stream while a race runs
+  let live: Race | undefined; // setup stays off stream while a race runs
   bindSetupKey(() => !live || ['idle', 'results', 'cancelled'].includes(live.phase));
   const problems = await openInstall();
   if (problems.length) {
@@ -116,6 +116,9 @@ async function main() {
   const courseName = params.get('course') ?? (savedCourse && savedCourse !== 'random' ? savedCourse : undefined), edit = import.meta.env.DEV && params.get('edit') === '1';
   // Bundled courses, then those the operator imported (race setup > Import courses), by id.
   const imported = edit ? [] : await importedCourses().catch(() => []);
+  // The launcher serves the course files beside the exe (courses\, the release's own included); new ones join `imported`.
+  const folder = edit || import.meta.env.DEV ? {} : await fetch('/__courses').then((res) => res.json() as Promise<Record<string, string>>).catch(() => ({}));
+  const report = await importFolder(folder, imported, (path) => readInstall(path));
   const courses: Record<string, CourseFile> = { ...COURSES, ...Object.fromEntries(imported.map((entry) => [entry.id, entry.course])) };
   const find = (name?: string) => Object.entries(courses).find(([path]) => !name || path === name || path.endsWith(`/${name}.json`))?.[1];
   // A remembered choice may since have been removed (an imported course): then the first course.
@@ -167,12 +170,14 @@ async function main() {
   const world = new Container();
   app.stage.addChild(world);
   const depth: DepthChunks = new Map();
-  for (const chunk of terrain.chunks) {
-    const sprite = new Sprite(await blobTexture(chunk.image));
+  // Decoded side by side (the browser decodes off the main thread), added in order.
+  const decoded = await Promise.all(terrain.chunks.map((chunk) => Promise.all([blobTexture(chunk.image), createImageBitmap(chunk.depth, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' })])));
+  terrain.chunks.forEach((chunk, i) => {
+    const sprite = new Sprite(decoded[i]![0]);
     sprite.position.set(chunk.x, chunk.y);
     world.addChild(sprite);
-    depth.set(`${chunk.x},${chunk.y}`, depthTexture(await createImageBitmap(chunk.depth, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' })));
-  }
+    depth.set(`${chunk.x},${chunk.y}`, depthTexture(decoded[i]![1]));
+  });
   // The finish area, chequered.
   const finish = new Graphics({ label: 'finish-area' }); // the editor redraws it as the finish moves
   for (const i of course.finishArea) {
@@ -273,7 +278,9 @@ async function main() {
     for (const [x, y] of course.file.waypoints) overlay.poly(diamond(x, y)).fill({ color: 0xff00ff, alpha: 0.7 });
     overlay.visible = params.get('grid') === '1';
     world.addChild(overlay);
-    addEventListener('keydown', (e) => { if (e.key === 'g' || e.key === 'G') overlay.visible = !overlay.visible; });
+    addEventListener('keydown', (e) => {
+      if ((e.key === 'g' || e.key === 'G') && !(e.target as HTMLElement).closest('input, select, textarea')) overlay.visible = !overlay.visible;
+    });
   }
 
   // The Rhinos: one view per racer once its tank is on the start grid, labelled with its name.
@@ -577,8 +584,8 @@ async function main() {
   status.textContent = `${course.file.name} on ${mapPath} (${map.theater}, ${cached ? 'from cache' : 'imported'} in ${loadMs} ms), ideal line ${course.length.toFixed(0)} cells. G: passability and ideal line.`;
   if (edit) (await import('./race/editor.js')).mountEditor(app, world, grid, mapBytes, file!, toScreen, params.has('map') ? '' : Object.entries(COURSES).find(([, c]) => c === file)![0].replace(/^.*\/|\.json$/g, ''), race);
   else {
-    mountOperator(race, courses, imported, Object.entries(courses).find(([, candidate]) => candidate === file)?.[0] ?? '', (mode) => { cameraMode = mode; manualFrame = undefined; }, sounds.mute,
-      (place) => { if (cameraMode === 'director' && race.phase === 'racing') shot = placeShot(race, place) ?? shot; });
+    lendToSetup(mountOperator(race, courses, imported, report, Object.entries(courses).find(([, candidate]) => candidate === file)?.[0] ?? '', (mode) => { cameraMode = mode; manualFrame = undefined; }, sounds.mute,
+      (place) => { if (cameraMode === 'director' && race.phase === 'racing') shot = placeShot(race, place) ?? shot; }));
     // Overview's manual frame: drag pans, the wheel zooms toward the cursor.
     const manual = () => (manualFrame ??= { scale: world.scale.x, x: world.position.x, y: world.position.y });
     let drag: { x: number; y: number } | undefined;
@@ -600,6 +607,7 @@ async function main() {
     if (chatSource() === 'twitch') chatLink = connectTwitch(race);
     if (chatLink) watchChat(chatLink.online);
     if (import.meta.env.DEV) (await import('./race/devPanel.js')).mountDevPanel(race, params, !chatLink);
+    if (!setupDone()) showSetup();
   }
   document.body.dataset.ready = String(terrain.missing === 0);
 }

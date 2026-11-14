@@ -185,6 +185,8 @@ export interface Race {
   seed: number;
   phase: Phase;
   paused: boolean;
+  /** A trial race (bots alone, from setup or the editor): chat can't touch it and it spends no reward or cheer. */
+  trial: boolean;
   racers: Racer[];
   /** Frames left in the current timed phase (join window, countdown, finish timer once running). */
   timer: number;
@@ -247,11 +249,11 @@ export interface Standing {
 
 export function createRace(course: Course, grid: CellGrid, seed: number): Race {
   const bridgeGrid = 'bridge' in grid && 'bridges' in grid ? grid as BridgeGrid : undefined;
-  return { course, field: createField(grid, seed), seed, phase: 'idle', paused: false, racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions.filter((verb) => verb !== 'bridge' || (bridgeGrid && course.file.bridges.length))), cooldowns: new Map(), feed: [], feedUntil: new Map(), sounds: [], missiles: [], v3s: [], teslas: [], lastHit: undefined, lastHitBy: undefined, lastHitFrame: -1, bridgeGrid, queue: [], nextEventAt: 0, landed: undefined, settlements: [], hype: emptyHype(), chatWide: 0, chaos: new Set(CHAOS), cheerBits: 50, carried: [], radiation: [], chatLog: [] };
+  return { course, field: createField(grid, seed), seed, phase: 'idle', paused: false, trial: false, racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions.filter((verb) => verb !== 'bridge' || (bridgeGrid && course.file.bridges.length))), cooldowns: new Map(), feed: [], feedUntil: new Map(), sounds: [], missiles: [], v3s: [], teslas: [], lastHit: undefined, lastHitBy: undefined, lastHitFrame: -1, bridgeGrid, queue: [], nextEventAt: 0, landed: undefined, settlements: [], hype: emptyHype(), chatWide: 0, chaos: new Set(CHAOS), cheerBits: 50, carried: [], radiation: [], chatLog: [] };
 }
 
 export function commandList(race: Race): string[] {
-  if (race.paused) return [];
+  if (race.paused || race.trial) return [];
   if (race.phase === 'join') return [`!rhino${COMMANDS.rhino.hint}`];
   if (race.phase !== 'racing') return [];
   return [...interactions.filter((verb) => race.enabled.has(verb))
@@ -264,7 +266,7 @@ export function openJoinWindow(race: Race, { joinSeconds = 90, finishSeconds = 6
   // A race replays from its seed alone; an empty join window (back to idle) ran nothing, so it keeps its seed.
   if (race.phase !== 'idle') race.seed = Math.floor(random(race.field) * 2 ** 32);
   Object.assign(race.field, { rng: race.seed >>> 0, frame: 0 });
-  Object.assign(race, { phase: 'join', paused: false, racers: [], timer: joinSeconds * TICK_HZ, frame: 0, finishFrames: finishSeconds * TICK_HZ, results: [] });
+  Object.assign(race, { phase: 'join', paused: false, trial: false, racers: [], timer: joinSeconds * TICK_HZ, frame: 0, finishFrames: finishSeconds * TICK_HZ, results: [] });
   race.field.tanks.length = 0;
   race.cooldowns.clear();
   race.feed.length = 0;
@@ -294,7 +296,7 @@ const IGNORED: ChatResult = { ok: false, reason: 'ignored' };
 export function chat(race: Race, line: ChatLine): ChatResult {
   race.chatLog.push(line);
   if (race.chatLog.length > CHAT_LOG) race.chatLog.shift();
-  if (race.paused) return IGNORED;
+  if (race.paused || race.trial) return IGNORED;
   const words = line.text.trim().toLowerCase().split(/\s+/);
   if (words.length > 2) return IGNORED;
   const word = words[0] ?? '';
@@ -404,7 +406,7 @@ export function paid(race: Race, line: PaidLine): ChatResult {
     race.carried.push(turn);
     return { ok: true, reason: 'next race' };
   }
-  if (race.phase !== 'racing') {
+  if (race.phase !== 'racing' || race.trial) {
     settle(race, line.reference, 'refunded');
     return { ok: false, reason: 'not racing' };
   }
@@ -446,7 +448,7 @@ function drainHype(race: Race): void {
 }
 
 /** The hype meter is on screen: gone for the rest of the race once its last chat-wide event is set off. */
-export const hypeLive = (race: Race) => race.chaos.has('hype') && race.chatWide < HYPE.perRace;
+export const hypeLive = (race: Race) => !race.trial && race.chaos.has('hype') && race.chatWide < HYPE.perRace;
 
 /** The hype meter is armed: `!nuke` counts. */
 export const armed = (race: Race) => race.phase === 'racing' && race.hype.armedUntil !== undefined;
@@ -761,11 +763,12 @@ function closeJoinWindow(race: Race) {
   race.timer = 3 * TICK_HZ;
 }
 
-/** Dev (course editor): ends any race, then races `course` with bots alone, one per start cell up to `bots`, straight to 3-2-1. */
+/** A trial race (setup, course editor): ends any race, then races `course` with bots alone, one per start cell up to `bots`, straight to 3-2-1. */
 export function simulateRace(race: Race, course: Course, bots = 10): void {
   endRace(race);
   race.course = course;
   openJoinWindow(race);
+  race.trial = true;
   for (let n = 1; n <= Math.min(bots, course.startGrid.length); n++) race.racers.push(racer(race, `Bot${n}`));
   closeJoinWindow(race);
 }

@@ -210,7 +210,7 @@ _Avoid_: Log, chat reply, toast
 ### On stream
 
 **Chat panel**:
-The column under the standings showing the latest chat lines from the chat source, plain chat and chat commands alike, each with the viewer's name (in their house colour while they race); the oldest fade out at the top, and the lines stay between races. The operator can switch it off in install setup, for a streamer who keeps their own chat overlay.
+The column under the standings showing the latest chat lines from the chat source, plain chat and chat commands alike, each with the viewer's name (in their house colour while they race); the oldest fade out at the top, and the lines stay between races. The operator can switch it off in setup, for a streamer who keeps their own chat overlay.
 _Avoid_: Chat overlay, chat box
 
 **Camera mode**:
@@ -294,6 +294,10 @@ _Avoid_: Overpass
 The RA2 + Yuri's Revenge files the game reads, read in place from a folder on the operator's PC; never committed or redistributed.
 _Avoid_: Game files, assets
 
-**Install setup**:
-The screen, outside races, where the operator points the game at the install, picks the chat source and sets it up; it can't open during a race.
-_Avoid_: Settings, config, options
+**Setup**:
+The step-by-step wizard, outside races, that takes the operator from first start to a working game: the install, the chat source and its setup, OBS capture, courses, race setup's choices, the keys and a trial race. It opens by itself until the operator has finished it once, and again when the install is gone; `F2` reopens it between races. It can't open during a race.
+_Avoid_: Install setup, settings, config, options
+
+**Trial race**:
+A race of bots alone, started from setup (or the course editor), for the operator to try the camera, keys and OBS capture. Chat can't reach it and it spends no reward or cheer: a redemption is refunded and a cheer waits for the next race. The stream marks it as a trial.
+_Avoid_: Test race, practice, simulation
