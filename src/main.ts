@@ -170,12 +170,14 @@ async function main() {
   const world = new Container();
   app.stage.addChild(world);
   const depth: DepthChunks = new Map();
-  for (const chunk of terrain.chunks) {
-    const sprite = new Sprite(await blobTexture(chunk.image));
+  // Decoded side by side (the browser decodes off the main thread), added in order.
+  const decoded = await Promise.all(terrain.chunks.map((chunk) => Promise.all([blobTexture(chunk.image), createImageBitmap(chunk.depth, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' })])));
+  terrain.chunks.forEach((chunk, i) => {
+    const sprite = new Sprite(decoded[i]![0]);
     sprite.position.set(chunk.x, chunk.y);
     world.addChild(sprite);
-    depth.set(`${chunk.x},${chunk.y}`, depthTexture(await createImageBitmap(chunk.depth, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' })));
-  }
+    depth.set(`${chunk.x},${chunk.y}`, depthTexture(decoded[i]![1]));
+  });
   // The finish area, chequered.
   const finish = new Graphics({ label: 'finish-area' }); // the editor redraws it as the finish moves
   for (const i of course.finishArea) {

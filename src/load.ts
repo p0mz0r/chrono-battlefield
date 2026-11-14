@@ -1,7 +1,7 @@
 import { BOMB_FOOTPRINT_PX, KIROV_FOOTPRINT_PX, prerenderAircraft, prerenderAnim, prerenderRhinos, prerenderRocket, prerenderTank, type RhinoArt } from './assets/rhino.js';
 import type { Battlefield } from './battlefield/import.js';
-import { importBattlefield } from './battlefield/import.js';
 import type { ObjectImage } from './battlefield/objects.js';
+import { importBattlefield } from './battlefield/import.js';
 import { CHUNK, type Terrain, type TerrainChunk } from './battlefield/terrain.js';
 import { cachedImport, importStore } from './install/cache.js';
 import { crc32, type MapFile } from './ra2/index.js';
@@ -50,7 +50,12 @@ async function webp(rgba: Uint8Array | Uint8ClampedArray, width: number, height:
   return canvas.convertToBlob({ type: 'image/webp', quality: 1 });
 }
 
-const tank = async (t: RhinoArt): Promise<Tank> => ({ body: await sprite(t.body), turret: await sprite(t.turret.sprite), pivot: t.turret.pivot });
+/** Awaits every promise of `pending`, keeping its keys. */
+async function settled<T extends Record<string, Promise<unknown>>>(pending: T): Promise<{ [K in keyof T]: Awaited<T[K]> }> {
+  return Object.fromEntries(await Promise.all(Object.entries(pending).map(async ([key, value]) => [key, await value]))) as { [K in keyof T]: Awaited<T[K]> };
+}
+
+const tank = async (t: RhinoArt): Promise<Tank> => ({ ...await settled({ body: sprite(t.body), turret: sprite(t.turret.sprite) }), pivot: t.turret.pivot });
 
 const sprite = async (s: ConvertedSprite): Promise<Sprite> =>
   ({ atlasWidth: s.atlasWidth, atlasHeight: s.atlasHeight, spriteWidth: s.spriteWidth, spriteHeight: s.spriteHeight, frames: s.frames, origin: s.origin, image: await webp(s.colorRgba, s.atlasWidth, s.atlasHeight) });
@@ -71,31 +76,38 @@ export async function loadCourse(read: ReadFile, mapPath: string): Promise<{ map
     cached = false;
     const vfs = await mountTheater(read, map.theater);
     const { terrain, images, ...rest } = await importBattlefield(readMapOnce, mapPath, vfs);
-    const rhinos = prerenderRhinos(vfs, map.theater), tesla = prerenderTank(vfs, map.theater, 'ttnk');
+    // The browser encodes WebP off the main thread, so each encode starts at once and runs while the next art prerenders.
+    // Terrain chunks (16 MB of pixels each) go three at a time, so only a few chunks' encoder buffers are alive at once.
+    let next = 0;
     const chunks: CourseArt['battlefield']['terrain']['chunks'] = [];
-    // One at a time, so at most one chunk's encoder buffers are alive.
-    for (const { rgba, depth, ...c } of terrain.chunks) chunks.push({ ...c, image: await webp(rgba, CHUNK, CHUNK), depth: await webp(depth, CHUNK, CHUNK) });
-    const encoded: Encoded<ObjectImage>[] = [];
-    for (const { rgba, ...i } of images) encoded.push({ ...i, image: await webp(rgba, i.width, i.height) });
-    const encodedRhinos: CourseArt['rhinos'] = [];
-    for (const r of rhinos) encodedRhinos.push({ ...await tank(r), rgb: r.rgb });
-    return {
-      battlefield: { ...rest, terrain: { ...terrain, chunks }, images: encoded },
-      rhinos: encodedRhinos,
-      rhinoShadow: await sprite(rhinos[0]!.shadow),
-      tesla: await tank(tesla),
-      v3: await sprite(prerenderRocket(vfs, map.theater, 'v3rocket')),
-      missile: await sprite(prerenderRocket(vfs, map.theater, 'dmisl')),
-      warpOut: await sprite(prerenderAnim(vfs, 'chronofd')),
-      warpIn: await sprite(prerenderAnim(vfs, 'chronotg')),
-      fire: await sprite(prerenderAnim(vfs, 'fire01')),
-      nuke: await sprite(prerenderAnim(vfs, 'nkmsldn', map.theater)),
-      mushroom: await sprite(prerenderAnim(vfs, 'nukeanim')),
-      kirov: await sprite(prerenderAircraft(vfs, map.theater, 'zep', KIROV_FOOTPRINT_PX)),
-      bomb: await sprite(prerenderAircraft(vfs, map.theater, 'zbomb', BOMB_FOOTPRINT_PX)),
-      kirovBlast: await sprite(prerenderAnim(vfs, 'explolrg')),
-      desolator: await sprite(prerenderAnim(vfs, 'deso', map.theater)),
-    };
+    const chunksDone = Promise.all(Array.from({ length: 3 }, async () => {
+      while (next < terrain.chunks.length) {
+        const at = next++, { rgba, depth, ...c } = terrain.chunks[at]!;
+        chunks[at] = { ...c, ...await settled({ image: webp(rgba, CHUNK, CHUNK), depth: webp(depth, CHUNK, CHUNK) }) };
+      }
+    }));
+    const encoded = Promise.all(images.map(async ({ rgba, ...i }) => ({ ...i, image: await webp(rgba, i.width, i.height) })));
+    const rhinos = prerenderRhinos(vfs, map.theater);
+    const art = await settled({
+      rhinos: Promise.all(rhinos.map(async (r) => ({ ...await tank(r), rgb: r.rgb }))),
+      rhinoShadow: sprite(rhinos[0]!.shadow),
+      tesla: tank(prerenderTank(vfs, map.theater, 'ttnk')),
+      v3: sprite(prerenderRocket(vfs, map.theater, 'v3rocket')),
+      missile: sprite(prerenderRocket(vfs, map.theater, 'dmisl')),
+      warpOut: sprite(prerenderAnim(vfs, 'chronofd')),
+      warpIn: sprite(prerenderAnim(vfs, 'chronotg')),
+      fire: sprite(prerenderAnim(vfs, 'fire01')),
+      nuke: sprite(prerenderAnim(vfs, 'nkmsldn', map.theater)),
+      mushroom: sprite(prerenderAnim(vfs, 'nukeanim')),
+      kirov: sprite(prerenderAircraft(vfs, map.theater, 'zep', KIROV_FOOTPRINT_PX)),
+      bomb: sprite(prerenderAircraft(vfs, map.theater, 'zbomb', BOMB_FOOTPRINT_PX)),
+      kirovBlast: sprite(prerenderAnim(vfs, 'explolrg')),
+      desolator: sprite(prerenderAnim(vfs, 'deso', map.theater)),
+      images: encoded,
+    });
+    await chunksDone;
+    const { images: objectImages, ...sprites } = art;
+    return { battlefield: { ...rest, terrain: { ...terrain, chunks }, images: objectImages }, ...sprites };
   });
   return { map, mapBytes, art, cached };
 }
