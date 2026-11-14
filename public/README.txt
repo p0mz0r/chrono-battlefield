@@ -21,6 +21,47 @@ START THE GAME
 Closing the game window stops the game. Your setup is kept for this Windows
 user, also when you unzip a newer release elsewhere.
 
+
+KEYS
+----
+
+Click into the game window; the keys work while it has focus:
+  S       race setup (course, join window, finish timer, audience interactions)
+  Enter   start: open the join window
+  P       pause / resume
+  E E     end or cancel the race (press E twice within three seconds)
+  C       camera: Overview / Director
+          Overview: drag to pan, wheel to zoom
+  1-9, 0  Director: cut to the tank in that place (0 = tenth), unless finished
+  M       mute (remembered)
+  F2      setup (between races)
+
+Enter opens the join window with the last race setup, or opens race setup the
+first time. The results screen shows both keys (Enter next race, S race setup).
+
+
+CHAT COMMANDS
+-------------
+
+A command is the line alone, plus at most its one argument; case and extra
+spaces don't matter, anything else is ignored. The stream lists the commands
+that work right now.
+
+Join window:
+  !rhino               join the race (empty places are filled with bots)
+
+During the race (each viewer waits a cooldown between commands):
+  !boost [name]        a short burst of speed for a tank
+  !shield              racers only: block harmful interactions for a moment
+  !missile [name]      homing missile that stuns a tank (random without name)
+  !v3 [back|fwd]       racers only: rocket in a straight line from your tank
+  !tesla [name]        Tesla strike that stuns every tank near one
+  !bridge B1           destroy that bridge (only courses with bridges in play)
+  !nuke                only when the hype meter is full: enough viewers set
+                       it off and every tank is stunned
+
+Race setup switches each interaction on or off.
+
 Each race writes its seed to rhino-race.log beside rhino-race.exe, never on
 stream: "Rhino Race seed N: replay with ?course=...&seed=N". Include that line
 when reporting a race that went wrong.
