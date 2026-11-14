@@ -1,6 +1,6 @@
 # Chat reaches the game through Streamer.bot or Twitch direct, never anonymous IRC
 
-The operator picks one chat source in install setup (`F2`), never both, so a line can't arrive twice ([#90](https://github.com/p0mz0r/chrono-battlefield/issues/90)):
+The operator picks one chat source in setup (`F2`), never both, so a line can't arrive twice ([#90](https://github.com/p0mz0r/chrono-battlefield/issues/90)):
 
 - **Streamer.bot:** the game connects to its local WebSocket (`ws://127.0.0.1:8080`). It gets chat from every platform the operator connected there, plus Twitch redemptions and cheers. Streamer.bot can't create rewards over its WebSocket. So the operator creates the game's rewards there under fixed titles and imports one action, and the game sends `DoAction` to that action to fulfil or refund each redemption.
 - **Twitch direct:** for streamers without Streamer.bot. The operator logs in once with the device code flow, and EventSub carries chat, redemptions and cheers. The game creates its own rewards, because only the app that created a reward may refund its redemptions. Cost and on/off stay in Twitch's dashboard. The game refreshes tokens, validates them hourly and stores them in `localStorage`.

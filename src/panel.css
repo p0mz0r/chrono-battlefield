@@ -1,4 +1,4 @@
-/* The game's panel (#136): the stream view's dark panels and red bar, framed in bevelled steel. The course editor, race setup and install setup share it. */
+/* The game's panel (#136): the stream view's dark panels and red bar, framed in bevelled steel. The course editor, race setup and setup share it. */
 @font-face { font-family: 'Barlow Condensed'; font-weight: 900; src: url('../docs/brand/fonts/BarlowCondensed-Black.ttf'); }
 
 .panel {

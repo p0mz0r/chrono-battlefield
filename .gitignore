@@ -22,3 +22,6 @@ courses/maps/2_arctic_circle.map
 # The built game, copied in for the launcher to embed
 launcher/dist/*
 !launcher/dist/.gitkeep
+
+# Course files the owner ships with a release (tools/release.mjs), never committed (ADR 0007)
+/release-courses/

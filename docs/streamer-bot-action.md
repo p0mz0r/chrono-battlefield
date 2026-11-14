@@ -32,7 +32,7 @@ The action is one Execute C# Code sub-action, with no trigger, in `src/chat/sett
 
 ## Reward titles
 
-Decided in [#102](https://github.com/p0mz0r/chrono-battlefield/issues/102) ([research](research/channel-point-reward-titles.md)); the strings live in `REWARDS` in `src/race/race.ts`, and install setup (`F2`) lists them for copying when Streamer.bot is picked. The operator must create the rewards with Streamer.bot's Create Reward button, since only rewards Streamer.bot created can be fulfilled or refunded.
+Decided in [#102](https://github.com/p0mz0r/chrono-battlefield/issues/102) ([research](research/channel-point-reward-titles.md)); the strings live in `REWARDS` in `src/race/race.ts`, and setup (`F2`) lists them for copying in its Streamer.bot step when Streamer.bot is picked. The operator must create the rewards with Streamer.bot's Create Reward button, since only rewards Streamer.bot created can be fulfilled or refunded.
 
 A redemption reaches the game only if its reward title matches one of these after trimming and ignoring case; inner spacing must match exactly. Any other title is ignored: no settlement, no feed line, no hype.
 

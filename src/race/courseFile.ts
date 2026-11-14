@@ -4,6 +4,8 @@ import { courseSlug, isCourseFile, mapHash, type CourseFile } from './course.js'
 // One course, one file (ADR 0007): `<name>.rhino-course.json` carries a course to an operator, with its custom map inside.
 
 const FORMAT = 'rhino-course';
+/** An imported course's id: one per course name. */
+const importedId = (course: CourseFile) => `imported/${courseSlug(course.name)}`;
 
 /** An imported course as stored in the OBS profile; `map` holds a custom map's bytes. */
 export interface ImportedCourse {
@@ -34,7 +36,7 @@ export async function readCourseFile(fileName: string, text: string, installMap:
   try { data = JSON.parse(text) as typeof data; } catch { /* reported below */ }
   if (data?.format !== FORMAT || data.version !== 1 || !isCourseFile(data.course)) throw new Error(`${fileName} is not a Rhino Race course file`);
   const course = data.course;
-  const id = `imported/${courseSlug(course.name)}`;
+  const id = importedId(course);
   if (course.source === 'shipped') {
     if (!course.author.trim() || !course.link.trim()) throw new Error(`The custom map in ${fileName} has no author or source link`);
     let map: Uint8Array | undefined;
@@ -54,3 +56,31 @@ const store = <T>(mode: IDBTransactionMode, run: (s: IDBObjectStore) => IDBReque
 export const importedCourses = () => store<ImportedCourse[]>('readonly', (s) => s.getAll());
 export const saveImported = (imported: ImportedCourse) => store('readwrite', (s) => s.put(imported, imported.id));
 export const removeImported = (id: string) => store('readwrite', (s) => s.delete(id));
+
+// Courses the operator removed: the folder beside the exe still holds their files, but they stay removed.
+const REMOVED_KEY = 'rhino-race-removed-courses';
+const removedIds = (): string[] => { try { return JSON.parse(localStorage.getItem(REMOVED_KEY) || '[]') as string[]; } catch { return []; } };
+/** Marks `id` removed (`true`) or wanted again after a manual import (`false`). */
+export const markRemoved = (id: string, removed: boolean) =>
+  localStorage.setItem(REMOVED_KEY, JSON.stringify([...removedIds().filter((other) => other !== id), ...removed ? [id] : []]));
+
+/**
+ * On start (#161): imports each course file from `courses\` beside the exe (`files`, by name) that isn't imported as it
+ * is, nor removed by the operator, into `imported`. Returns a line per file it imported or refused.
+ */
+export async function importFolder(files: Record<string, string>, imported: ImportedCourse[], installMap: (path: string) => Promise<Uint8Array | undefined>): Promise<string[]> {
+  const lines: string[] = [], removed = removedIds();
+  for (const [name, text] of Object.entries(files)) {
+    let course: unknown;
+    try { course = (JSON.parse(text) as { course?: unknown }).course; } catch { /* refused by readCourseFile */ }
+    const have = imported.find((entry) => JSON.stringify(entry.course) === JSON.stringify(course));
+    if (have || (isCourseFile(course) && removed.includes(importedId(course)))) continue;
+    try {
+      const entry = await readCourseFile(name, text, installMap);
+      await saveImported(entry);
+      imported.splice(0, imported.length, ...imported.filter((other) => other.id !== entry.id), entry);
+      lines.push(`Imported ${entry.course.name} from the courses folder`);
+    } catch (error) { lines.push(error instanceof Error ? error.message : String(error)); }
+  }
+  return lines;
+}

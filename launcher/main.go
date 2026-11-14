@@ -4,6 +4,7 @@ package main
 
 import (
 	"embed"
+	"encoding/json"
 	"io"
 	"io/fs"
 	"net"
@@ -52,6 +53,21 @@ func main() {
 			f.WriteString(time.Now().Format("2006-01-02 15:04:05 ") + string(line) + "\r\n")
 			f.Close()
 		}
+	})
+	// The course files in courses\ beside the exe, by name, for the page to import on start (#161).
+	s.mux.HandleFunc("GET /__courses", func(w http.ResponseWriter, r *http.Request) {
+		files := map[string]string{}
+		names, _ := filepath.Glob(filepath.Join(dir, "courses", "*.rhino-course.json"))
+		for _, name := range names {
+			if stat, err := os.Stat(name); err == nil && stat.Size() < 8<<20 {
+				if text, err := os.ReadFile(name); err == nil {
+					files[filepath.Base(name)] = string(text)
+				}
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		json.NewEncoder(w).Encode(files)
 	})
 	go http.Serve(listener, s)
 	closed := make(chan struct{})
