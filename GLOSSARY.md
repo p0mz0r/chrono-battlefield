@@ -141,7 +141,7 @@ A paid event or chat-wide event: a spectacle that hits the leading tank, a rando
 _Avoid_: Superweapon, ultimate
 
 **Paid event**:
-A big event one viewer sets off with a redemption or, for the strongest few, a cheer; never with a chat command.
+A big event one viewer sets off with a redemption or a cheer; never with a chat command. A cheer in chat sets off only Chrono swap; one from the Twitch extension can set off any paid event.
 _Avoid_: Channel-point event, bits event
 
 **Chat-wide event**:
@@ -187,6 +187,14 @@ _Avoid_: Integration, connector, bot
 The small "CHAT OFFLINE" tag on stream while the chat source's connection is down; the race carries on and the game reconnects with growing waits. Redemptions made meanwhile stay in the platform's queue.
 _Avoid_: Disconnected banner, error
 
+**Twitch extension**:
+The small rail Rhino Race draws over the stream on Twitch, plus its phone view, where a viewer joins, sets off audience interactions with buttons and follows their own place without typing commands. It's an extra input next to the chat source, never a replacement for it.
+_Avoid_: Overlay, panel, plugin
+
+**Extension backend**:
+The small hosted service between the game and the Twitch extension. It passes the race's state out to viewers and their actions in to the game, and vouches for which channel a game speaks for.
+_Avoid_: EBS, server, relay
+
 **Redemption**:
 A viewer spending channel points on one of the game's rewards to set off an audience interaction; it is fulfilled when the interaction lands and refunded when it fails. Never a chat command, and not held to the viewer cooldown.
 _Avoid_: Reward, purchase, chat command
@@ -196,7 +204,7 @@ The race's word back to the chat source on a redemption: fulfilled when its even
 _Avoid_: Ack, receipt
 
 **Cheer**:
-A viewer spending bits to set off an audience interaction; bits are never refunded, so a cheer's interaction cannot fail during a race. It queues ahead of waiting redemptions, and one still waiting at race end, or arriving between races, takes the first turn after the next start countdown that has its event switched on. One for a switched-off event does nothing.
+A viewer spending bits to set off an audience interaction; bits are never refunded, so a cheer's interaction cannot fail during a race. It queues ahead of waiting redemptions, and one still waiting at race end, or arriving between races, takes the first turn after the next start countdown that has its event switched on. One in chat for a switched-off event does nothing; one from the Twitch extension, offered only during a race and only for events switched on, always plays, even if its event was switched off since.
 _Avoid_: Bits, donation, redemption
 
 **Command list**:
