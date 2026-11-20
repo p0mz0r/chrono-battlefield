@@ -141,7 +141,7 @@ A paid event or chat-wide event: a spectacle that hits the leading tank, a rando
 _Avoid_: Superweapon, ultimate
 
 **Paid event**:
-A big event one viewer sets off with a redemption or, for the strongest few, a cheer; never with a chat command.
+A big event one viewer sets off with a redemption or a cheer; never with a chat command. A cheer in chat sets off only Chrono swap; one from the Twitch extension can set off any paid event.
 _Avoid_: Channel-point event, bits event
 
 **Chat-wide event**:
@@ -204,7 +204,7 @@ The race's word back to the chat source on a redemption: fulfilled when its even
 _Avoid_: Ack, receipt
 
 **Cheer**:
-A viewer spending bits to set off an audience interaction; bits are never refunded, so a cheer's interaction cannot fail during a race. It queues ahead of waiting redemptions, and one still waiting at race end, or arriving between races, takes the first turn after the next start countdown that has its event switched on. One for a switched-off event does nothing.
+A viewer spending bits to set off an audience interaction; bits are never refunded, so a cheer's interaction cannot fail during a race. It queues ahead of waiting redemptions, and one still waiting at race end, or arriving between races, takes the first turn after the next start countdown that has its event switched on. One in chat for a switched-off event does nothing; one from the Twitch extension, offered only during a race and only for events switched on, always plays, even if its event was switched off since.
 _Avoid_: Bits, donation, redemption
 
 **Command list**:
