@@ -187,6 +187,14 @@ _Avoid_: Integration, connector, bot
 The small "CHAT OFFLINE" tag on stream while the chat source's connection is down; the race carries on and the game reconnects with growing waits. Redemptions made meanwhile stay in the platform's queue.
 _Avoid_: Disconnected banner, error
 
+**Twitch extension**:
+The small rail Rhino Race draws over the stream on Twitch, plus its phone view, where a viewer joins, sets off audience interactions with buttons and follows their own place without typing commands. It's an extra input next to the chat source, never a replacement for it.
+_Avoid_: Overlay, panel, plugin
+
+**Extension backend**:
+The small hosted service between the game and the Twitch extension. It passes the race's state out to viewers and their actions in to the game, and vouches for which channel a game speaks for.
+_Avoid_: EBS, server, relay
+
 **Redemption**:
 A viewer spending channel points on one of the game's rewards to set off an audience interaction; it is fulfilled when the interaction lands and refunded when it fails. Never a chat command, and not held to the viewer cooldown.
 _Avoid_: Reward, purchase, chat command
