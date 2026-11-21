@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "prepare": "git config core.hooksPath .githooks",
-    "lint": "oxlint --deny-warnings"
+    "lint": "oxlint --deny-warnings",
+    "prototype:rail": "vite --open /extension-rail-prototype.html"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
