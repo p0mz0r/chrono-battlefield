@@ -187,13 +187,21 @@ _Avoid_: Integration, connector, bot
 The small "CHAT OFFLINE" tag on stream while the chat source's connection is down; the race carries on and the game reconnects with growing waits. Redemptions made meanwhile stay in the platform's queue.
 _Avoid_: Disconnected banner, error
 
+**Extension offline marker**:
+The small "EXTENSION OFFLINE" tag on stream while the game's link to the extension backend is down with the Twitch extension switched on; viewers' rails draw nothing meanwhile, the race carries on and the game reconnects with growing waits.
+_Avoid_: Disconnected banner, error
+
 **Twitch extension**:
-The small rail Rhino Race draws over the stream on Twitch, plus its phone view, where a viewer joins, sets off audience interactions with buttons and follows their own place without typing commands. It's an extra input next to the chat source, never a replacement for it.
+The small rail Rhino Race draws over the stream on Twitch, plus its phone view, where a viewer joins, sets off audience interactions with buttons and follows their own place without typing commands. It's an extra input next to the chat source, never a replacement for it, and works the same with either chat source. The operator installs and activates it on Twitch and switches it on in setup; it shows only while the game is open with it switched on, races and race setup alike, and draws nothing otherwise.
 _Avoid_: Overlay, panel, plugin
 
 **Extension backend**:
 The small hosted service between the game and the Twitch extension. It passes the race's state out to viewers and their actions in to the game, and vouches for which channel a game speaks for.
 _Avoid_: EBS, server, relay
+
+**Twitch login**:
+The operator's one login to their Twitch channel, made off stream in setup, which Twitch direct and the Twitch extension share; logging out ends both.
+_Avoid_: Token, auth, account link
 
 **Redemption**:
 A viewer spending channel points on one of the game's rewards to set off an audience interaction; it is fulfilled when the interaction lands and refunded when it fails. Never a chat command, and not held to the viewer cooldown.
@@ -303,9 +311,9 @@ The RA2 + Yuri's Revenge files the game reads, read in place from a folder on th
 _Avoid_: Game files, assets
 
 **Setup**:
-The step-by-step wizard, outside races, that takes the operator from first start to a working game: the install, the chat source and its setup, OBS capture, courses, race setup's choices, the keys and a trial race. It opens by itself until the operator has finished it once, and again when the install is gone; `F2` reopens it between races. It can't open during a race.
+The step-by-step wizard, outside races, that takes the operator from first start to a working game: the install, the chat source and its setup, OBS capture, courses, race setup's choices, the keys and a trial race. It opens by itself until the operator has finished it once, again when the install is gone, and once on the first start after an update that adds the Twitch extension's step; `F2` reopens it between races. It can't open during a race.
 _Avoid_: Install setup, settings, config, options
 
 **Trial race**:
-A race of bots alone, started from setup (or the course editor), for the operator to try the camera, keys and OBS capture. Chat can't reach it and it spends no reward or cheer: a redemption is refunded and a cheer waits for the next race. The stream marks it as a trial.
+A race of bots alone, started from setup (or the course editor), for the operator to try the camera, keys and OBS capture. Chat can't reach it and it spends no reward or cheer: a redemption is refunded and a cheer waits for the next race. The Twitch extension draws nothing during it. The stream marks it as a trial.
 _Avoid_: Test race, practice, simulation
