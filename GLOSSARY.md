@@ -212,7 +212,7 @@ The race's word back to the chat source on a redemption: fulfilled when its even
 _Avoid_: Ack, receipt
 
 **Cheer**:
-A viewer spending bits to set off a paid event; in chat, the exact amount picks the event (see **Paid event**). Bits are never refunded, so a cheer's interaction cannot fail during a race. It queues ahead of waiting redemptions, and one still waiting at race end, or arriving between races, takes the first turn after the next start countdown that has its event switched on. One in chat for a switched-off event does nothing; one from the Twitch extension, offered only during a race and only for events switched on, always plays, even if its event was switched off since, unless it is bought while the game's link to the extension backend is down: then it is lost, like bits given for nothing.
+A viewer spending bits to set off a paid event; in chat, the exact amount picks the event (see **Paid event**). Bits are never refunded, so a cheer's interaction cannot fail during a race. It queues ahead of waiting redemptions, and one still waiting at race end, or arriving between races, takes the first turn after the next start countdown that has its event switched on. One in chat for a switched-off event does nothing; one from the Twitch extension, offered only during a race and only for events switched on, always plays, even if its event was switched off since, unless it is bought while the game's link to the extension backend is down: then it is lost, like bits given for nothing. One in chat is lost the same way while the game isn't hearing its chat source (closed, or chat offline): nothing replays it later, and nothing waiting for the next race survives the game closing.
 _Avoid_: Bits, donation, redemption
 
 **Command list**:
