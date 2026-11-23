@@ -188,7 +188,7 @@ The small "CHAT OFFLINE" tag on stream while the chat source's connection is dow
 _Avoid_: Disconnected banner, error
 
 **Extension offline marker**:
-The small "EXTENSION OFFLINE" tag on stream while the game's link to the extension backend is down with the Twitch extension switched on; viewers' rails draw nothing meanwhile, the race carries on and the game reconnects with growing waits.
+The small "EXTENSION OFFLINE" tag on stream while the game's link to the extension backend is down with the Twitch extension switched on; viewers' rails draw nothing meanwhile and Bits bought then are lost. It doesn't show while the first link is still opening. The race carries on and the game reconnects with growing waits, unless the backend has refused it twice, when it stops trying until the operator fixes the login in setup.
 _Avoid_: Disconnected banner, error
 
 **Twitch extension**:
@@ -212,7 +212,7 @@ The race's word back to the chat source on a redemption: fulfilled when its even
 _Avoid_: Ack, receipt
 
 **Cheer**:
-A viewer spending bits to set off an audience interaction; bits are never refunded, so a cheer's interaction cannot fail during a race. It queues ahead of waiting redemptions, and one still waiting at race end, or arriving between races, takes the first turn after the next start countdown that has its event switched on. One in chat for a switched-off event does nothing; one from the Twitch extension, offered only during a race and only for events switched on, always plays, even if its event was switched off since.
+A viewer spending bits to set off an audience interaction; bits are never refunded, so a cheer's interaction cannot fail during a race. It queues ahead of waiting redemptions, and one still waiting at race end, or arriving between races, takes the first turn after the next start countdown that has its event switched on. One in chat for a switched-off event does nothing; one from the Twitch extension, offered only during a race and only for events switched on, always plays, even if its event was switched off since, unless it is bought while the game's link to the extension backend is down: then it is lost, like bits given for nothing.
 _Avoid_: Bits, donation, redemption
 
 **Command list**:
