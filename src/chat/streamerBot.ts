@@ -1,4 +1,4 @@
-import { chat, paid, REWARDS, type BigEvent, type Race } from '../race/race.js';
+import { chat, cheerEvent, paid, REWARDS, type PaidEvent, type Race } from '../race/race.js';
 
 /** A chat source (#101): platform messages in as the race's chat and paid calls, its settlements out, online or not. */
 export interface ChatSource {
@@ -12,7 +12,7 @@ export const STREAMER_BOT_URL = 'ws://127.0.0.1:8080/';
 /** The one action the operator imports; every settlement is a `DoAction` on it (docs/streamer-bot-action.md). */
 export const SETTLE_ACTION = 'Rhino Race settle';
 /** Paid events by reward title, lower case: the operator types the titles by hand, so case and outer spaces don't matter (#102). */
-const BY_TITLE = new Map(Object.entries(REWARDS).map(([event, { title }]) => [title.toLowerCase(), event as Exclude<BigEvent, 'nuke'>]));
+const BY_TITLE = new Map(Object.entries(REWARDS).map(([event, { title }]) => [title.toLowerCase(), event as PaidEvent]));
 /** Where unsettled redemptions survive a page reload. */
 const PENDING_KEY = 'rhino-streamerbot-redemptions';
 /** Seconds before the first reconnect, doubling to the longest. */
@@ -73,7 +73,8 @@ export function connectStreamerBot(race: Race, { url = STREAMER_BOT_URL, Socket 
       if (text(line)) chat(race, { ...who, text: line });
     }
     if (source !== 'Twitch') return; // YouTube and Kick paid events wait for a later ticket
-    if (type === 'Cheer' && typeof data.bits === 'number') paid(race, { ...who, event: 'chronoSwap', via: 'cheer', bits: data.bits, reference: '' });
+    const cheered = type === 'Cheer' && typeof data.bits === 'number' ? cheerEvent(data.bits) : undefined;
+    if (cheered) paid(race, { ...who, event: cheered, via: 'cheer', reference: '' });
     if (type === 'RewardRedemption') {
       const reward = data.reward as { id?: unknown; title?: unknown } | null, id = data.redemptionId ?? data.id;
       const event = text(reward?.title) ? BY_TITLE.get(reward.title.trim().toLowerCase()) : undefined;

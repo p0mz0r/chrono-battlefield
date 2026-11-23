@@ -1,4 +1,4 @@
-import { chat, paid, REWARDS, type BigEvent, type Race } from '../race/race.js';
+import { chat, cheerEvent, paid, REWARDS, type PaidEvent, type Race } from '../race/race.js';
 import { heldRedemptions, RETRY, type ChatSource } from './streamerBot.js';
 
 /** The game's registered public Twitch app (#115). Forks register their own. */
@@ -20,7 +20,6 @@ const STARTING_COST = 1000;
 const KEEPALIVE_SLACK = 2;
 /** Twitch asks apps to validate their token on start and hourly. */
 const VALIDATE_EVERY = 60 * 60_000;
-type PaidEvent = Exclude<BigEvent, 'nuke'>;
 
 /** The part of `fetch` the source uses, so tests can stand in for Twitch. */
 type Fetch = (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string }) => Promise<{ ok: boolean; status: number; json(): Promise<any> }>;
@@ -139,9 +138,10 @@ export function connectTwitch(race: Race, { fetch = globalThis.fetch as Fetch, S
       chat(race, { viewerId: `twitch:${e.chatter_user_id}`, name: e.chatter_user_name, text: e.message.text });
     }
     // An anonymous cheer still spends bits, so it still counts.
-    if (type === 'channel.cheer' && typeof e.bits === 'number') {
+    const cheered = type === 'channel.cheer' && typeof e.bits === 'number' ? cheerEvent(e.bits) : undefined;
+    if (cheered) {
       const who = !e.is_anonymous && text(e.user_id) && text(e.user_name) ? { viewerId: `twitch:${e.user_id}`, name: e.user_name } : { viewerId: 'twitch:anonymous', name: 'Anonymous' };
-      paid(race, { ...who, event: 'chronoSwap', via: 'cheer', bits: e.bits, reference: '' });
+      paid(race, { ...who, event: cheered, via: 'cheer', reference: '' });
     }
     if (type === 'channel.channel_points_custom_reward_redemption.add' && text(e.id) && text(e.user_id) && text(e.user_name)) {
       // By ID, not title: only the game's own rewards can be refunded.

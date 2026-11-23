@@ -45,19 +45,27 @@ export interface ChatResult {
 // ponytail: the Kirov's Infinity build-up keeps it playing until `kirovRun` sets its real landing; a per-event phase if more events wait like this.
 export const BIG_EVENTS = { chronoSwap: { label: 'CHRONOSPHERE', buildUp: 3 }, nuke: { label: 'NUKE', buildUp: 3 }, kirov: { label: 'KIROV', buildUp: Infinity }, desolator: { label: 'DESOLATOR', buildUp: 2 } } as const;
 export type BigEvent = keyof typeof BIG_EVENTS;
+/** A big event one viewer sets off with a redemption or a cheer: every big event but the nuke. */
+export type PaidEvent = Exclude<BigEvent, 'nuke'>;
 /**
  * The channel-point reward each paid event is redeemed with (#102): its title (ASCII, at most 45 characters, viewer-facing
  * only, so Chrono swap's may say Chronosphere) and the prompt viewers see (at most 200).
  */
-export const REWARDS: Record<Exclude<BigEvent, 'nuke'>, { title: string; prompt: string }> = {
+export const REWARDS: Record<PaidEvent, { title: string; prompt: string }> = {
   kirov: { title: 'Kirov', prompt: 'A Kirov airship hovers ahead of the leading tank and bombs every tank that comes near: stunned and knocked back. Shields block it. Refunded if no tank comes near.' },
   desolator: { title: 'Desolator', prompt: 'Radiation lands on the track just ahead of the leading tank for about 15 s and slows every tank in it, most at its centre. Shields ignore it.' },
   chronoSwap: { title: 'Chronosphere', prompt: 'Swaps two random tanks still racing: one from the front half of the standings, one from the back half. Shielded tanks are safe.' },
 };
+/** The bits a chat cheer must be exactly to set off each paid event (#175); distinct, so each amount means one event. */
+export const CHEER_PRICES: Record<PaidEvent, number> = { desolator: 10, kirov: 20, chronoSwap: 50 };
+/** The paid event a chat cheer of this many bits sets off, if any: an ordinary cheer sets off nothing. */
+export function cheerEvent(bits: number): PaidEvent | undefined {
+  return (Object.keys(CHEER_PRICES) as PaidEvent[]).find((event) => CHEER_PRICES[event] === bits);
+}
 /** What race setup can switch off: the hype meter (and with it the nuke) and each paid event. */
-export type Chaos = 'hype' | Exclude<BigEvent, 'nuke'>;
+export type Chaos = 'hype' | PaidEvent;
 /** Every chaos option, all on by default. */
-export const CHAOS: Chaos[] = ['hype', ...(Object.keys(BIG_EVENTS) as BigEvent[]).filter((event): event is Exclude<BigEvent, 'nuke'> => event !== 'nuke')];
+export const CHAOS: Chaos[] = ['hype', ...(Object.keys(BIG_EVENTS) as BigEvent[]).filter((event): event is PaidEvent => event !== 'nuke')];
 /** Frames from one big event landing to the next one's turn. */
 const EVENT_GAP = 10 * TICK_HZ;
 /** Frames a cheer-paid Chrono swap with no valid pair waits before trying again. */
@@ -99,8 +107,6 @@ export interface PaidLine {
   name: string;
   event: BigEvent;
   via: 'redemption' | 'cheer';
-  /** The cheer's bit amount. */
-  bits?: number;
   /** The source's opaque redemption reference, handed back in a settlement. */
   reference: string;
 }
@@ -224,8 +230,6 @@ export interface Race {
   chatWide: number;
   /** The hype meter and paid events switched on for this race; setup can select a subset. */
   chaos: Set<Chaos>;
-  /** The operator's Chrono swap price in bits: only a cheer of exactly this sets one off. */
-  cheerBits: number;
   /** Cheers waiting for the next race, in order: they survive `openJoinWindow` and take the first turns after its countdown. */
   carried: Turn[];
   /** Radiation the Desolator left on the course, until it fades. */
@@ -249,7 +253,7 @@ export interface Standing {
 
 export function createRace(course: Course, grid: CellGrid, seed: number): Race {
   const bridgeGrid = 'bridge' in grid && 'bridges' in grid ? grid as BridgeGrid : undefined;
-  return { course, field: createField(grid, seed), seed, phase: 'idle', paused: false, trial: false, racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions.filter((verb) => verb !== 'bridge' || (bridgeGrid && course.file.bridges.length))), cooldowns: new Map(), feed: [], feedUntil: new Map(), sounds: [], missiles: [], v3s: [], teslas: [], lastHit: undefined, lastHitBy: undefined, lastHitFrame: -1, bridgeGrid, queue: [], nextEventAt: 0, landed: undefined, settlements: [], hype: emptyHype(), chatWide: 0, chaos: new Set(CHAOS), cheerBits: 50, carried: [], radiation: [], chatLog: [] };
+  return { course, field: createField(grid, seed), seed, phase: 'idle', paused: false, trial: false, racers: [], timer: 0, frame: 0, finishFrames: 0, results: [], enabled: new Set(interactions.filter((verb) => verb !== 'bridge' || (bridgeGrid && course.file.bridges.length))), cooldowns: new Map(), feed: [], feedUntil: new Map(), sounds: [], missiles: [], v3s: [], teslas: [], lastHit: undefined, lastHitBy: undefined, lastHitFrame: -1, bridgeGrid, queue: [], nextEventAt: 0, landed: undefined, settlements: [], hype: emptyHype(), chatWide: 0, chaos: new Set(CHAOS), carried: [], radiation: [], chatLog: [] };
 }
 
 export function commandList(race: Race): string[] {
@@ -391,11 +395,11 @@ function callNuke(race: Race, line: ChatLine): ChatResult {
 
 /**
  * The paid entry: queues a redemption during a race, refunds it outside one or when its event is switched off; a cheer
- * of exactly the price queues ahead of redemptions, and does nothing while Chrono swap is switched off.
+ * queues ahead of redemptions, and does nothing while its event is switched off. Chat sources pick a cheer's event
+ * with `cheerEvent`.
  */
 export function paid(race: Race, line: PaidLine): ChatResult {
   const cheer = line.via === 'cheer';
-  if (cheer && (line.event !== 'chronoSwap' || line.bits !== race.cheerBits)) return IGNORED;
   if (line.event === 'nuke' || !race.chaos.has(line.event)) {
     if (cheer) return IGNORED;
     settle(race, line.reference, 'refunded');

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { findRoute, moveTank, stepTo, type CellGrid, type Spot } from '../movement/index.js';
 import { courseProgress, loadCourse, mapHash, type CourseFile } from './course.js';
-import { CHAT_LOG, chat, commandList, createRace, endRace, eventChips, hypeLive, openJoinWindow, paid, simulateRace, standings, tickRace, type Race, type Racer } from './race.js';
+import { CHAT_LOG, CHEER_PRICES, chat, cheerEvent, commandList, createRace, endRace, eventChips, hypeLive, openJoinWindow, paid, simulateRace, standings, tickRace, type PaidEvent, type Race, type Racer } from './race.js';
 import { TICK_HZ } from '../movement/index.js';
 import { readdirSync, readFileSync } from 'node:fs';
 import { describeInstall, readFromDir } from '../../test/install.js';
@@ -1106,7 +1106,7 @@ describe('trial race', () => {
     expect(say(race, 'a', '!boost Bot1')).toEqual({ ok: false, reason: 'ignored' });
     expect(race.feed).toEqual([]);
     paid(race, { viewerId: 'a', name: 'Kane', event: 'kirov', via: 'redemption', reference: 'r1' });
-    paid(race, { viewerId: 'b', name: 'Kara', event: 'chronoSwap', via: 'cheer', bits: 50, reference: '' });
+    paid(race, { viewerId: 'b', name: 'Kara', event: 'chronoSwap', via: 'cheer', reference: '' });
     expect([race.queue, race.settlements, race.carried.map((t) => t.by)]).toEqual([[], [{ reference: 'r1', outcome: 'refunded' }], ['Kara']]);
 
     endRace(race);
@@ -1240,7 +1240,7 @@ describe('hype meter', () => {
 });
 
 describe('cheers', () => {
-  const cheer = (race: Race, viewerId: string, bits = 50) => paid(race, { viewerId, name: viewerId, event: 'chronoSwap', via: 'cheer', bits, reference: `c:${viewerId}` });
+  const cheer = (race: Race, viewerId: string, event: PaidEvent = 'chronoSwap') => paid(race, { viewerId, name: viewerId, event, via: 'cheer', reference: `c:${viewerId}` });
   const redeem = (race: Race, viewerId: string) => paid(race, { viewerId, name: viewerId, event: 'chronoSwap', via: 'redemption', reference: viewerId });
   const calm = (seed = 1) => {
     const race = racing(seed);
@@ -1250,10 +1250,14 @@ describe('cheers', () => {
     return race;
   };
 
-  it('sets off a Chrono swap only at exactly the price; 49 and 51 do nothing in the game', () => {
+  it('maps exactly 10, 20 and 50 bits to Desolator, Kirov and Chrono swap, and any other amount to nothing', () => {
+    expect([10, 20, 50].map((bits) => cheerEvent(bits))).toEqual(['desolator', 'kirov', 'chronoSwap']);
+    for (const bits of [1, 9, 11, 19, 21, 49, 51, 100]) expect(cheerEvent(bits)).toBeUndefined();
+    expect(new Set(Object.values(CHEER_PRICES)).size).toBe(Object.keys(CHEER_PRICES).length); // each amount means one event
+  });
+
+  it('sets off a Chrono swap, never settled', () => {
     const race = calm();
-    for (const bits of [49, 51]) expect(cheer(race, 'v', bits).ok).toBe(false);
-    expect([race.queue, race.feed, race.hype.points]).toEqual([[], [], 0]);
     expect(cheer(race, 'v')).toEqual({ ok: true, reason: 'queued' });
     expect(race.hype.points).toBe(3);
     ticks(race, 3 * TICK_HZ + 1);
@@ -1261,11 +1265,14 @@ describe('cheers', () => {
     expect(race.settlements).toEqual([]); // never settled
   });
 
-  it('takes its price from race setup', () => {
+  it('sets off a Desolator or a Kirov too, each ahead of waiting redemptions', () => {
     const race = calm();
-    race.cheerBits = 100;
-    expect(cheer(race, 'v').ok).toBe(false);
-    expect(cheer(race, 'v', 100)).toEqual({ ok: true, reason: 'queued' });
+    redeem(race, 'r1');
+    tickRace(race); // r1 plays
+    redeem(race, 'r2');
+    expect(cheer(race, 'd', 'desolator')).toEqual({ ok: true, reason: 'queued' });
+    expect(cheer(race, 'k', 'kirov')).toEqual({ ok: true, reason: 'queued' });
+    expect(race.queue.map((t) => [t.by, t.event])).toEqual([['r1', 'chronoSwap'], ['d', 'desolator'], ['k', 'kirov'], ['r2', 'chronoSwap']]);
   });
 
   it('does nothing when Chrono swap is switched off', () => {

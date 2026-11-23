@@ -16,8 +16,6 @@ export interface OperatorChoices {
   enabled: string[];
   /** Hype meter and paid events switched on. */
   chaos: string[];
-  /** Chrono swap cheer price. */
-  cheerBits: number;
   camera: CameraMode;
 }
 
@@ -30,7 +28,6 @@ export function readChoices(): OperatorChoices {
     finishSeconds: Number.isInteger(saved.finishSeconds) && saved.finishSeconds! > 0 ? saved.finishSeconds! : 60,
     enabled: Array.isArray(saved.enabled) ? saved.enabled.filter((v): v is string => typeof v === 'string' && VERBS.includes(v as typeof VERBS[number])) : [...VERBS],
     chaos: Array.isArray(saved.chaos) ? saved.chaos.filter((c): c is string => typeof c === 'string' && CHAOS.includes(c as typeof CHAOS[number])) : [...CHAOS],
-    cheerBits: Number.isInteger(saved.cheerBits) && saved.cheerBits! > 0 ? saved.cheerBits! : 50,
     camera: saved.camera === 'director' ? 'director' : 'overview',
   };
 }
@@ -64,8 +61,7 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, i
     <section><h2>Course</h2><select name="course" aria-label="Course"></select></section>
     <section><h2>Timers</h2><div class="timers"><label>Join window <input name="join" type="number" min="1" step="1"> s</label><label>Finish timer <input name="finish" type="number" min="1" step="1"> s</label></div></section>
     <section><h2>Audience interactions <b class="count"></b></h2><fieldset name="verbs" class="tiles" aria-label="Audience interactions"></fieldset></section>
-    <section><h2>Chaos <b class="count"></b></h2><fieldset name="chaos" class="tiles" aria-label="Chaos"></fieldset>
-      <div class="timers"><label>Chrono swap cheer <input name="bits" type="number" min="1" step="1"> bits</label></div></section>
+    <section><h2>Chaos <b class="count"></b></h2><fieldset name="chaos" class="tiles" aria-label="Chaos"></fieldset></section>
     </div><footer><span class="keys"><kbd>S</kbd> race setup <kbd>P</kbd> pause <kbd>E E</kbd> end <kbd>C</kbd> camera <kbd>1</kbd>–<kbd>9</kbd> <kbd>0</kbd> cut to place <kbd>M</kbd> mute <kbd>F2</kbd> setup</span>
     <button type="button" name="import">Import courses…</button><button type="button" class="primary" name="start">Start race <kbd>Enter</kbd></button></footer></div></div>
     <div class="panel setup courses" hidden><div class="inner"><header><img class="mark" src="${mark}" alt=""><h1>Courses</h1></header><div class="scroll race-form">
@@ -147,8 +143,6 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, i
   const join = root.querySelector<HTMLInputElement>('[name=join]')!, finish = root.querySelector<HTMLInputElement>('[name=finish]')!;
   join.value = String(choices.joinSeconds); finish.value = String(choices.finishSeconds);
   const verbs = root.querySelector<HTMLFieldSetElement>('[name=verbs]')!, chaos = root.querySelector<HTMLFieldSetElement>('[name=chaos]')!;
-  const bits = root.querySelector<HTMLInputElement>('[name=bits]')!;
-  bits.value = String(choices.cheerBits);
   const toggles = (into: HTMLFieldSetElement, names: readonly string[], on: string[], text: (name: string) => string) => {
     for (const name of names) {
       const label = document.createElement('label'), box = document.createElement('input'), caption = document.createElement('span');
@@ -159,7 +153,7 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, i
   toggles(verbs, VERBS, choices.enabled, (verb) => verb);
   toggles(chaos, CHAOS, choices.chaos, (c) => c === 'hype' ? 'hype meter & nuke' : c === 'chronoSwap' ? 'chrono swap' : BIG_EVENTS[c as keyof typeof BIG_EVENTS].label.toLowerCase());
   const checked = (set: HTMLFieldSetElement) => [...set.querySelectorAll<HTMLInputElement>('input:checked')].map((box) => box.name);
-  const valid = () => [choices.joinSeconds, choices.finishSeconds, choices.cheerBits].every((n) => Number.isInteger(n) && n > 0);
+  const valid = () => [choices.joinSeconds, choices.finishSeconds].every((n) => Number.isInteger(n) && n > 0);
   const count = () => { for (const set of [verbs, chaos]) set.closest('section')!.querySelector('.count')!.textContent = `${checked(set).length}/${set.elements.length}`; };
   count();
   const update = () => {
@@ -168,7 +162,6 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, i
     choices.finishSeconds = Number(finish.value);
     choices.enabled = checked(verbs);
     choices.chaos = checked(chaos);
-    choices.cheerBits = Number(bits.value);
     count();
     if (valid()) save();
   };
@@ -187,7 +180,6 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, i
       }
       race.enabled = new Set(VERBS.filter((v) => choices.enabled.includes(v) && (v !== 'bridge' || race.course.file.bridges.length)));
       race.chaos = new Set(CHAOS.filter((c) => choices.chaos.includes(c)));
-      race.cheerBits = choices.cheerBits;
       openJoinWindow(race, { joinSeconds: choices.joinSeconds, finishSeconds: choices.finishSeconds });
       // Off stream, in rhino-race.log beside the launcher.
       const seedLine = `Rhino Race seed ${race.seed}: replay with ?course=${current.replace(/^.*\/|\.json$/g, '')}&seed=${race.seed}`;
