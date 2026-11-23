@@ -33,7 +33,7 @@ The on-stream screen between races where the operator picks the course and the r
 _Avoid_: Lobby, menu, settings
 
 **Chaos options**:
-Race setup's on/off switches for the hype meter (and with it the nuke) and for each paid event, all on by default, plus the Chrono swap cheer price. Each applies from the next race; with the hype meter off, neither it nor `!nuke` appears.
+Race setup's on/off switches for the hype meter (and with it the nuke) and for each paid event, all on by default. Each applies from the next race; with the hype meter off, neither it nor `!nuke` appears.
 _Avoid_: Chaos meter, event settings
 
 **Join window**:
@@ -141,7 +141,7 @@ A paid event or chat-wide event: a spectacle that hits the leading tank, a rando
 _Avoid_: Superweapon, ultimate
 
 **Paid event**:
-A big event one viewer sets off with a redemption or a cheer; never with a chat command. A cheer in chat sets off only Chrono swap; one from the Twitch extension can set off any paid event.
+A big event one viewer sets off with a redemption or a cheer; never with a chat command. A cheer in chat sets off the paid event whose fixed price it matches exactly: 10 bits Desolator, 20 Kirov airship, 50 Chrono swap; any other amount sets off nothing. One from the Twitch extension sets off the paid event bought.
 _Avoid_: Channel-point event, bits event
 
 **Chat-wide event**:
@@ -169,7 +169,7 @@ A paid event that leaves radiation on the ideal line just ahead of the leading t
 _Avoid_: Rad cannon, slow trap
 
 **Chrono swap**:
-A paid event, also set off by a cheer of exactly the operator's price (any other amount does nothing), that swaps the places of two random tanks still racing, one from the front half of them in the standings and one from the back half. A cheer-paid one with no valid pair tries again 10 s later, keeping its place in the queue.
+A paid event that swaps the places of two random tanks still racing, one from the front half of them in the standings and one from the back half. A cheer-paid one with no valid pair tries again 10 s later, keeping its place in the queue.
 On stream it shows as "Chronosphere", its channel-point reward title.
 _Avoid_: Teleport, switch
 
@@ -212,7 +212,7 @@ The race's word back to the chat source on a redemption: fulfilled when its even
 _Avoid_: Ack, receipt
 
 **Cheer**:
-A viewer spending bits to set off an audience interaction; bits are never refunded, so a cheer's interaction cannot fail during a race. It queues ahead of waiting redemptions, and one still waiting at race end, or arriving between races, takes the first turn after the next start countdown that has its event switched on. One in chat for a switched-off event does nothing; one from the Twitch extension, offered only during a race and only for events switched on, always plays, even if its event was switched off since, unless it is bought while the game's link to the extension backend is down: then it is lost, like bits given for nothing.
+A viewer spending bits to set off a paid event; in chat, the exact amount picks the event (see **Paid event**). Bits are never refunded, so a cheer's interaction cannot fail during a race. It queues ahead of waiting redemptions, and one still waiting at race end, or arriving between races, takes the first turn after the next start countdown that has its event switched on. One in chat for a switched-off event does nothing; one from the Twitch extension, offered only during a race and only for events switched on, always plays, even if its event was switched off since, unless it is bought while the game's link to the extension backend is down: then it is lost, like bits given for nothing.
 _Avoid_: Bits, donation, redemption
 
 **Command list**:

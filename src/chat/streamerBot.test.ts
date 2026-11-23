@@ -94,14 +94,13 @@ describe('Streamer.bot chat source', () => {
     expect(last().actions()).toMatchObject([{ redemptionId: 'red-1' }, { redemptionId: 'red-2' }]);
   });
 
-  it('turns a cheer of exactly the price into a Chrono swap and ignores any other amount', () => {
+  it('turns a cheer of exactly 10, 20 or 50 bits into a Desolator, Kirov or Chrono swap and ignores any other amount', () => {
     const cheer = (bits: number) => last().event('Twitch', 'Cheer', { bits, messageId: `m${bits}`, user: { id: '7', name: 'Vera' }, text: `Cheer${bits}` });
-    cheer(49);
-    cheer(51);
+    for (const bits of [9, 49, 51, 100]) cheer(bits);
     expect(eventChips(race)).toEqual([]);
-    cheer(50);
+    for (const bits of [10, 20, 50]) cheer(bits);
     last().event('Twitch', 'Cheer', { bits: 50, user: null, text: 'Cheer50' });
-    expect(eventChips(race).map((c) => c.label)).toEqual(['CHRONOSPHERE · Vera · next race', 'CHRONOSPHERE · Anonymous · next race']);
+    expect(eventChips(race).map((c) => c.label)).toEqual(['DESOLATOR · Vera · next race', 'KIROV · Vera · next race', 'CHRONOSPHERE · Vera · next race', 'CHRONOSPHERE · Anonymous · next race']);
     vi.advanceTimersByTime(1000);
     expect(last().actions()).toEqual([]);
   });

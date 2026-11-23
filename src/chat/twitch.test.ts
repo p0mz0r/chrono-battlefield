@@ -154,12 +154,12 @@ describe('Twitch direct chat source', () => {
     ]);
   });
 
-  it('turns a cheer of exactly the price into a Chrono swap, anonymous ones too', () => {
+  it('turns a cheer of exactly 10, 20 or 50 bits into a Desolator, Kirov or Chrono swap, anonymous ones too', () => {
     const cheer = (bits: number, user: { user_id: string; user_name: string } | null) => last().notify('channel.cheer', { is_anonymous: !user, user_id: user?.user_id ?? null, user_login: null, user_name: user?.user_name ?? null, broadcaster_user_id: '42', message: `Cheer${bits}`, bits });
-    cheer(49, { user_id: '7', user_name: 'Vera' });
-    cheer(50, { user_id: '7', user_name: 'Vera' });
+    const vera = { user_id: '7', user_name: 'Vera' };
+    for (const bits of [49, 100, 10, 20, 50]) cheer(bits, vera);
     cheer(50, null);
-    expect(eventChips(race).map((c) => c.label)).toEqual(['CHRONOSPHERE · Vera · next race', 'CHRONOSPHERE · Anonymous · next race']);
+    expect(eventChips(race).map((c) => c.label)).toEqual(['DESOLATOR · Vera · next race', 'KIROV · Vera · next race', 'CHRONOSPHERE · Vera · next race', 'CHRONOSPHERE · Anonymous · next race']);
   });
 
   const redeemKirov = (id = 'red-1') => last().notify('channel.channel_points_custom_reward_redemption.add', { id, user_id: '7', user_name: 'Vera', status: 'unfulfilled', reward: { id: 'rew-1', title: 'Kirov' } });
