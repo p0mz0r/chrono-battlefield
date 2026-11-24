@@ -28,7 +28,7 @@ Cheers are never settled, and YouTube and Kick paid events are ignored.
 
 ## The shipped action
 
-The action is one Execute C# Code sub-action, with no trigger, in `src/chat/settleAction.cs`. Its import string, `src/chat/settleAction.sb`, is built from that file by `node tools/streamer-bot-action.mjs`; rerun it after any change to the C#, and a test fails until you do. Install setup (`F2`) shows the string for copying, and the operator pastes it into Streamer.bot's Import. A refusal from Twitch, or an unknown `outcome`, is logged as a warning in Streamer.bot's log. Verified on Streamer.bot 1.0.7 against real redemptions: one refunded outside a race, one fulfilled when its Chrono swap landed.
+The action is one Execute C# Code sub-action, with no trigger, in `src/chat/settleAction.cs`. Its import string, `src/chat/settleAction.sb`, is built from that file by `node tools/streamer-bot-action.mjs`; rerun it after any change to the C#, and a test fails until you do. Install setup (`F2`) shows the string for copying, and the operator pastes it into Streamer.bot's Import. A refusal from Twitch, or an unknown `outcome`, is logged as a warning in Streamer.bot's log. Verified on Streamer.bot 1.0.7 against real redemptions: one refunded outside a race, one fulfilled when its Chronosphere landed.
 
 ## Reward titles
 
@@ -40,9 +40,9 @@ A redemption reaches the game only if its reward title matches one of these afte
 |---|---|---|
 | Kirov | Kirov airship | A Kirov airship hovers ahead of the leading tank and bombs every tank that comes near: stunned and knocked back. Shields block it. Refunded if no tank comes near. |
 | Desolator | Desolator | Radiation lands on the track just ahead of the leading tank for about 15 s and slows every tank in it, most at its centre. Shields ignore it. |
-| Chronosphere | Chrono swap | Swaps two random tanks still racing: one from the front half of the standings, one from the back half. Shielded tanks are safe. |
+| Chronosphere | Chronosphere | Swaps two random tanks still racing: one from the front half of the standings, one from the back half. Shielded tanks are safe. |
 
-A cheer sets off a Chrono swap only at exactly the price set in race setup.
+A cheer sets off a Chronosphere only at exactly the price set in race setup.
 
 ## Connection
 

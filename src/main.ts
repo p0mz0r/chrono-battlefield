@@ -444,7 +444,7 @@ async function main() {
       const p = ground(x, y), r = DESOLATOR.radius * Math.max(spread, 0.1);
       for (let k = 5; k > 0; k--) targetRing.ellipse(p.x, p.y, r * k / 5 * 30 * Math.SQRT2, r * k / 5 * 15 * Math.SQRT2).fill({ color: 0x7cff3a, alpha: 0.12 * Math.min(spread * 2, left) });
     }
-    // A pulsing red ring under a big event's target through its build-up; Chrono swap joins its two tanks by a line; the Kirov's rings the blast on its spot, the Desolator's the radiation on its cell.
+    // A pulsing red ring under a big event's target through its build-up; Chronosphere joins its two tanks by a line; the Kirov's rings the blast on its spot, the Desolator's the radiation on its cell.
     const playing = playingEvent(race);
     const spot = playing?.ship ?? playing?.patch;
     if (spot) {
@@ -517,7 +517,7 @@ async function main() {
       const p = toScreen(x, y, level(lx, ly));
       put(v3Tex[frameOf(r.dx, r.dy)]!, p.x, p.y - 12);
     }
-    // A Chrono swap warps each tank out of the cell the tank left and in at the cell it landed on.
+    // A Chronosphere warps each tank out of the cell the tank left and in at the cell it landed on.
     for (const r of race.racers) {
       if (!r.warp) continue;
       const shown = Math.floor((race.frame + a - r.warp.at) * ANIM_FPS / TICK_HZ);

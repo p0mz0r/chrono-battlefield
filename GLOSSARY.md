@@ -141,7 +141,7 @@ A paid event or chat-wide event: a spectacle that hits the leading tank, a rando
 _Avoid_: Superweapon, ultimate
 
 **Paid event**:
-A big event one viewer sets off with a redemption or a cheer; never with a chat command. A cheer in chat sets off the paid event whose fixed price it matches exactly: 10 bits Desolator, 20 Kirov airship, 50 Chrono swap; any other amount sets off nothing. One from the Twitch extension sets off the paid event bought.
+A big event one viewer sets off with a redemption or a cheer; never with a chat command. A cheer in chat sets off the paid event whose fixed price it matches exactly: 10 bits Desolator, 20 Kirov airship, 50 Chronosphere; any other amount sets off nothing. One from the Twitch extension sets off the paid event bought.
 _Avoid_: Channel-point event, bits event
 
 **Chat-wide event**:
@@ -168,10 +168,9 @@ _Avoid_: Zeppelin, blimp, airstrike
 A paid event that leaves radiation on the ideal line just ahead of the leading tank for about 15 s.
 _Avoid_: Rad cannon, slow trap
 
-**Chrono swap**:
+**Chronosphere**:
 A paid event that swaps the places of two random tanks still racing, one from the front half of them in the standings and one from the back half. A cheer-paid one with no valid pair tries again 10 s later, keeping its place in the queue.
-On stream it shows as "Chronosphere", its channel-point reward title.
-_Avoid_: Teleport, switch
+_Avoid_: Chrono swap, teleport, switch
 
 ### Chat
 
@@ -250,7 +249,7 @@ The headline shown from the moment a big event's turn comes until it lands, nami
 _Avoid_: Toast, alert, popup
 
 **Target ring**:
-The pulsing red ring under a big event's target from its turn until it lands, in both camera modes: on the leading tank, on a cell, or on both Chrono swap tanks joined by a line. It moves to whoever the event will hit instead when its target finishes.
+The pulsing red ring under a big event's target from its turn until it lands, in both camera modes: on the leading tank, on a cell, or on both Chronosphere tanks joined by a line. It moves to whoever the event will hit instead when its target finishes.
 
 **Event queue**:
 The row of chips beside the hype meter showing the big event playing now and the ones waiting, in order, each with who set it off (a chat-wide event's chip reads "next" instead); a cheer carried over to the next race keeps its chip, marked "next race", through race setup and the join window.
