@@ -219,6 +219,23 @@ describe('audience interactions', () => {
     expect(trace(7).some((event) => event.startsWith('v3'))).toBe(true);
   });
 
+  it('ends the command list with the cheer price of each paid event switched on, only while racing', () => {
+    const race = createRace(course(), ARENA, 1);
+    race.chaos.delete('kirov');
+    openJoinWindow(race, { joinSeconds: 1 });
+    say(race, 'a', '!rhino', 'Kane');
+    ticks(race, 4 * TICK_HZ);
+    expect(race.phase).toBe('racing');
+    expect(commandList(race).slice(-2)).toEqual(['10 bits: Desolator', '50 bits: Chronosphere']);
+    race.chaos.add('kirov');
+    expect(commandList(race).slice(-3)).toEqual(['10 bits: Desolator', '20 bits: Kirov', '50 bits: Chronosphere']);
+    race.paused = true;
+    expect(commandList(race)).toEqual([]);
+    race.paused = false;
+    endRace(race);
+    expect(commandList(race)).toEqual([]);
+  });
+
   it('parses names, rejects ambiguous targets without spending cooldown, and shows phase commands', () => {
     const race = createRace(course(), ARENA, 1);
     expect(commandList(race)).toEqual([]);
