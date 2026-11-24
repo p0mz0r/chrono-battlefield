@@ -45,19 +45,20 @@ export interface ChatResult {
 // ponytail: the Kirov's Infinity build-up keeps it playing until `kirovRun` sets its real landing; a per-event phase if more events wait like this.
 export const BIG_EVENTS = { chronosphere: { label: 'CHRONOSPHERE', buildUp: 3 }, nuke: { label: 'NUKE', buildUp: 3 }, kirov: { label: 'KIROV', buildUp: Infinity }, desolator: { label: 'DESOLATOR', buildUp: 2 } } as const;
 export type BigEvent = keyof typeof BIG_EVENTS;
-/** A big event one viewer sets off with a redemption or a cheer: every big event but the nuke. */
+/** A big event one viewer pays for with a cheer: every big event but the nuke. */
 export type PaidEvent = Exclude<BigEvent, 'nuke'>;
+/** Each paid event's name, as viewers see it in the command list. */
+export const PAID_TITLES: Record<PaidEvent, string> = { kirov: 'Kirov', desolator: 'Desolator', chronosphere: 'Chronosphere' };
 /**
- * The channel-point reward each paid event is redeemed with (#102): its title (ASCII, at most 45 characters, viewer-facing
- * only) and the prompt viewers see (at most 200).
+ * The channel-point rewards and what each sets off: its title (ASCII, at most 45 characters, viewer-facing only) and the
+ * prompt viewers see (at most 200). None yet: paid events are cheers only (#184); the redemption path stays for later rewards.
  */
-export const REWARDS: Record<PaidEvent, { title: string; prompt: string }> = {
-  kirov: { title: 'Kirov', prompt: 'A Kirov airship hovers ahead of the leading tank and bombs every tank that comes near: stunned and knocked back. Shields block it. Refunded if no tank comes near.' },
-  desolator: { title: 'Desolator', prompt: 'Radiation lands on the track just ahead of the leading tank for about 15 s and slows every tank in it, most at its centre. Shields ignore it.' },
-  chronosphere: { title: 'Chronosphere', prompt: 'Swaps two random tanks still racing: one from the front half of the standings, one from the back half. Shielded tanks are safe.' },
-};
+export const REWARDS: Partial<Record<PaidEvent, { title: string; prompt: string }>> = {};
+/** Titles of the rewards paid events had before they became cheers only (#184): their redemptions are refunded. */
+export const RETIRED_REWARDS = ['Kirov', 'Desolator', 'Chronosphere'];
 /** The bits a chat cheer must be exactly to set off each paid event (#175); distinct, so each amount means one event. */
-export const CHEER_PRICES: Record<PaidEvent, number> = { desolator: 10, kirov: 20, chronosphere: 50 };/** The paid event a chat cheer of this many bits sets off, if any: an ordinary cheer sets off nothing. */
+export const CHEER_PRICES: Record<PaidEvent, number> = { desolator: 10, kirov: 20, chronosphere: 50 };
+/** The paid event a chat cheer of this many bits sets off, if any: an ordinary cheer sets off nothing. */
 export function cheerEvent(bits: number): PaidEvent | undefined {
   return (Object.keys(CHEER_PRICES) as PaidEvent[]).find((event) => CHEER_PRICES[event] === bits);
 }
@@ -262,7 +263,7 @@ export function commandList(race: Race): string[] {
   return [...interactions.filter((verb) => race.enabled.has(verb))
     .map((verb) => `!${verb}${COMMANDS[verb].hint}${COMMANDS[verb].racers ? ' (racers)' : ''}`), ...armed(race) ? ['!nuke'] : [],
     ...(Object.keys(CHEER_PRICES) as PaidEvent[]).filter((event) => race.chaos.has(event)).sort((a, b) => CHEER_PRICES[a] - CHEER_PRICES[b])
-      .map((event) => `${CHEER_PRICES[event]} bits: ${REWARDS[event].title}`)];
+      .map((event) => `${CHEER_PRICES[event]} bits: ${PAID_TITLES[event]}`)];
 }
 
 /** Operator: opens the join window (default 90 s); the finish timer (default 60 s) starts at the first finish. */

@@ -55,10 +55,10 @@ Check the real window, not only headless `shot.mjs`: Edge's cache, profile and f
 For a ticket that asks for a recording, the dev page plays a race unattended and `tools/shot.mjs` records it:
 
 ```
-node tools/shot.mjs "http://localhost:5173/?seed=7&autoopen=1&join=3&fake=6&redeem=kirov@6&zoom=1.8" --size 1280x720 --wait 30 --video .scratch/rec
+node tools/shot.mjs "http://localhost:5173/?seed=7&autoopen=1&join=3&fake=6&cheer=kirov@6&zoom=1.8" --size 1280x720 --wait 30 --video .scratch/rec
 ```
 
-- `autoopen=1&join=3&fake=6` opens a 3 s join window with 6 fake viewers; `redeem=<event>@<s>` redeems a big event (`kirov`, `chronosphere`, `desolator`) that many seconds after GO; `zoom` follows the leading tank. More URL shortcuts sit at the end of `src/race/devPanel.ts`.
+- `autoopen=1&join=3&fake=6` opens a 3 s join window with 6 fake viewers; `cheer=<event>@<s>` cheers for a paid event (`kirov`, `chronosphere`, `desolator`) that many seconds after GO; `zoom` follows the leading tank. More URL shortcuts sit at the end of `src/race/devPanel.ts`.
 - `--wait` counts from page ready, so set it to the event's time plus however long it plays. The video starts at page load, about 10 s before GO.
 - To check frames, tile them with ffmpeg: `ffmpeg -sseof -24 -i <video> -vf "fps=2,scale=426:-1,tile=6x8" -frames:v 1 sheet.png`.
 - SwiftShader renders a few frames per second, so the video is good for checking frames, not for showing. Footage for an issue or stream comes from OBS.
