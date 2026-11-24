@@ -154,7 +154,7 @@ describe('Twitch direct chat source', () => {
     ]);
   });
 
-  it('turns a cheer of exactly 10, 20 or 50 bits into a Desolator, Kirov or Chrono swap, anonymous ones too', () => {
+  it('turns a cheer of exactly 10, 20 or 50 bits into a Desolator, Kirov or Chronosphere, anonymous ones too', () => {
     const cheer = (bits: number, user: { user_id: string; user_name: string } | null) => last().notify('channel.cheer', { is_anonymous: !user, user_id: user?.user_id ?? null, user_login: null, user_name: user?.user_name ?? null, broadcaster_user_id: '42', message: `Cheer${bits}`, bits });
     const vera = { user_id: '7', user_name: 'Vera' };
     for (const bits of [49, 100, 10, 20, 50]) cheer(bits, vera);

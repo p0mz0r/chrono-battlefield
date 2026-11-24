@@ -112,9 +112,9 @@ describe('director camera', () => {
     return { r, step };
   }
 
-  it('shows a Chrono swap as the back tank first, then cuts to it landing up front and holds 3 s', () => {
+  it('shows a Chronosphere as the back tank first, then cuts to it landing up front and holds 3 s', () => {
     const { r, step } = calm();
-    expect(paid(r, { viewerId: 'v', name: 'Vera', event: 'chronoSwap', via: 'redemption', reference: 'r1' }).ok).toBe(true);
+    expect(paid(r, { viewerId: 'v', name: 'Vera', event: 'chronosphere', via: 'redemption', reference: 'r1' }).ok).toBe(true);
     const turn = step();
     const back = r.queue[0]!.picks[1]!;
     expect(turn).toMatchObject({ racer: back, reason: 'Chronosphere by Vera', cutAt: r.frame });
@@ -200,7 +200,7 @@ describe('director camera', () => {
 
   it('holds back hit cuts while an event plays, and drops the hits it held back', () => {
     const { r, step } = calm();
-    paid(r, { viewerId: 'v', name: 'Vera', event: 'chronoSwap', via: 'redemption', reference: 'r1' });
+    paid(r, { viewerId: 'v', name: 'Vera', event: 'chronosphere', via: 'redemption', reference: 'r1' });
     const held = step();
     const target = standings(r).find((s) => s.name !== held.racer.name)!.name;
     expect(chat(r, { viewerId: 'w', name: 'Wes', text: `!missile ${target}` }).ok).toBe(true);

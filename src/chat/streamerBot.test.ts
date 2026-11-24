@@ -94,7 +94,7 @@ describe('Streamer.bot chat source', () => {
     expect(last().actions()).toMatchObject([{ redemptionId: 'red-1' }, { redemptionId: 'red-2' }]);
   });
 
-  it('turns a cheer of exactly 10, 20 or 50 bits into a Desolator, Kirov or Chrono swap and ignores any other amount', () => {
+  it('turns a cheer of exactly 10, 20 or 50 bits into a Desolator, Kirov or Chronosphere and ignores any other amount', () => {
     const cheer = (bits: number) => last().event('Twitch', 'Cheer', { bits, messageId: `m${bits}`, user: { id: '7', name: 'Vera' }, text: `Cheer${bits}` });
     for (const bits of [9, 49, 51, 100]) cheer(bits);
     expect(eventChips(race)).toEqual([]);

@@ -43,21 +43,21 @@ export interface ChatResult {
  * Kirov's is open-ended: it lands with its last bomb).
  */
 // ponytail: the Kirov's Infinity build-up keeps it playing until `kirovRun` sets its real landing; a per-event phase if more events wait like this.
-export const BIG_EVENTS = { chronoSwap: { label: 'CHRONOSPHERE', buildUp: 3 }, nuke: { label: 'NUKE', buildUp: 3 }, kirov: { label: 'KIROV', buildUp: Infinity }, desolator: { label: 'DESOLATOR', buildUp: 2 } } as const;
+export const BIG_EVENTS = { chronosphere: { label: 'CHRONOSPHERE', buildUp: 3 }, nuke: { label: 'NUKE', buildUp: 3 }, kirov: { label: 'KIROV', buildUp: Infinity }, desolator: { label: 'DESOLATOR', buildUp: 2 } } as const;
 export type BigEvent = keyof typeof BIG_EVENTS;
 /** A big event one viewer sets off with a redemption or a cheer: every big event but the nuke. */
 export type PaidEvent = Exclude<BigEvent, 'nuke'>;
 /**
  * The channel-point reward each paid event is redeemed with (#102): its title (ASCII, at most 45 characters, viewer-facing
- * only, so Chrono swap's may say Chronosphere) and the prompt viewers see (at most 200).
+ * only) and the prompt viewers see (at most 200).
  */
 export const REWARDS: Record<PaidEvent, { title: string; prompt: string }> = {
   kirov: { title: 'Kirov', prompt: 'A Kirov airship hovers ahead of the leading tank and bombs every tank that comes near: stunned and knocked back. Shields block it. Refunded if no tank comes near.' },
   desolator: { title: 'Desolator', prompt: 'Radiation lands on the track just ahead of the leading tank for about 15 s and slows every tank in it, most at its centre. Shields ignore it.' },
-  chronoSwap: { title: 'Chronosphere', prompt: 'Swaps two random tanks still racing: one from the front half of the standings, one from the back half. Shielded tanks are safe.' },
+  chronosphere: { title: 'Chronosphere', prompt: 'Swaps two random tanks still racing: one from the front half of the standings, one from the back half. Shielded tanks are safe.' },
 };
 /** The bits a chat cheer must be exactly to set off each paid event (#175); distinct, so each amount means one event. */
-export const CHEER_PRICES: Record<PaidEvent, number> = { desolator: 10, kirov: 20, chronoSwap: 50 };/** The paid event a chat cheer of this many bits sets off, if any: an ordinary cheer sets off nothing. */
+export const CHEER_PRICES: Record<PaidEvent, number> = { desolator: 10, kirov: 20, chronosphere: 50 };/** The paid event a chat cheer of this many bits sets off, if any: an ordinary cheer sets off nothing. */
 export function cheerEvent(bits: number): PaidEvent | undefined {
   return (Object.keys(CHEER_PRICES) as PaidEvent[]).find((event) => CHEER_PRICES[event] === bits);
 }
@@ -67,7 +67,7 @@ export type Chaos = 'hype' | PaidEvent;
 export const CHAOS: Chaos[] = ['hype', ...(Object.keys(BIG_EVENTS) as BigEvent[]).filter((event): event is PaidEvent => event !== 'nuke')];
 /** Frames from one big event landing to the next one's turn. */
 const EVENT_GAP = 10 * TICK_HZ;
-/** Frames a cheer-paid Chrono swap with no valid pair waits before trying again. */
+/** Frames a cheer-paid Chronosphere with no valid pair waits before trying again. */
 const CHEER_RETRY = 10 * TICK_HZ;
 /** Seconds the nuke falls before impact, under the siren. */
 export const NUKE_FALL = 2.1;
@@ -128,7 +128,7 @@ export interface Turn {
   /** Race frame a cheer whose swap had no valid pair may take its turn again; it keeps its place meanwhile. */
   retryAt: number;
   lands: number | undefined;
-  /** Chrono swap: the front-half and back-half tanks; nuke: the leading tank. */
+  /** Chronosphere: the front-half and back-half tanks; nuke: the leading tank. */
   picks: Racer[];
   /** Nuke: the viewers who called it. */
   callers: string[];
@@ -177,7 +177,7 @@ export interface Racer {
   protectedUntil: number;
   botNext: number;
   botV3Next: boolean;
-  /** The last Chrono swap: the cells left and landed on, and the race frame. */
+  /** The last Chronosphere: the cells left and landed on, and the race frame. */
   warp: { from: Cell; to: Cell; at: number } | undefined;
   /** The last knockback, drawn only: the cells the tank is thrown back along, from the one it was caught on to the one it landed on, and the race frame. */
   knock: { path: Spot[]; at: number } | undefined;
@@ -466,11 +466,11 @@ function playEvents(race: Race): void {
   if (due < 0) return;
   const turn = race.queue.splice(due, 1)[0]!;
   race.queue.unshift(turn);
-  const nuke = turn.event === 'nuke', kirov = turn.event === 'kirov', desolator = turn.event === 'desolator', aim = turn.event === 'chronoSwap' ? swapPicks : leaderTarget;
+  const nuke = turn.event === 'nuke', kirov = turn.event === 'kirov', desolator = turn.event === 'desolator', aim = turn.event === 'chronosphere' ? swapPicks : leaderTarget;
   if (turn.lands === undefined) {
     if (!aim(race, turn)) return fizzle(race);
     turn.lands = race.frame + BIG_EVENTS[turn.event].buildUp * TICK_HZ;
-    race.sounds.push({ nuke: 'nukeLaunch', chronoSwap: 'chronoSelect', kirov: 'kirovCreated', desolator: 'desolatorVoice' }[turn.event]);
+    race.sounds.push({ nuke: 'nukeLaunch', chronosphere: 'chronoSelect', kirov: 'kirovCreated', desolator: 'desolatorVoice' }[turn.event]);
     // ponytail: aimed by top speed on clear ground; a slower leading tank meets it later, a faster one is over its edge.
     if (desolator) {
       const { x, y } = lineAt(race.course, turn.picks[0]!.progress + DESOLATOR.ahead);
@@ -495,7 +495,7 @@ function playEvents(race: Race): void {
       race.sounds.push('desolatorDeploy');
       post(race, `${turn.by} ▸ ${BIG_EVENTS.desolator.label} ▸ ${turn.picks[0]!.name}`);
     } else {
-      if (!chronoSwap(race, turn.picks[0]!, turn.picks[1]!)) return fizzle(race);
+      if (!chronosphere(race, turn.picks[0]!, turn.picks[1]!)) return fizzle(race);
       race.sounds.push('chrono');
       post(race, `${turn.by} ▸ ${BIG_EVENTS[turn.event].label} ▸ ${turn.picks[0]!.name} ⇄ ${turn.picks[1]!.name}`);
     }
@@ -625,7 +625,7 @@ function fizzle(race: Race): void {
 }
 
 /**
- * Keeps each Chrono swap pick that is still racing unshielded, else picks again from its half of the tanks still
+ * Keeps each Chronosphere pick that is still racing unshielded, else picks again from its half of the tanks still
  * racing; false with no valid pair.
  */
 function swapPicks(race: Race, turn: Turn): boolean {
@@ -640,7 +640,7 @@ function swapPicks(race: Race, turn: Turn): boolean {
 }
 
 /** Two moves: each tank lands on (or beside) the other's cell and drives on with its waypoints. False if one can't land. */
-function chronoSwap(race: Race, a: Racer, b: Racer): boolean {
+function chronosphere(race: Race, a: Racer, b: Racer): boolean {
   const { field, course } = race;
   const goal = (r: Racer) => r.fork && course.forks.get(r.fork.from)!.via[r.fork.nextVia] || course.waypoints[r.next] || course.finish;
   const reaches = (r: Racer) => (s: Spot) => findRoute(field.grid, s, goal(r)) !== undefined;

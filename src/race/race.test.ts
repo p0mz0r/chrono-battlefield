@@ -609,7 +609,7 @@ describe('course progress', () => {
 
 describe('paid events', () => {
   const redeem = (race: Race, viewerId: string, name: string, reference: string) =>
-    paid(race, { viewerId, name, event: 'chronoSwap', via: 'redemption', reference });
+    paid(race, { viewerId, name, event: 'chronosphere', via: 'redemption', reference });
   const calm = (seed = 1) => {
     const race = racing(seed);
     for (const r of race.racers) if (r.bot) r.botNext = Infinity;
@@ -618,7 +618,7 @@ describe('paid events', () => {
     return race;
   };
 
-  it('plays a Chrono swap redemption in its turn and settles it fulfilled when it lands', () => {
+  it('plays a Chronosphere redemption in its turn and settles it fulfilled when it lands', () => {
     const race = calm();
     const before = standings(race).map((s) => s.name);
     expect(redeem(race, 'v', 'Vera', 'r1')).toEqual({ ok: true, reason: 'queued' });
@@ -734,7 +734,7 @@ describe('paid events', () => {
     expect(race.settlements.slice(2)).toEqual([{ reference: 'r5', outcome: 'refunded' }, { reference: 'r6', outcome: 'refunded' }]);
   });
 
-  it.each([1, 2, 3])('lets every tank but the last still finish after Chrono swaps (seed %i)', (seed) => {
+  it.each([1, 2, 3])('lets every tank but the last still finish after Chronospheres (seed %i)', (seed) => {
     const race = calm(seed);
     race.finishFrames = Infinity;
     for (let n = 0; n < 3; n++) redeem(race, `v${n}`, `V${n}`, `r${n}`);
@@ -1123,7 +1123,7 @@ describe('trial race', () => {
     expect(say(race, 'a', '!boost Bot1')).toEqual({ ok: false, reason: 'ignored' });
     expect(race.feed).toEqual([]);
     paid(race, { viewerId: 'a', name: 'Kane', event: 'kirov', via: 'redemption', reference: 'r1' });
-    paid(race, { viewerId: 'b', name: 'Kara', event: 'chronoSwap', via: 'cheer', reference: '' });
+    paid(race, { viewerId: 'b', name: 'Kara', event: 'chronosphere', via: 'cheer', reference: '' });
     expect([race.queue, race.settlements, race.carried.map((t) => t.by)]).toEqual([[], [{ reference: 'r1', outcome: 'refunded' }], ['Kara']]);
 
     endRace(race);
@@ -1133,7 +1133,7 @@ describe('trial race', () => {
 });
 
 describe('hype meter', () => {
-  const redeem = (race: Race, viewerId: string) => paid(race, { viewerId, name: viewerId, event: 'chronoSwap', via: 'redemption', reference: viewerId });
+  const redeem = (race: Race, viewerId: string) => paid(race, { viewerId, name: viewerId, event: 'chronosphere', via: 'redemption', reference: viewerId });
   const calm = () => {
     const race = racing();
     for (const r of race.racers) if (r.bot) r.botNext = Infinity;
@@ -1257,8 +1257,8 @@ describe('hype meter', () => {
 });
 
 describe('cheers', () => {
-  const cheer = (race: Race, viewerId: string, event: PaidEvent = 'chronoSwap') => paid(race, { viewerId, name: viewerId, event, via: 'cheer', reference: `c:${viewerId}` });
-  const redeem = (race: Race, viewerId: string) => paid(race, { viewerId, name: viewerId, event: 'chronoSwap', via: 'redemption', reference: viewerId });
+  const cheer = (race: Race, viewerId: string, event: PaidEvent = 'chronosphere') => paid(race, { viewerId, name: viewerId, event, via: 'cheer', reference: `c:${viewerId}` });
+  const redeem = (race: Race, viewerId: string) => paid(race, { viewerId, name: viewerId, event: 'chronosphere', via: 'redemption', reference: viewerId });
   const calm = (seed = 1) => {
     const race = racing(seed);
     for (const r of race.racers) if (r.bot) r.botNext = Infinity;
@@ -1267,13 +1267,13 @@ describe('cheers', () => {
     return race;
   };
 
-  it('maps exactly 10, 20 and 50 bits to Desolator, Kirov and Chrono swap, and any other amount to nothing', () => {
-    expect([10, 20, 50].map((bits) => cheerEvent(bits))).toEqual(['desolator', 'kirov', 'chronoSwap']);
+  it('maps exactly 10, 20 and 50 bits to Desolator, Kirov and Chronosphere, and any other amount to nothing', () => {
+    expect([10, 20, 50].map((bits) => cheerEvent(bits))).toEqual(['desolator', 'kirov', 'chronosphere']);
     for (const bits of [1, 9, 11, 19, 21, 49, 51, 100]) expect(cheerEvent(bits)).toBeUndefined();
     expect(new Set(Object.values(CHEER_PRICES)).size).toBe(Object.keys(CHEER_PRICES).length); // each amount means one event
   });
 
-  it('sets off a Chrono swap, never settled', () => {
+  it('sets off a Chronosphere, never settled', () => {
     const race = calm();
     expect(cheer(race, 'v')).toEqual({ ok: true, reason: 'queued' });
     expect(race.hype.points).toBe(3);
@@ -1289,12 +1289,12 @@ describe('cheers', () => {
     redeem(race, 'r2');
     expect(cheer(race, 'd', 'desolator')).toEqual({ ok: true, reason: 'queued' });
     expect(cheer(race, 'k', 'kirov')).toEqual({ ok: true, reason: 'queued' });
-    expect(race.queue.map((t) => [t.by, t.event])).toEqual([['r1', 'chronoSwap'], ['d', 'desolator'], ['k', 'kirov'], ['r2', 'chronoSwap']]);
+    expect(race.queue.map((t) => [t.by, t.event])).toEqual([['r1', 'chronosphere'], ['d', 'desolator'], ['k', 'kirov'], ['r2', 'chronosphere']]);
   });
 
-  it('does nothing when Chrono swap is switched off', () => {
+  it('does nothing when Chronosphere is switched off', () => {
     const race = calm();
-    race.chaos.delete('chronoSwap');
+    race.chaos.delete('chronosphere');
     expect(cheer(race, 'v').ok).toBe(false);
     expect([race.queue, race.carried, race.settlements]).toEqual([[], [], []]);
   });
@@ -1318,7 +1318,7 @@ describe('cheers', () => {
     for (let i = 0; i < 30; i++) say(race, `fan${i}`, '!boost');
     for (const v of ['n1', 'n2', 'n3', 'n4', 'n5']) say(race, v, '!nuke');
     cheer(race, 'c2');
-    expect(race.queue.map((t) => `${t.event} ${t.by}`)).toEqual(['chronoSwap r1', 'nuke CHAT', 'chronoSwap c1', 'chronoSwap c2', 'chronoSwap r2']);
+    expect(race.queue.map((t) => `${t.event} ${t.by}`)).toEqual(['chronosphere r1', 'nuke CHAT', 'chronosphere c1', 'chronosphere c2', 'chronosphere r2']);
   });
 
   it('carries a cheer waiting at race end, or arriving between races, across the join window to fire first after the countdown', () => {
@@ -1384,11 +1384,11 @@ describe('cheers', () => {
     expect(eventChips(race).map((c) => c.label)).toEqual(['CHRONOSPHERE · Cleo · next race']);
   });
 
-  it('keeps a carried cheer waiting through a race with Chrono swap switched off', () => {
+  it('keeps a carried cheer waiting through a race with Chronosphere switched off', () => {
     const race = calm();
     endRace(race);
     cheer(race, 'Cleo');
-    race.chaos.delete('chronoSwap');
+    race.chaos.delete('chronosphere');
     openJoinWindow(race, { joinSeconds: 1 });
     say(race, 'a', '!rhino', 'Kane');
     untilPhase(race, 'racing');
@@ -1408,7 +1408,7 @@ describe('cheers', () => {
 });
 
 describe('nuke', () => {
-  const redeem = (race: Race, viewerId: string) => paid(race, { viewerId, name: viewerId, event: 'chronoSwap', via: 'redemption', reference: viewerId });
+  const redeem = (race: Race, viewerId: string) => paid(race, { viewerId, name: viewerId, event: 'chronosphere', via: 'redemption', reference: viewerId });
   let fans = 0;
   /** Fills the meter and has 5 viewers call `!nuke`. */
   const setOff = (race: Race) => {
@@ -1426,18 +1426,18 @@ describe('nuke', () => {
   it('takes the next turn on the 5th call, ahead of waiting paid events, behind the one playing', () => {
     const race = calm();
     redeem(race, 'v');
-    tickRace(race); // v's Chrono swap plays
+    tickRace(race); // v's Chronosphere plays
     redeem(race, 'w');
     setOff(race);
-    expect(race.queue.map((t) => `${t.event} ${t.by}`)).toEqual(['chronoSwap v', 'nuke CHAT', 'chronoSwap w']);
+    expect(race.queue.map((t) => `${t.event} ${t.by}`)).toEqual(['chronosphere v', 'nuke CHAT', 'chronosphere w']);
     expect(race.queue[1]!.callers).toEqual(['N1', 'N2', 'N3', 'N4', 'N5']);
     const idle = calm();
     redeem(idle, 'w');
     setOff(idle);
-    expect(idle.queue.map((t) => t.event)).toEqual(['nuke', 'chronoSwap']);
+    expect(idle.queue.map((t) => t.event)).toEqual(['nuke', 'chronosphere']);
     const first = idle.queue[0];
     setOff(idle); // a second nuke waits behind the first
-    expect(idle.queue.map((t) => t.event)).toEqual(['nuke', 'nuke', 'chronoSwap']);
+    expect(idle.queue.map((t) => t.event)).toEqual(['nuke', 'nuke', 'chronosphere']);
     expect(idle.queue[0]).toBe(first);
   });
 

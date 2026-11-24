@@ -26,7 +26,7 @@ export function mountDevPanel(race: Race, params: URLSearchParams, drainSettleme
   panel.innerHTML = `
 <b>Test chat</b><br>
 <input name="name" size="10" value="p0mz0r"> <input name="text" size="20" placeholder="!rhino"> <button name="say">Say</button><br>
-<button name="redeem">Redeem Chrono swap</button> <button name="kirov">Redeem Kirov</button> <button name="desolator">Redeem Desolator</button><br>
+<button name="redeem">Redeem Chronosphere</button> <button name="kirov">Redeem Kirov</button> <button name="desolator">Redeem Desolator</button><br>
 <button name="cheer">Cheer</button> <input name="bits" size="4" placeholder="10/20/50"> bits<br>
 <button name="fake">Add</button> <input name="n" size="2" value="${params.get('fake') ?? 5}"> fake viewers<br>
 <label><input type="checkbox" name="chaos"> chaos</label> <input name="rate" size="3" value="${params.get('chaos') ?? 3}"> msg/s, seed <input name="seed" size="4" value="${params.get('chatSeed') ?? 1}">
@@ -55,12 +55,12 @@ export function mountDevPanel(race: Race, params: URLSearchParams, drainSettleme
     const r = paid(race, { viewerId: `test:${name}`, name, event, via: bits === undefined ? 'redemption' : 'cheer', reference: `dev:${++redemptions}` });
     logLine(`${name} ${bits === undefined ? `redeems ${event}` : `cheers ${bits}`} → ${r.ok ? 'ok' : 'no'}, ${r.reason}`);
   };
-  $('redeem').onclick = () => send('chronoSwap');
+  $('redeem').onclick = () => send('chronosphere');
   $('kirov').onclick = () => send('kirov');
   $('desolator').onclick = () => send('desolator');
   // Like a chat source: the amount picks the event, any other amount sets off nothing.
   $('cheer').onclick = () => {
-    const bits = Number($('bits').value || CHEER_PRICES.chronoSwap), event = cheerEvent(bits);
+    const bits = Number($('bits').value || CHEER_PRICES.chronosphere), event = cheerEvent(bits);
     if (event) send(event, bits);
     else logLine(`${$('name').value} cheers ${bits} → no, no event at that price`);
   };
