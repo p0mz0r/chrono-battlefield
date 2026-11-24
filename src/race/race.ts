@@ -57,10 +57,7 @@ export const REWARDS: Record<PaidEvent, { title: string; prompt: string }> = {
   chronoSwap: { title: 'Chronosphere', prompt: 'Swaps two random tanks still racing: one from the front half of the standings, one from the back half. Shielded tanks are safe.' },
 };
 /** The bits a chat cheer must be exactly to set off each paid event (#175); distinct, so each amount means one event. */
-export const CHEER_PRICES: Record<PaidEvent, number> = { desolator: 10, kirov: 20, chronoSwap: 50 };
-/** Each paid event's name beside its cheer price on the command list; Chrono swap's is its stream name. */
-const CHEER_CAPTIONS: Record<PaidEvent, string> = { desolator: 'Desolator', kirov: 'Kirov airship', chronoSwap: 'Chronosphere' };
-/** The paid event a chat cheer of this many bits sets off, if any: an ordinary cheer sets off nothing. */
+export const CHEER_PRICES: Record<PaidEvent, number> = { desolator: 10, kirov: 20, chronoSwap: 50 };/** The paid event a chat cheer of this many bits sets off, if any: an ordinary cheer sets off nothing. */
 export function cheerEvent(bits: number): PaidEvent | undefined {
   return (Object.keys(CHEER_PRICES) as PaidEvent[]).find((event) => CHEER_PRICES[event] === bits);
 }
@@ -265,7 +262,7 @@ export function commandList(race: Race): string[] {
   return [...interactions.filter((verb) => race.enabled.has(verb))
     .map((verb) => `!${verb}${COMMANDS[verb].hint}${COMMANDS[verb].racers ? ' (racers)' : ''}`), ...armed(race) ? ['!nuke'] : [],
     ...(Object.keys(CHEER_PRICES) as PaidEvent[]).filter((event) => race.chaos.has(event)).sort((a, b) => CHEER_PRICES[a] - CHEER_PRICES[b])
-      .map((event) => `${CHEER_PRICES[event]} bits: ${CHEER_CAPTIONS[event]}`)];
+      .map((event) => `${CHEER_PRICES[event]} bits: ${REWARDS[event].title}`)];
 }
 
 /** Operator: opens the join window (default 90 s); the finish timer (default 60 s) starts at the first finish. */

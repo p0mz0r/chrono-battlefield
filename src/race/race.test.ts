@@ -228,7 +228,7 @@ describe('audience interactions', () => {
     expect(race.phase).toBe('racing');
     expect(commandList(race).slice(-2)).toEqual(['10 bits: Desolator', '50 bits: Chronosphere']);
     race.chaos.add('kirov');
-    expect(commandList(race).slice(-3)).toEqual(['10 bits: Desolator', '20 bits: Kirov airship', '50 bits: Chronosphere']);
+    expect(commandList(race).slice(-3)).toEqual(['10 bits: Desolator', '20 bits: Kirov', '50 bits: Chronosphere']);
     race.paused = true;
     expect(commandList(race)).toEqual([]);
     race.paused = false;
