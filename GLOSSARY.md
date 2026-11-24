@@ -141,7 +141,7 @@ A paid event or chat-wide event: a spectacle that hits the leading tank, a rando
 _Avoid_: Superweapon, ultimate
 
 **Paid event**:
-A big event one viewer sets off with a redemption or a cheer; never with a chat command. A cheer in chat sets off the paid event whose fixed price it matches exactly: 10 bits Desolator, 20 Kirov airship, 50 Chronosphere; any other amount sets off nothing. One from the Twitch extension sets off the paid event bought.
+A big event one viewer sets off with a cheer; never with a redemption or a chat command. A cheer in chat sets off the paid event whose fixed price it matches exactly: 10 bits Desolator, 20 Kirov airship, 50 Chronosphere; any other amount sets off nothing. One from the Twitch extension sets off the paid event bought.
 _Avoid_: Channel-point event, bits event
 
 **Chat-wide event**:
@@ -161,7 +161,7 @@ The chat-wide event: a few seconds after EVA announces the launch, with the nuke
 _Avoid_: Nuclear strike, bomb
 
 **Kirov airship**:
-A paid event: an airship appears over the course a few cells ahead of the leading tank, never right at the finish, and hovers there; once a tank comes near, it drops a bomb on that spot every second for a few seconds, and if none comes near in time it leaves and the redemption is refunded. Every tank in a bomb's blast is stunned and always knocked back, unless shielded; stun immunity spares the stun but not the knockback.
+A paid event: an airship appears over the course a few cells ahead of the leading tank, never right at the finish, and hovers there; once a tank comes near, it drops a bomb on that spot every second for a few seconds, and if none comes near in time it leaves and tries again 10 s later, keeping its place in the queue. Every tank in a bomb's blast is stunned and always knocked back, unless shielded; stun immunity spares the stun but not the knockback.
 _Avoid_: Zeppelin, blimp, airstrike
 
 **Desolator**:
@@ -203,7 +203,7 @@ The operator's one login to their Twitch channel, made off stream in setup, whic
 _Avoid_: Token, auth, account link
 
 **Redemption**:
-A viewer spending channel points on one of the game's rewards to set off an audience interaction; it is fulfilled when the interaction lands and refunded when it fails. Never a chat command, and not held to the viewer cooldown.
+A viewer spending channel points on one of the game's rewards to set off an audience interaction; it is fulfilled when the interaction lands and refunded when it fails. Never a chat command, never a paid event, and not held to the viewer cooldown. The game has no rewards yet; redemptions of the Kirov, Desolator and Chronosphere rewards it had before paid events became cheers only are refunded.
 _Avoid_: Reward, purchase, chat command
 
 **Settlement**:

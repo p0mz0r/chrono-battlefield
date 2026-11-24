@@ -1,4 +1,4 @@
-import { chat, cheerEvent, paid, REWARDS, type PaidEvent, type Race } from '../race/race.js';
+import { chat, cheerEvent, paid, RETIRED_REWARDS, REWARDS, type PaidEvent, type Race } from '../race/race.js';
 import { heldRedemptions, RETRY, type ChatSource } from './streamerBot.js';
 
 /** The game's registered public Twitch app (#115). Forks register their own. */
@@ -42,7 +42,7 @@ const storedRewards = (): Partial<Record<PaidEvent, string>> => { try { return J
 /** The Twitch account logged in, if any. */
 export const twitchLogin = () => stored()?.login;
 /** Titles of the game's rewards it has no ID for: not made yet, or Twitch refused (a reward of that title it didn't make). */
-export const missingRewards = () => (Object.keys(REWARDS) as PaidEvent[]).filter((event) => !storedRewards()[event]).map((event) => REWARDS[event].title);
+export const missingRewards = () => (Object.keys(REWARDS) as PaidEvent[]).filter((event) => !storedRewards()[event]).map((event) => REWARDS[event]!.title);
 
 /**
  * Device-code login (#116): `code` for the streamer to enter at `uri`; `done` resolves to their login once they have, and
@@ -73,7 +73,7 @@ export async function loginTwitch({ fetch = globalThis.fetch as Fetch } = {}) {
 
 /**
  * Twitch direct (ADR 0008): chat, redemptions of the game's own rewards and cheers over EventSub, for the logged-in
- * streamer's channel. Creates the rewards it is missing, so it may refund them.
+ * streamer's channel. Creates the rewards it is missing, so it may refund them, and removes its retired ones.
  */
 export function connectTwitch(race: Race, { fetch = globalThis.fetch as Fetch, Socket = WebSocket as new (url: string) => Socket } = {}): ChatSource {
   const login = stored();
@@ -98,35 +98,47 @@ export function connectTwitch(race: Race, { fetch = globalThis.fetch as Fetch, S
     localStorage.setItem(LOGIN_KEY, JSON.stringify(login));
   })().finally(() => { refreshing = undefined; });
 
-  const api = async (method: string, path: string, query: Record<string, string>, body?: unknown, retried = false): Promise<any> => {
+  const api = async (method: string, path: string, query: Record<string, string> | string[][], body?: unknown, retried = false): Promise<any> => {
     const reply = await fetch(`${HELIX}/${path}?${new URLSearchParams(query)}`, {
       method, headers: { Authorization: `Bearer ${login.access}`, 'Client-Id': TWITCH_CLIENT_ID, 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body),
     });
     if (reply.status === 401 && !retried) return refresh().then(() => api(method, path, query, body, true));
     if (!reply.ok) throw new HelixError(reply.status);
-    return (await reply.json()).data;
+    return reply.status === 204 ? undefined : (await reply.json()).data; // a delete answers with no body
   };
   const validate = async () => {
     if ((await fetch(`${ID}/validate`, { headers: { Authorization: `OAuth ${login.access}` } })).status === 401) await refresh();
   };
 
   const rewards = storedRewards();
-  /** Finds the rewards the game made before by title, and creates the rest. */
+  /**
+   * Refunds and deletes the game's retired rewards (#184), then finds the rewards it made before by title and creates
+   * the rest. Rewards it didn't make are never listed, so never touched.
+   */
   const ensureRewards = async () => {
-    const events = Object.keys(REWARDS) as PaidEvent[];
-    if (events.every((event) => rewards[event])) return;
     const mine: { id: string; title: string }[] = (await api('GET', 'channel_points/custom_rewards', { broadcaster_id, only_manageable_rewards: 'true' })) ?? [];
-    for (const event of events) {
-      const { title, prompt } = REWARDS[event];
-      rewards[event] = mine.find((reward) => reward.title === title)?.id ?? (await api('POST', 'channel_points/custom_rewards', { broadcaster_id }, { title, prompt, cost: STARTING_COST }).catch(() => undefined))?.[0]?.id;
+    for (const { id: reward_id } of mine.filter((reward) => RETIRED_REWARDS.includes(reward.title))) {
+      // Refund first: deleting a reward marks its waiting redemptions fulfilled, and the viewers' points would be lost.
+      const waiting = () => api('GET', 'channel_points/custom_rewards/redemptions', { broadcaster_id, reward_id, status: 'UNFULFILLED', first: '50' });
+      for (let page: { id: string }[]; (page = (await waiting()) ?? []).length;) {
+        await api('PATCH', 'channel_points/custom_rewards/redemptions', [['broadcaster_id', broadcaster_id], ['reward_id', reward_id], ...page.map(({ id }) => ['id', id])], { status: 'CANCELED' });
+      }
+      await api('DELETE', 'channel_points/custom_rewards', { broadcaster_id, id: reward_id });
+    }
+    for (const event of Object.keys(REWARDS) as PaidEvent[]) {
+      const { title, prompt } = REWARDS[event]!;
+      rewards[event] ??= mine.find((reward) => reward.title === title)?.id ?? (await api('POST', 'channel_points/custom_rewards', { broadcaster_id }, { title, prompt, cost: STARTING_COST }).catch(() => undefined))?.[0]?.id;
     }
     localStorage.setItem(REWARDS_KEY, JSON.stringify(rewards));
   };
+  // Subscribing to redemptions waits for this, so none of a retired reward's comes in while it is being refunded.
+  const ready = validate().then(ensureRewards).catch(() => {}); // a network failure leaves them for the next load
 
   /** Unsettled redemptions: ID to its reward's ID, which the status update needs. */
   const { held: pending, save } = heldRedemptions<string>(race, PENDING_KEY);
 
   const subscribe = async (session_id: string) => {
+    await ready;
     const condition = { broadcaster_user_id: broadcaster_id };
     for (const [type, extra] of [['channel.chat.message', { user_id: broadcaster_id }], ['channel.channel_points_custom_reward_redemption.add'], ['channel.cheer']] as const) {
       await api('POST', 'eventsub/subscriptions', {}, { type, version: '1', condition: { ...condition, ...extra }, transport: { method: 'websocket', session_id } });
@@ -208,7 +220,6 @@ export function connectTwitch(race: Race, { fetch = globalThis.fetch as Fetch, S
   const hourly = setInterval(() => void validate().catch(() => {}), VALIDATE_EVERY);
   function stop() { closed = true; clearTimeout(retry); clearInterval(drain); clearInterval(hourly); socket?.close(); }
 
-  void validate().then(ensureRewards).catch(() => {}); // a network failure leaves them for the next load
   connect();
   return { online: () => up && !opened ? undefined : up, close: stop };
 }

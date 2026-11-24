@@ -3,12 +3,14 @@ import settleImport from '../chat/settleAction.sb?raw';
 import { SETTLE_ACTION } from '../chat/streamerBot.js';
 import { loginTwitch, missingRewards, twitchLogin } from '../chat/twitch.js';
 import '../panel.css';
-import { REWARDS } from '../race/race.js';
+import { RETIRED_REWARDS, REWARDS } from '../race/race.js';
 import { savedPath, useFolder } from './read.js';
 import { canLeave, wizardSteps, type RaceForms, type Step } from './wizard.js';
 
 // Setup, in the game window (#161): a wizard, one step at a time, that opens by itself on the first start and on F2
 // between races. A change that needs a reload reopens it on the same step.
+/** The channel-point rewards the streamer makes: none while paid events are cheers only (#184). */
+const rewards = Object.values(REWARDS);
 const TITLES: Record<Step, string> = { install: 'Install', chat: 'Chat source', streamerbot: 'Streamer.bot', twitch: 'Twitch login', obs: 'OBS capture', courses: 'Courses', race: 'Race setup', keys: 'Keys', trial: 'Trial race' };
 const dialog = document.createElement('dialog');
 dialog.id = 'setup';
@@ -23,10 +25,10 @@ dialog.innerHTML = `<div class="inner"><header><img class="mark" src="${mark}" a
       <div class="row"><input id="setup-path" name="path" placeholder="C:\\Program Files (x86)\\Origin Games\\Command and Conquer Red Alert II"><button value="use">Use this folder</button></div></form>
   </section>
   <section data-step="chat"><h2>Chat source</h2>
-    <p>Where viewers' chat commands, channel-point rewards and cheers come from. Pick one.</p>
+    <p>Where viewers' chat commands and cheers come from. Pick one.</p>
     <fieldset class="chat tiles" aria-label="Chat source">
       <label class="tile"><input type="radio" name="chat" value=""><span>None<small>Bots fill every race. To try the game.</small></span></label>
-      <label class="tile"><input type="radio" name="chat" value="streamerbot"><span>Streamer.bot<small>Chat from every platform it's connected to, plus Twitch rewards and cheers.</small></span></label>
+      <label class="tile"><input type="radio" name="chat" value="streamerbot"><span>Streamer.bot<small>Chat from every platform it's connected to, plus Twitch cheers.</small></span></label>
       <label class="tile"><input type="radio" name="chat" value="twitch"><span>Twitch direct<small>No other app: log in to Twitch from here once.</small></span></label>
     </fieldset>
     <label class="show-chat"><input type="checkbox" name="show-chat"> Show chat on stream (off if you keep your own chat overlay)</label>
@@ -34,12 +36,13 @@ dialog.innerHTML = `<div class="inner"><header><img class="mark" src="${mark}" a
   <section data-step="streamerbot"><h2>Streamer.bot <b class="chip chat-chip"></b></h2>
     <ol class="how">
       <li>In Streamer.bot, open Servers/Clients &gt; WebSocket Server, tick Auto Start, keep address 127.0.0.1 and port 8080, and click Start Server.</li>
-      <li>Create these rewards with Streamer.bot's Create Reward button (rewards made in Twitch's dashboard can't be refunded). Click a field to copy it.</li>
+      ${rewards.length ? `<li>Create these rewards with Streamer.bot's Create Reward button (rewards made in Twitch's dashboard can't be refunded). Click a field to copy it.</li>` : ''}
     </ol>
-    <div class="pairs">${Object.values(REWARDS).map(({ title, prompt }) => `<input class="copy" readonly value="${title}"><input class="copy" readonly value="${prompt}">`).join('')}</div>
-    <ol class="how" start="3"><li>Import the action <b>${SETTLE_ACTION}</b>: Import, paste this string.</li></ol>
+    ${rewards.length ? `<div class="pairs">${rewards.map((reward) => `<input class="copy" readonly value="${reward!.title}"><input class="copy" readonly value="${reward!.prompt}">`).join('')}</div>` : ''}
+    <ol class="how" start="${rewards.length ? 3 : 2}"><li>Import the action <b>${SETTLE_ACTION}</b>: Import, paste this string.</li></ol>
     <div class="row import"><input class="copy" readonly value="${settleImport.trim()}" aria-label="${SETTLE_ACTION} import string"><button type="button" class="copy-import">Copy</button></div>
-    <p class="hint">Next works once the game is connected. To check the rewards, redeem one now: between races the game refunds it.</p>
+    <p class="hint">Next works once the game is connected.${rewards.length ? ' To check the rewards, redeem one now: between races the game refunds it.' : ''}</p>
+    <p class="hint">Made the ${RETIRED_REWARDS.join(', ')} rewards for an earlier version? Delete them in Streamer.bot: those events are cheers only now, and the game refunds their redemptions.</p>
   </section>
   <section data-step="twitch"><h2>Twitch login <b class="chip twitch-chip"></b></h2>
     <p class="report bad">Do this off stream: the login code shows in this window, which OBS captures.</p>
@@ -77,7 +80,7 @@ dialog.innerHTML = `<div class="inner"><header><img class="mark" src="${mark}" a
     </dl>
   </section>
   <section data-step="trial"><h2>Trial race</h2>
-    <p>Ten bots race on the chosen course. Chat can't reach it and it spends no reward or cheer. Try <kbd>C</kbd>, <kbd>1</kbd>–<kbd>9</kbd> <kbd>0</kbd>, <kbd>P</kbd> and <kbd>E</kbd> <kbd>E</kbd>, and check the picture and sound in OBS.</p>
+    <p>Ten bots race on the chosen course. Chat can't reach it and it spends no cheer. Try <kbd>C</kbd>, <kbd>1</kbd>–<kbd>9</kbd> <kbd>0</kbd>, <kbd>P</kbd> and <kbd>E</kbd> <kbd>E</kbd>, and check the picture and sound in OBS.</p>
     <p>Or finish without one: <kbd>Enter</kbd> starts the first real race.</p>
   </section>
 </div><footer><span class="keys"><kbd>F2</kbd> reopens setup between races</span><button type="button" class="back">Back</button>
@@ -263,9 +266,9 @@ export function showSetup(problems: string[] = [], at?: Step) {
   if (!login) chip('.twitch-chip', 'Not logged in', 'bad');
   else if (missing.length) chip('.twitch-chip', `${login} · rewards missing`, 'bad');
   else chip('.twitch-chip', `Logged in as ${login}`, 'ok');
-  $('.twitch-status').textContent = !login ? `Log in once as the channel that streams; the game then creates its rewards. Set their cost and turn them on or off in Twitch's dashboard.`
+  $('.twitch-status').textContent = !login ? `Log in once as the channel that streams.${rewards.length ? ` The game then creates its rewards. Set their cost and turn them on or off in Twitch's dashboard.` : ''}`
     : missing.length ? `Logged in as ${login}. Rewards not created yet: ${missing.join(', ')}. If Twitch already has a reward with that title, delete or rename it, then reload.`
-    : `Logged in as ${login}. The game's rewards are created: set their cost and turn them on or off in Twitch's dashboard.`;
+    : `Logged in as ${login}.${rewards.length ? ` The game's rewards are created: set their cost and turn them on or off in Twitch's dashboard.` : ''}`;
   report(problems);
   render();
   painting ??= setInterval(paintChat, 1000);

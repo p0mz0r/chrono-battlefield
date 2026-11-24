@@ -1,5 +1,5 @@
 import { TICK_HZ } from '../movement/index.js';
-import { CHEER_PRICES, chat, cheerEvent, openJoinWindow, paid, type BigEvent, type Race } from './race.js';
+import { CHEER_PRICES, chat, cheerEvent, openJoinWindow, paid, type PaidEvent, type Race } from './race.js';
 
 // Dev only (`npm run dev`): the test-chat panel (#8).
 // main.ts imports it behind `import.meta.env.DEV`, so production builds leave it out.
@@ -26,7 +26,6 @@ export function mountDevPanel(race: Race, params: URLSearchParams, drainSettleme
   panel.innerHTML = `
 <b>Test chat</b><br>
 <input name="name" size="10" value="p0mz0r"> <input name="text" size="20" placeholder="!rhino"> <button name="say">Say</button><br>
-<button name="redeem">Redeem Chronosphere</button> <button name="kirov">Redeem Kirov</button> <button name="desolator">Redeem Desolator</button><br>
 <button name="cheer">Cheer</button> <input name="bits" size="4" placeholder="10/20/50"> bits<br>
 <button name="fake">Add</button> <input name="n" size="2" value="${params.get('fake') ?? 5}"> fake viewers<br>
 <label><input type="checkbox" name="chaos"> chaos</label> <input name="rate" size="3" value="${params.get('chaos') ?? 3}"> msg/s, seed <input name="seed" size="4" value="${params.get('chatSeed') ?? 1}">
@@ -48,20 +47,15 @@ export function mountDevPanel(race: Race, params: URLSearchParams, drainSettleme
   const viewers: { id: string; name: string }[] = [];
 
   $('say').onclick = () => say(`test:${$('name').value}`, $('name').value, $('text').value);
-  let redemptions = 0;
-  /** A redemption, or a cheer when `bits` is given. */
-  const send = (event: BigEvent, bits?: number) => {
+  const cheer = (event: PaidEvent) => {
     const name = $('name').value;
-    const r = paid(race, { viewerId: `test:${name}`, name, event, via: bits === undefined ? 'redemption' : 'cheer', reference: `dev:${++redemptions}` });
-    logLine(`${name} ${bits === undefined ? `redeems ${event}` : `cheers ${bits}`} → ${r.ok ? 'ok' : 'no'}, ${r.reason}`);
+    const r = paid(race, { viewerId: `test:${name}`, name, event, via: 'cheer', reference: '' });
+    logLine(`${name} cheers ${CHEER_PRICES[event]} → ${r.ok ? 'ok' : 'no'}, ${r.reason}`);
   };
-  $('redeem').onclick = () => send('chronosphere');
-  $('kirov').onclick = () => send('kirov');
-  $('desolator').onclick = () => send('desolator');
   // Like a chat source: the amount picks the event, any other amount sets off nothing.
   $('cheer').onclick = () => {
     const bits = Number($('bits').value || CHEER_PRICES.chronosphere), event = cheerEvent(bits);
-    if (event) send(event, bits);
+    if (event) cheer(event);
     else logLine(`${$('name').value} cheers ${bits} → no, no event at that price`);
   };
   // Stands in for a chat source: drains the settlements a platform would get.
@@ -89,13 +83,13 @@ export function mountDevPanel(race: Race, params: URLSearchParams, drainSettleme
   };
 
   // URL shortcuts for headless runs: `?autoopen=1&fake=N&chaos=R` opens the window, adds N fake viewers, starts chaos;
-  // `&redeem=kirov@6` redeems that big event 6 s after GO.
-  const [event, after] = (params.get('redeem') ?? '').split('@');
+  // `&cheer=kirov@6` cheers for that paid event 6 s after GO.
+  const [event, after] = (params.get('cheer') ?? '').split('@');
   if (event) {
     const due = setInterval(() => {
       if (race.phase !== 'racing' || race.frame < Number(after ?? 0) * TICK_HZ) return;
       clearInterval(due);
-      send(event as BigEvent);
+      cheer(event as PaidEvent);
     }, 100);
   }
   if (params.get('autoopen')) {

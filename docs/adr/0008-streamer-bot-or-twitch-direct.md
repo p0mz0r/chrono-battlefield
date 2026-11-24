@@ -11,6 +11,8 @@ We dropped anonymous `justinfan` IRC, although it needs no setup at all ([resear
 
 The `chronoChat` page event, which Streamer.bot could fire through obs-websocket, went with the browser source ([ADR 0009](0009-launcher-runs-the-game-in-an-edge-app-window.md)); it was chat only, and the fallback if OBS started blocking the loopback socket, which today works only through obs-browser changes OBS calls temporary ([OBS socket test](../research/obs-local-file-sockets.md)).
 
+Update ([#184](https://github.com/p0mz0r/chrono-battlefield/issues/184)): paid events are cheers only, so the game has no rewards for now. The redemption and settlement path, the `channel:manage:redemptions` scope and the settle action stay for channel-point rewards to come. Twitch direct refunds the waiting redemptions of the old Kirov, Desolator and Chronosphere rewards and then deletes them; Streamer.bot refunds their redemptions until the streamer deletes them.
+
 ## Considered Options
 
 - **Anonymous IRC for chat plus Streamer.bot for paid tiers:** works with no login, but rests on an undocumented endpoint and leaves streamers without Streamer.bot no channel points.

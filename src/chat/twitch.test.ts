@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CellGrid } from '../movement/index.js';
 import { loadCourse, mapHash } from '../race/course.js';
-import { createRace, eventChips, openJoinWindow, type Race } from '../race/race.js';
+import { createRace, eventChips, openJoinWindow, REWARDS as GAME_REWARDS, type Race } from '../race/race.js';
 import { connectTwitch, loginTwitch } from './twitch.js';
 
 const MAP = new TextEncoder().encode('[Map]\nTheater=TEMPERATE\n');
@@ -77,6 +77,7 @@ describe('Twitch direct login', () => {
 
 const HELIX = 'https://api.twitch.tv/helix', REWARDS = `GET ${HELIX}/channel_points/custom_rewards`, CREATE = `POST ${HELIX}/channel_points/custom_rewards`;
 const SUBSCRIBE = `POST ${HELIX}/eventsub/subscriptions`, SETTLE = `PATCH ${HELIX}/channel_points/custom_rewards/redemptions`;
+const WAITING = `GET ${HELIX}/channel_points/custom_rewards/redemptions`, DELETE = `DELETE ${HELIX}/channel_points/custom_rewards`;
 const LOGGED_IN = { access: 'acc-1', refresh: 'ref-1', userId: '42', login: 'p0mz0r' };
 
 /** Twitch with the streamer logged in and none of the game's rewards made yet. */
@@ -90,6 +91,9 @@ function liveTwitch() {
 }
 
 describe('Twitch direct chat source', () => {
+  // Paid events have no rewards now (#184): two stand-ins for the channel-point rewards to come.
+  beforeAll(() => { Object.assign(GAME_REWARDS, { kirov: { title: 'Test Kirov', prompt: 'A test reward.' }, desolator: { title: 'Test Desolator', prompt: 'Another.' } }); });
+  afterAll(() => { delete GAME_REWARDS.kirov; delete GAME_REWARDS.desolator; });
   let race: Race, source: ReturnType<typeof connectTwitch>;
   const connect = async () => {
     source = connectTwitch(race, { fetch: twitch.fetch, Socket: FakeSocket });
@@ -108,21 +112,51 @@ describe('Twitch direct chat source', () => {
 
   it("creates the game's rewards under their fixed titles once, and only the missing ones", async () => {
     expect(twitch.sent(CREATE).map((c) => [c.url.searchParams.get('broadcaster_id'), JSON.parse(c.body)])).toEqual([
-      ['42', expect.objectContaining({ title: 'Kirov', cost: 1000, prompt: expect.stringMatching(/^A Kirov airship/) })],
-      ['42', expect.objectContaining({ title: 'Desolator' })],
-      ['42', expect.objectContaining({ title: 'Chronosphere' })],
+      ['42', { title: 'Test Kirov', cost: 1000, prompt: 'A test reward.' }],
+      ['42', expect.objectContaining({ title: 'Test Desolator' })],
     ]);
     expect(twitch.calls.every((c) => !c.url.href.startsWith(HELIX) || (c.headers['Client-Id'] === '5cm8euhmabzd9g4mnkwidz07sftngy' && c.headers.Authorization === 'Bearer acc-1'))).toBe(true);
     // Reload: the IDs are remembered, so nothing is created again.
     source.close();
     await connect();
-    expect(twitch.sent(CREATE)).toHaveLength(3);
+    expect(twitch.sent(CREATE)).toHaveLength(2);
     // Stored IDs lost: the game finds the rewards it made before by title and only creates the one it can't find.
     storage.delete('rhino-twitch-rewards');
-    twitch.on(REWARDS, ({ url }) => ({ body: { data: url.searchParams.get('only_manageable_rewards') === 'true' ? [{ id: 'rew-1', title: 'Kirov' }, { id: 'rew-2', title: 'Desolator' }] : [] } }));
+    twitch.on(REWARDS, ({ url }) => ({ body: { data: url.searchParams.get('only_manageable_rewards') === 'true' ? [{ id: 'rew-1', title: 'Test Kirov' }] : [] } }));
     source.close();
     await connect();
-    expect(twitch.sent(CREATE).slice(3).map((c) => JSON.parse(c.body).title)).toEqual(['Chronosphere']);
+    expect(twitch.sent(CREATE).slice(2).map((c) => JSON.parse(c.body).title)).toEqual(['Test Desolator']);
+  });
+
+  it('refunds the waiting redemptions of its retired rewards, then deletes them, before subscribing', async () => {
+    const waiting = new Map([['old-1', Array.from({ length: 60 }, (_, i) => `red-${i}`)], ['old-2', []]]);
+    // The streamer's own Desolator and Hydrate! aren't the game's: Twitch lists only the game's with only_manageable_rewards.
+    twitch.on(REWARDS, ({ url }) => ({ body: { data: url.searchParams.get('only_manageable_rewards') === 'true'
+      ? [{ id: 'old-1', title: 'Kirov' }, { id: 'old-2', title: 'Chronosphere' }, { id: 'rew-1', title: 'Test Kirov' }]
+      : [{ id: 'theirs', title: 'Desolator' }, { id: 'hydrate', title: 'Hydrate!' }] } }))
+      .on(WAITING, ({ url }) => ({ body: { data: waiting.get(url.searchParams.get('reward_id')!)!.slice(0, Number(url.searchParams.get('first'))).map((id) => ({ id })) } }))
+      .on(SETTLE, ({ url }) => {
+        const ids = url.searchParams.getAll('id'), reward = url.searchParams.get('reward_id')!;
+        waiting.set(reward, waiting.get(reward)!.filter((id) => !ids.includes(id)));
+        return { body: { data: ids.map((id) => ({ id })) } };
+      })
+      .on(DELETE, () => ({ status: 204 }));
+    source.close();
+    const from = twitch.calls.length;
+    await connect();
+    last().welcome('session-2');
+    await vi.advanceTimersByTimeAsync(0);
+    const calls = twitch.calls.slice(from).filter((c) => c.url.pathname.includes('/channel_points/') || c.url.pathname.includes('/eventsub/'));
+    expect(calls.map((c) => `${c.method} ${c.url.searchParams.get('reward_id') ?? c.url.searchParams.get('id') ?? ''} ${c.url.searchParams.getAll('id').length || ''}`.trim())).toEqual([
+      'GET', 'GET old-1', 'PATCH old-1 50', 'GET old-1', 'PATCH old-1 10', 'GET old-1', 'DELETE old-1 1', 'GET old-2', 'DELETE old-2 1', 'POST', 'POST', 'POST',
+    ]);
+    expect(calls.filter((c) => c.method === 'PATCH').every((c) => JSON.parse(c.body).status === 'CANCELED')).toBe(true);
+    // Once none are left, it does nothing.
+    twitch.on(REWARDS, () => ({ body: { data: [{ id: 'rew-1', title: 'Test Kirov' }] } }));
+    source.close();
+    const again = twitch.calls.length;
+    await connect();
+    expect(twitch.calls.slice(again).filter((c) => [WAITING, SETTLE, DELETE].includes(`${c.method} ${c.url.origin}${c.url.pathname}`))).toEqual([]);
   });
 
   it('subscribes the session to chat, redemptions and cheers on the streamer\'s channel', () => {
@@ -142,10 +176,10 @@ describe('Twitch direct chat source', () => {
 
   it("settles a redemption of the game's rewards by its status, and ignores the streamer's other rewards", async () => {
     const redeem = (id: string, reward: { id: string; title: string }) => last().notify('channel.channel_points_custom_reward_redemption.add', { id, user_id: '7', user_login: 'vera', user_name: 'Vera', user_input: '', status: 'unfulfilled', reward: { ...reward, cost: 1000, prompt: '' } });
-    redeem('red-1', { id: 'rew-1', title: 'Kirov' });
+    redeem('red-1', { id: 'rew-1', title: 'Test Kirov' });
     redeem('red-2', { id: 'rew-other', title: 'Hydrate!' });
     // Same title, but not a reward the game made: Twitch wouldn't let it refund this one.
-    redeem('red-3', { id: 'rew-other-2', title: 'Kirov' });
+    redeem('red-3', { id: 'rew-other-2', title: 'Test Kirov' });
     race.settlements.push({ reference: 'red-1', outcome: 'fulfilled' });
     await vi.advanceTimersByTimeAsync(1000);
     // Outside a race, so refunded straight away; the later "fulfilled" finds it settled already.
@@ -162,7 +196,7 @@ describe('Twitch direct chat source', () => {
     expect(eventChips(race).map((c) => c.label)).toEqual(['DESOLATOR · Vera · next race', 'KIROV · Vera · next race', 'CHRONOSPHERE · Vera · next race', 'CHRONOSPHERE · Anonymous · next race']);
   });
 
-  const redeemKirov = (id = 'red-1') => last().notify('channel.channel_points_custom_reward_redemption.add', { id, user_id: '7', user_name: 'Vera', status: 'unfulfilled', reward: { id: 'rew-1', title: 'Kirov' } });
+  const redeemKirov = (id = 'red-1') => last().notify('channel.channel_points_custom_reward_redemption.add', { id, user_id: '7', user_name: 'Vera', status: 'unfulfilled', reward: { id: 'rew-1', title: 'Test Kirov' } });
 
   it('goes offline on a drop, keeps settlements for later and reconnects with growing waits', async () => {
     redeemKirov();

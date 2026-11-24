@@ -1,4 +1,4 @@
-import { chat, cheerEvent, paid, REWARDS, type PaidEvent, type Race } from '../race/race.js';
+import { chat, cheerEvent, paid, RETIRED_REWARDS, REWARDS, type PaidEvent, type Race } from '../race/race.js';
 
 /** A chat source (#101): platform messages in as the race's chat and paid calls, its settlements out, online or not. */
 export interface ChatSource {
@@ -11,8 +11,6 @@ export interface ChatSource {
 export const STREAMER_BOT_URL = 'ws://127.0.0.1:8080/';
 /** The one action the operator imports; every settlement is a `DoAction` on it (docs/streamer-bot-action.md). */
 export const SETTLE_ACTION = 'Rhino Race settle';
-/** Paid events by reward title, lower case: the operator types the titles by hand, so case and outer spaces don't matter (#102). */
-const BY_TITLE = new Map(Object.entries(REWARDS).map(([event, { title }]) => [title.toLowerCase(), event as PaidEvent]));
 /** Where unsettled redemptions survive a page reload. */
 const PENDING_KEY = 'rhino-streamerbot-redemptions';
 /** Seconds before the first reconnect, doubling to the longest. */
@@ -77,11 +75,16 @@ export function connectStreamerBot(race: Race, { url = STREAMER_BOT_URL, Socket 
     if (cheered) paid(race, { ...who, event: cheered, via: 'cheer', reference: '' });
     if (type === 'RewardRedemption') {
       const reward = data.reward as { id?: unknown; title?: unknown } | null, id = data.redemptionId ?? data.id;
-      const event = text(reward?.title) ? BY_TITLE.get(reward.title.trim().toLowerCase()) : undefined;
-      if (!event || !text(id) || !text(reward?.id)) return;
-      rewards.set(id, { id: reward.id, title: reward.title as string });
+      if (!text(reward?.title) || !text(id) || !text(reward?.id)) return;
+      // By title, lower case: the operator types the titles by hand, so case and outer spaces don't matter (#102).
+      const title = reward.title.trim().toLowerCase(), event = (Object.keys(REWARDS) as PaidEvent[]).find((key) => REWARDS[key]!.title.toLowerCase() === title);
+      // Streamer.bot made the retired rewards (#184), so only the streamer can delete them; until then they're refunded.
+      const retired = RETIRED_REWARDS.some((old) => old.toLowerCase() === title);
+      if (!event && !retired) return;
+      rewards.set(id, { id: reward.id, title: reward.title });
       save();
-      paid(race, { ...who, event, via: 'redemption', reference: id });
+      if (event) paid(race, { ...who, event, via: 'redemption', reference: id });
+      else race.settlements.push({ reference: id, outcome: 'refunded' });
     }
   };
 

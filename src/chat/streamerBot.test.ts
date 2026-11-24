@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CellGrid } from '../movement/index.js';
 import { loadCourse, mapHash } from '../race/course.js';
-import { createRace, eventChips, openJoinWindow, type Race } from '../race/race.js';
+import { createRace, eventChips, openJoinWindow, REWARDS, type Race } from '../race/race.js';
 import { connectStreamerBot } from './streamerBot.js';
 
 const MAP = new TextEncoder().encode('[Map]\nTheater=TEMPERATE\n');
@@ -43,6 +43,10 @@ afterEach(() => { source.close(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 const redeem = (title: string, redemptionId = 'red-1') => last().event('Twitch', 'RewardRedemption', { redemptionId, reward: { id: 'rew-1', title }, user: { id: '7', login: 'vera', name: 'Vera' } });
 
 describe('Streamer.bot chat source', () => {
+  // Paid events have no rewards now (#184): two stand-ins for the channel-point rewards to come.
+  beforeAll(() => { Object.assign(REWARDS, { kirov: { title: 'Test Kirov', prompt: 'A test reward.' }, desolator: { title: 'Test Desolator', prompt: 'Another.' } }); });
+  afterAll(() => { delete REWARDS.kirov; delete REWARDS.desolator; });
+
   it('is neither online nor offline while the first connection is still opening', () => {
     source.close();
     source = connectStreamerBot(race, { Socket: FakeSocket });
@@ -70,26 +74,37 @@ describe('Streamer.bot chat source', () => {
   });
 
   it('settles a redemption by its reward title through DoAction, and ignores unknown titles', () => {
-    redeem('Kirov', 'red-1');
+    redeem('Test Kirov', 'red-1');
     redeem('Hydrate!', 'red-2');
-    redeem('Kirov airship', 'red-3');
+    redeem('Test Kirov airship', 'red-3');
     vi.advanceTimersByTime(1000);
     // Outside a race, so refunded straight away.
-    expect(last().actions()).toEqual([{ redemptionId: 'red-1', rewardId: 'rew-1', reward: 'Kirov', outcome: 'refunded' }]);
+    expect(last().actions()).toEqual([{ redemptionId: 'red-1', rewardId: 'rew-1', reward: 'Test Kirov', outcome: 'refunded' }]);
     expect(last().sent.find((m) => m.request === 'DoAction')).toMatchObject({ action: { name: 'Rhino Race settle' } });
   });
 
   it('settles a redemption in the shape Streamer.bot 1.0.7 sends it: ID in `id`, viewer in flat user_ fields', () => {
     last().event('Twitch', 'RewardRedemption', { id: '427b1584', user_id: '427115971', user_login: 'p0mz0r', user_name: 'p0mz0r', user_input: '', status: 'unfulfilled',
-      reward: { id: 'c8a55d1a', title: 'Chronosphere', cost: 1, prompt: '' }, is_test: false });
+      reward: { id: 'c8a55d1a', title: 'Test Kirov', cost: 1, prompt: '' }, is_test: false });
     vi.advanceTimersByTime(1000);
-    expect(last().actions()).toEqual([{ redemptionId: '427b1584', rewardId: 'c8a55d1a', reward: 'Chronosphere', outcome: 'refunded' }]);
+    expect(last().actions()).toEqual([{ redemptionId: '427b1584', rewardId: 'c8a55d1a', reward: 'Test Kirov', outcome: 'refunded' }]);
+  });
+
+  it('refunds redemptions of the retired Kirov, Desolator and Chronosphere rewards, even during a race', () => {
+    race.phase = 'racing';
+    redeem('Test Kirov', 'red-1');
+    redeem(' kirov', 'red-2');
+    redeem('Desolator', 'red-3');
+    redeem('Chronosphere', 'red-4');
+    vi.advanceTimersByTime(1000);
+    expect(eventChips(race).map((c) => c.label)).toEqual(['KIROV · Vera']);
+    expect(last().actions()).toMatchObject([{ redemptionId: 'red-2', outcome: 'refunded' }, { redemptionId: 'red-3', outcome: 'refunded' }, { redemptionId: 'red-4', outcome: 'refunded' }]);
   });
 
   it('matches reward titles ignoring case and outer spaces, but not inner spacing', () => {
-    redeem('  CHRONOsphere ', 'red-1');
-    redeem(' desolator', 'red-2');
-    redeem('Chrono sphere', 'red-3');
+    redeem('  TEST kirov ', 'red-1');
+    redeem(' test desolator', 'red-2');
+    redeem('Test  Kirov', 'red-3');
     vi.advanceTimersByTime(1000);
     expect(last().actions()).toMatchObject([{ redemptionId: 'red-1' }, { redemptionId: 'red-2' }]);
   });
@@ -116,7 +131,7 @@ describe('Streamer.bot chat source', () => {
     expect(source.online()).toBe(true);
     last().drop();
     expect(source.online()).toBe(false);
-    redeem('Desolator');
+    redeem('Test Desolator');
     const waits: number[] = [];
     for (let attempt = 0; attempt < 4; attempt++) {
       const before = FakeSocket.all.length;
@@ -134,14 +149,14 @@ describe('Streamer.bot chat source', () => {
 
   it('refunds a redemption still unsettled when the page reloads, once the new page connects', () => {
     last().drop();
-    redeem('Desolator', 'red-1');
+    redeem('Test Desolator', 'red-1');
     // Reload: a new race and source, before the refund ever went out.
     source.close();
     race = newRace();
     source = connectStreamerBot(race, { Socket: FakeSocket });
     last().open();
     vi.advanceTimersByTime(1000);
-    expect(last().actions()).toEqual([{ redemptionId: 'red-1', rewardId: 'rew-1', reward: 'Desolator', outcome: 'refunded' }]);
+    expect(last().actions()).toEqual([{ redemptionId: 'red-1', rewardId: 'rew-1', reward: 'Test Desolator', outcome: 'refunded' }]);
     // Settled once: the next reload refunds nothing.
     source.close();
     source = connectStreamerBot(newRace(), { Socket: FakeSocket });
