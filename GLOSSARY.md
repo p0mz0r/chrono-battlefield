@@ -216,7 +216,7 @@ A viewer spending bits to set off a paid event; in chat, the exact amount picks 
 _Avoid_: Bits, donation, redemption
 
 **Command list**:
-The subtle on-screen list of the chat commands available right now, such as `!rhino` during the join window; a chat command not on it is ignored silently.
+The subtle on-screen list of the chat commands available right now, such as `!rhino` during the join window; a chat command not on it is ignored silently. While racing it ends with the cheer price of each paid event switched on, such as `10 bits: Desolator`.
 _Avoid_: Help, menu
 
 **Interaction feed**:
