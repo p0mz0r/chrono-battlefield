@@ -215,10 +215,7 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, i
       else { endPromptUntil = now + 3000; prompt.textContent = 'Press E again to end race'; setTimeout(() => { if (performance.now() >= endPromptUntil) prompt.textContent = ''; }, 3000); }
     } else if (action === 'camera') { choices.camera = choices.camera === 'overview' ? 'director' : 'overview'; switchCamera(choices.camera); save(); }
     else if (action === 'mute') sound.mute();
-    else if (action === 'quieter' || action === 'louder') {
-      const text = prompt.textContent = `Volume ${Math.round(sound.volume(action === 'louder' ? 0.1 : -0.1) * 100)}%`;
-      setTimeout(() => { if (prompt.textContent === text) prompt.textContent = ''; }, 1500);
-    }
+    else if (action === 'quieter' || action === 'louder') sound.volume(action === 'louder' ? 0.1 : -0.1);
   };
   addEventListener('keydown', (event) => {
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;

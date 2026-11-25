@@ -35,7 +35,7 @@ it.skipIf(!process.env.RA2_DIR)('plays stock cues with duplicate, Limit, mute an
     storage.set('rhino-volume', '0.5');
     const sound = await loadSounds(read, store);
     expect(audioReads).toEqual([]);
-    expect(master!.gain.value).toBe(0.5); // the remembered level
+    expect(master!.gain.value).toBe(0.5); // the remembered volume
     sound.play('ready');
     sound.play('ready');
     expect(started).toBe(1);
@@ -58,12 +58,12 @@ it.skipIf(!process.env.RA2_DIR)('plays stock cues with duplicate, Limit, mute an
     expect(master!.gain.value).toBe(0);
     expect(storage.get('rhino-mute')).toBe('1');
     sound.mute();
-    expect(master!.gain.value).toBe(0.5); // unmuting returns to the chosen level
+    expect(master!.gain.value).toBe(0.5); // unmuting returns to the chosen volume
     expect(sound.volume(-0.1)).toBe(0.4);
     expect(master!.gain.value).toBe(0.4);
     expect(storage.get('rhino-volume')).toBe('0.4');
     sound.mute();
-    expect(sound.volume(0.1)).toBe(0.5); // changing the level unmutes
+    expect(sound.volume(0.1)).toBe(0.5); // changing the volume unmutes
     expect(master!.gain.value).toBe(0.5);
     expect(storage.get('rhino-mute')).toBe('0');
     for (let n = 0; n < 8; n++) sound.volume(0.1);
