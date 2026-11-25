@@ -255,6 +255,10 @@ The pulsing red ring under a big event's target from its turn until it lands, in
 The row of chips beside the hype meter showing the big event playing now and the ones waiting, in order, each with who set it off (a chat-wide event's chip reads "next" instead); a cheer carried over to the next race keeps its chip, marked "next race", through race setup and the join window.
 _Avoid_: Queue bar, timeline
 
+**Volume indicator**:
+The slim upright gauge on the right edge, between the event queue and the interaction feed, showing the game volume as a % (or Muted) for a moment after the operator changes it or mutes, then fading. It is on stream; viewers see it too.
+_Avoid_: Volume meter, volume bar, volume popup
+
 **Results**:
 The screen after a race listing every tank's placing with its finish time, or DNF if unfinished.
 _Avoid_: Podium, scoreboard

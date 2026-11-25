@@ -2,6 +2,7 @@ import { readInstall } from '../install/read.js';
 import type { CourseFile } from './course.js';
 import { markRemoved, readCourseFile, removeImported, saveImported, type ImportedCourse } from './courseFile.js';
 import { BIG_EVENTS, CHAOS, endRace, openJoinWindow, simulateRace, type Race } from './race.js';
+import type { Volume } from '../audio.js';
 import type { CameraMode } from './view.js';
 import type { RaceForms } from '../install/wizard.js';
 import mark from '../../docs/brand/final/mark.png';
@@ -50,7 +51,7 @@ function estimatedSeconds(file: CourseFile): number {
  * `courses` holds bundled and `imported` courses by id; the Courses screen adds and removes imported ones, and shows
  * `report` (what the courses folder import did). Returns the courses and race setup forms and the trial race, for setup's wizard to borrow.
  */
-export function mountOperator(race: Race, courses: Record<string, CourseFile>, imported: ImportedCourse[], report: string[], current: string, switchCamera: (mode: CameraMode) => void, toggleMute: () => void, cutTo: (place: number) => void): RaceForms {
+export function mountOperator(race: Race, courses: Record<string, CourseFile>, imported: ImportedCourse[], report: string[], current: string, switchCamera: (mode: CameraMode) => void, sound: { mute(): Volume; volume(step: number): Volume }, cutTo: (place: number) => void): RaceForms {
   const choices = readChoices();
   const save = () => localStorage.setItem(KEY, JSON.stringify(choices));
   switchCamera(choices.camera);
@@ -62,7 +63,7 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, i
     <section><h2>Timers</h2><div class="timers"><label>Join window <input name="join" type="number" min="1" step="1"> s</label><label>Finish timer <input name="finish" type="number" min="1" step="1"> s</label></div></section>
     <section><h2>Audience interactions <b class="count"></b></h2><fieldset name="verbs" class="tiles" aria-label="Audience interactions"></fieldset></section>
     <section><h2>Chaos <b class="count"></b></h2><fieldset name="chaos" class="tiles" aria-label="Chaos"></fieldset></section>
-    </div><footer><span class="keys"><kbd>S</kbd> race setup <kbd>P</kbd> pause <kbd>E E</kbd> end <kbd>C</kbd> camera <kbd>1</kbd>–<kbd>9</kbd> <kbd>0</kbd> cut to place <kbd>M</kbd> mute <kbd>F2</kbd> setup</span>
+    </div><footer><span class="keys"><kbd>S</kbd> race setup <kbd>P</kbd> pause <kbd>E E</kbd> end <kbd>C</kbd> camera <kbd>1</kbd>–<kbd>9</kbd> <kbd>0</kbd> cut to place <kbd>M</kbd> mute <kbd>−</kbd> <kbd>+</kbd> volume <kbd>F2</kbd> setup</span>
     <button type="button" name="import">Import courses…</button><button type="button" class="primary" name="start">Start race <kbd>Enter</kbd></button></footer></div></div>
     <div class="panel setup courses" hidden><div class="inner"><header><img class="mark" src="${mark}" alt=""><h1>Courses</h1></header><div class="scroll race-form">
     <section><h2>Import</h2><label>Course files (.rhino-course.json) <input name="files" type="file" multiple accept=".json"></label><div class="messages report" role="status"></div></section>
@@ -205,6 +206,20 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, i
   };
   let endPromptUntil = 0;
   const prompt = document.createElement('div'); prompt.id = 'end-prompt'; document.body.append(prompt);
+  // Volume indicator: right edge, between the event queue and the interaction feed, for 1.5 s after M, − or +.
+  const indicator = document.createElement('div'); indicator.id = 'volume';
+  const icon = document.createElement('span'), gauge = document.createElement('div'), label = document.createElement('span');
+  gauge.append(document.createElement('div')); indicator.append(icon, gauge, label); document.body.append(indicator);
+  let indicatorHide: ReturnType<typeof setTimeout> | undefined;
+  const showVolume = ({ gain, muted }: Volume) => {
+    const percent = muted ? 0 : Math.round(gain * 100);
+    indicator.style.setProperty('--volume', `${percent}%`);
+    icon.textContent = muted ? '🔇' : '🔊';
+    label.textContent = muted ? 'Muted' : `${percent}%`;
+    indicator.classList.add('on');
+    clearTimeout(indicatorHide);
+    indicatorHide = setTimeout(() => indicator.classList.remove('on'), 1500);
+  };
   const act = (action: string) => {
     const now = performance.now();
     if (action === 'setup' && ['idle', 'results', 'cancelled'].includes(race.phase)) { root.hidden = false; showCourses(false); prompt.textContent = ''; }
@@ -214,7 +229,8 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, i
       if (now < endPromptUntil) { endRace(race); endPromptUntil = 0; prompt.textContent = ''; }
       else { endPromptUntil = now + 3000; prompt.textContent = 'Press E again to end race'; setTimeout(() => { if (performance.now() >= endPromptUntil) prompt.textContent = ''; }, 3000); }
     } else if (action === 'camera') { choices.camera = choices.camera === 'overview' ? 'director' : 'overview'; switchCamera(choices.camera); save(); }
-    else if (action === 'mute') toggleMute();
+    else if (action === 'mute') showVolume(sound.mute());
+    else if (action === 'quieter' || action === 'louder') showVolume(sound.volume(action === 'louder' ? 0.1 : -0.1));
   };
   addEventListener('keydown', (event) => {
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
@@ -222,7 +238,7 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, i
     if (target.closest('input, select, textarea') && (event.key !== 'Enter' || !root.contains(target))) return;
     if (document.querySelector('#setup[open]')) return; // setup's buttons take Enter; no race starts behind it
     const key = event.key.toLowerCase();
-    const action = key === 's' ? 'setup' : event.key === 'Enter' ? 'start' : key === 'p' ? 'pause' : key === 'e' ? 'end' : key === 'c' ? 'camera' : key === 'm' ? 'mute' : '';
+    const action = key === 's' ? 'setup' : event.key === 'Enter' ? 'start' : key === 'p' ? 'pause' : key === 'e' ? 'end' : key === 'c' ? 'camera' : key === 'm' ? 'mute' : key === '-' ? 'quieter' : key === '+' || key === '=' ? 'louder' : '';
     if (action) act(action);
     else if (/^[0-9]$/.test(event.key) && root.hidden) cutTo((Number(event.key) + 9) % 10); // 1 first … 9 ninth, 0 tenth
   });

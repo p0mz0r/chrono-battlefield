@@ -3,7 +3,7 @@ import { readFromDir } from '../test/install.js';
 import { loadSounds } from './audio.js';
 import type { ReadFile } from './ra2/mount.js';
 
-it.skipIf(!process.env.RA2_DIR)('plays stock cues with duplicate, Limit and mute controls; a second load reads no audio', async () => {
+it.skipIf(!process.env.RA2_DIR)('plays stock cues with duplicate, Limit, mute and volume controls; a second load reads no audio', async () => {
   const stopped: number[] = [], sources: { buffer: { length: number; sampleRate: number } | undefined }[] = [];
   let started = 0, master: { gain: { value: number } } | undefined, last: { gain: { value: number } } | undefined;
   let context: Context;
@@ -32,8 +32,10 @@ it.skipIf(!process.env.RA2_DIR)('plays stock cues with duplicate, Limit and mute
     expect(audioReads).toContain('language.mix');
     audioReads.length = 0;
     master = undefined;
+    storage.set('rhino-volume', '0.5');
     const sound = await loadSounds(read, store);
     expect(audioReads).toEqual([]);
+    expect(master!.gain.value).toBe(0.5); // the remembered volume
     sound.play('ready');
     sound.play('ready');
     expect(started).toBe(1);
@@ -52,8 +54,21 @@ it.skipIf(!process.env.RA2_DIR)('plays stock cues with duplicate, Limit and mute
     expect(voices.size).toBe(16); // DesolatorSelect ×5, DesolatorAttackCommand ×6, DesolatorMove ×5
     sound.play('desolatorDeploy');
     expect(started).toBe(212);
-    sound.mute();
+    expect(sound.mute()).toEqual({ gain: 0.5, muted: true });
     expect(master!.gain.value).toBe(0);
     expect(storage.get('rhino-mute')).toBe('1');
+    expect(sound.mute()).toEqual({ gain: 0.5, muted: false });
+    expect(master!.gain.value).toBe(0.5); // unmuting returns to the chosen volume
+    expect(sound.volume(-0.1)).toEqual({ gain: 0.4, muted: false });
+    expect(master!.gain.value).toBe(0.4);
+    expect(storage.get('rhino-volume')).toBe('0.4');
+    sound.mute();
+    expect(sound.volume(0.1)).toEqual({ gain: 0.5, muted: false }); // changing the volume unmutes
+    expect(master!.gain.value).toBe(0.5);
+    expect(storage.get('rhino-mute')).toBe('0');
+    for (let n = 0; n < 8; n++) sound.volume(0.1);
+    expect(sound.volume(0.1).gain).toBe(1);
+    for (let n = 0; n < 12; n++) sound.volume(-0.1);
+    expect(sound.volume(-0.1).gain).toBe(0);
   } finally { vi.unstubAllGlobals(); }
 });

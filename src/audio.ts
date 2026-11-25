@@ -77,13 +77,19 @@ async function decodeSounds(read: ReadFile): Promise<Record<Cue, Decoded>> {
   return decoded;
 }
 
+/** The master volume: gain 0..1 and whether mute holds it at silence. */
+export type Volume = { gain: number; muted: boolean };
+
 /** Plays the stock cues. Decoded sounds are cached with the course import, so a hit reads no audio from the install. */
-export async function loadSounds(read: ReadFile, store: Store = importStore): Promise<{ play(cue: string): void; mute(): void }> {
+export async function loadSounds(read: ReadFile, store: Store = importStore): Promise<{ play(cue: string): void; mute(): Volume; volume(step: number): Volume }> {
   const decoded = await cachedImport(store, read, 'sounds', () => decodeSounds(read));
   const context = new AudioContext();
   const master = context.createGain();
   let muted = localStorage.getItem('rhino-mute') === '1';
-  master.gain.value = muted ? 0 : 1;
+  let gain = Number(localStorage.getItem('rhino-volume') ?? 1);
+  if (!(gain >= 0 && gain <= 1)) gain = 1;
+  const apply = (): Volume => { master.gain.value = muted ? 0 : gain; localStorage.setItem('rhino-mute', muted ? '1' : '0'); return { gain, muted }; };
+  apply();
   // Limiter: overlapping cues at full stock volume would clip the OBS mixer channel.
   const limiter = new DynamicsCompressorNode(context, { threshold: -6, knee: 0, ratio: 20, attack: 0.003, release: 0.25 });
   master.connect(limiter).connect(context.destination);
@@ -115,6 +121,12 @@ export async function loadSounds(read: ReadFile, store: Store = importStore): Pr
       if (CUTS[cue]) source.stop(now + CUTS[cue]);
       void context.resume();
     },
-    mute() { muted = !muted; master.gain.value = muted ? 0 : 1; localStorage.setItem('rhino-mute', muted ? '1' : '0'); },
+    mute() { muted = !muted; return apply(); },
+    /** Steps the master gain within 0..1, unmuting. */
+    volume(step) {
+      gain = Math.min(1, Math.max(0, Math.round((gain + step) * 10) / 10));
+      localStorage.setItem('rhino-volume', String(gain));
+      muted = false; return apply();
+    },
   };
 }
