@@ -51,6 +51,10 @@
   .pause-banner, #end-prompt { position: fixed; left: 50%; top: 45%; transform: translate(-50%, -50%); padding: 18px 32px; background: #080b10e8; color: #fff; font: 800 36px 'Segoe UI', sans-serif; text-align: center; text-shadow: 0 2px 4px #000; pointer-events: none; }
   #end-prompt { top: 30%; font-size: 26px; }
   #end-prompt:empty { display: none; }
+  #volume { position: fixed; right: 24px; top: 50%; transform: translateY(-50%); width: 46px; padding: 10px 0; display: flex; flex-direction: column; align-items: center; gap: 8px; background: #080b10cc; color: #fff; font: 600 13px 'Segoe UI', sans-serif; text-shadow: 0 2px 3px #000; pointer-events: none; opacity: 0; transition: opacity .25s; }
+  #volume.on { opacity: 1; transition: none; }
+  #volume > div { width: 8px; height: 140px; display: flex; align-items: flex-end; background: #ffffff22; }
+  #volume > div > div { width: 100%; height: var(--volume); background: #db3030; }
 </style>
 </head>
 <body>

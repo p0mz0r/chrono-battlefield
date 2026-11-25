@@ -2,6 +2,7 @@ import { readInstall } from '../install/read.js';
 import type { CourseFile } from './course.js';
 import { markRemoved, readCourseFile, removeImported, saveImported, type ImportedCourse } from './courseFile.js';
 import { BIG_EVENTS, CHAOS, endRace, openJoinWindow, simulateRace, type Race } from './race.js';
+import type { Volume } from '../audio.js';
 import type { CameraMode } from './view.js';
 import type { RaceForms } from '../install/wizard.js';
 import mark from '../../docs/brand/final/mark.png';
@@ -50,7 +51,7 @@ function estimatedSeconds(file: CourseFile): number {
  * `courses` holds bundled and `imported` courses by id; the Courses screen adds and removes imported ones, and shows
  * `report` (what the courses folder import did). Returns the courses and race setup forms and the trial race, for setup's wizard to borrow.
  */
-export function mountOperator(race: Race, courses: Record<string, CourseFile>, imported: ImportedCourse[], report: string[], current: string, switchCamera: (mode: CameraMode) => void, sound: { mute(): void; volume(step: number): number }, cutTo: (place: number) => void): RaceForms {
+export function mountOperator(race: Race, courses: Record<string, CourseFile>, imported: ImportedCourse[], report: string[], current: string, switchCamera: (mode: CameraMode) => void, sound: { mute(): Volume; volume(step: number): Volume }, cutTo: (place: number) => void): RaceForms {
   const choices = readChoices();
   const save = () => localStorage.setItem(KEY, JSON.stringify(choices));
   switchCamera(choices.camera);
@@ -205,6 +206,18 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, i
   };
   let endPromptUntil = 0;
   const prompt = document.createElement('div'); prompt.id = 'end-prompt'; document.body.append(prompt);
+  // Right edge, between the queue and the feed: the volume for 1.5 s after M, − or +, then it fades.
+  const meter = document.createElement('div'); meter.id = 'volume'; meter.innerHTML = '<span>🔊</span><div><div></div></div><span></span>';
+  document.body.append(meter);
+  let meterHide: ReturnType<typeof setTimeout> | undefined;
+  const showVolume = ({ gain, muted }: Volume) => {
+    const percent = muted ? 0 : Math.round(gain * 100);
+    meter.style.setProperty('--volume', `${percent}%`);
+    meter.lastElementChild!.textContent = muted ? 'Muted' : `${percent}%`;
+    meter.classList.add('on');
+    clearTimeout(meterHide);
+    meterHide = setTimeout(() => meter.classList.remove('on'), 1500);
+  };
   const act = (action: string) => {
     const now = performance.now();
     if (action === 'setup' && ['idle', 'results', 'cancelled'].includes(race.phase)) { root.hidden = false; showCourses(false); prompt.textContent = ''; }
@@ -214,8 +227,8 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, i
       if (now < endPromptUntil) { endRace(race); endPromptUntil = 0; prompt.textContent = ''; }
       else { endPromptUntil = now + 3000; prompt.textContent = 'Press E again to end race'; setTimeout(() => { if (performance.now() >= endPromptUntil) prompt.textContent = ''; }, 3000); }
     } else if (action === 'camera') { choices.camera = choices.camera === 'overview' ? 'director' : 'overview'; switchCamera(choices.camera); save(); }
-    else if (action === 'mute') sound.mute();
-    else if (action === 'quieter' || action === 'louder') sound.volume(action === 'louder' ? 0.1 : -0.1);
+    else if (action === 'mute') showVolume(sound.mute());
+    else if (action === 'quieter' || action === 'louder') showVolume(sound.volume(action === 'louder' ? 0.1 : -0.1));
   };
   addEventListener('keydown', (event) => {
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;

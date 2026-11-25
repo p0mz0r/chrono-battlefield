@@ -54,21 +54,21 @@ it.skipIf(!process.env.RA2_DIR)('plays stock cues with duplicate, Limit, mute an
     expect(voices.size).toBe(16); // DesolatorSelect ×5, DesolatorAttackCommand ×6, DesolatorMove ×5
     sound.play('desolatorDeploy');
     expect(started).toBe(212);
-    sound.mute();
+    expect(sound.mute()).toEqual({ gain: 0.5, muted: true });
     expect(master!.gain.value).toBe(0);
     expect(storage.get('rhino-mute')).toBe('1');
-    sound.mute();
+    expect(sound.mute()).toEqual({ gain: 0.5, muted: false });
     expect(master!.gain.value).toBe(0.5); // unmuting returns to the chosen volume
-    expect(sound.volume(-0.1)).toBe(0.4);
+    expect(sound.volume(-0.1)).toEqual({ gain: 0.4, muted: false });
     expect(master!.gain.value).toBe(0.4);
     expect(storage.get('rhino-volume')).toBe('0.4');
     sound.mute();
-    expect(sound.volume(0.1)).toBe(0.5); // changing the volume unmutes
+    expect(sound.volume(0.1)).toEqual({ gain: 0.5, muted: false }); // changing the volume unmutes
     expect(master!.gain.value).toBe(0.5);
     expect(storage.get('rhino-mute')).toBe('0');
     for (let n = 0; n < 8; n++) sound.volume(0.1);
-    expect(sound.volume(0.1)).toBe(1);
+    expect(sound.volume(0.1).gain).toBe(1);
     for (let n = 0; n < 12; n++) sound.volume(-0.1);
-    expect(sound.volume(-0.1)).toBe(0);
+    expect(sound.volume(-0.1).gain).toBe(0);
   } finally { vi.unstubAllGlobals(); }
 });
