@@ -584,7 +584,7 @@ async function main() {
   status.textContent = `${course.file.name} on ${mapPath} (${map.theater}, ${cached ? 'from cache' : 'imported'} in ${loadMs} ms), ideal line ${course.length.toFixed(0)} cells. G: passability and ideal line.`;
   if (edit) (await import('./race/editor.js')).mountEditor(app, world, grid, mapBytes, file!, toScreen, params.has('map') ? '' : Object.entries(COURSES).find(([, c]) => c === file)![0].replace(/^.*\/|\.json$/g, ''), race);
   else {
-    lendToSetup(mountOperator(race, courses, imported, report, Object.entries(courses).find(([, candidate]) => candidate === file)?.[0] ?? '', (mode) => { cameraMode = mode; manualFrame = undefined; }, sounds.mute,
+    lendToSetup(mountOperator(race, courses, imported, report, Object.entries(courses).find(([, candidate]) => candidate === file)?.[0] ?? '', (mode) => { cameraMode = mode; manualFrame = undefined; }, sounds,
       (place) => { if (cameraMode === 'director' && race.phase === 'racing') shot = placeShot(race, place) ?? shot; }));
     // Overview's manual frame: drag pans, the wheel zooms toward the cursor.
     const manual = () => (manualFrame ??= { scale: world.scale.x, x: world.position.x, y: world.position.y });

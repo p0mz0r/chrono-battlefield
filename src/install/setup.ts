@@ -76,6 +76,7 @@ dialog.innerHTML = `<div class="inner"><header><img class="mark" src="${mark}" a
       <dt><kbd>C</kbd></dt><dd>Camera: Overview (drag to pan, wheel to zoom) / Director</dd>
       <dt><kbd>1</kbd>–<kbd>9</kbd> <kbd>0</kbd></dt><dd>Director: cut to the tank in that place (0 tenth)</dd>
       <dt><kbd>M</kbd></dt><dd>Mute (remembered)</dd>
+      <dt><kbd>−</kbd> <kbd>+</kbd></dt><dd>Game volume down / up in 10% steps (remembered)</dd>
       <dt><kbd>F2</kbd></dt><dd>This setup, between races</dd>
     </dl>
   </section>

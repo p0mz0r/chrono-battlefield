@@ -78,12 +78,15 @@ async function decodeSounds(read: ReadFile): Promise<Record<Cue, Decoded>> {
 }
 
 /** Plays the stock cues. Decoded sounds are cached with the course import, so a hit reads no audio from the install. */
-export async function loadSounds(read: ReadFile, store: Store = importStore): Promise<{ play(cue: string): void; mute(): void }> {
+export async function loadSounds(read: ReadFile, store: Store = importStore): Promise<{ play(cue: string): void; mute(): void; volume(step: number): number }> {
   const decoded = await cachedImport(store, read, 'sounds', () => decodeSounds(read));
   const context = new AudioContext();
   const master = context.createGain();
   let muted = localStorage.getItem('rhino-mute') === '1';
-  master.gain.value = muted ? 0 : 1;
+  let level = Number(localStorage.getItem('rhino-volume') ?? 1);
+  if (!(level >= 0 && level <= 1)) level = 1;
+  const apply = () => { master.gain.value = muted ? 0 : level; localStorage.setItem('rhino-mute', muted ? '1' : '0'); };
+  master.gain.value = muted ? 0 : level;
   // Limiter: overlapping cues at full stock volume would clip the OBS mixer channel.
   const limiter = new DynamicsCompressorNode(context, { threshold: -6, knee: 0, ratio: 20, attack: 0.003, release: 0.25 });
   master.connect(limiter).connect(context.destination);
@@ -115,6 +118,12 @@ export async function loadSounds(read: ReadFile, store: Store = importStore): Pr
       if (CUTS[cue]) source.stop(now + CUTS[cue]);
       void context.resume();
     },
-    mute() { muted = !muted; master.gain.value = muted ? 0 : 1; localStorage.setItem('rhino-mute', muted ? '1' : '0'); },
+    mute() { muted = !muted; apply(); },
+    /** Steps the master level within 0..1, unmuting; returns the new level. */
+    volume(step) {
+      level = Math.min(1, Math.max(0, Math.round((level + step) * 10) / 10));
+      muted = false; apply(); localStorage.setItem('rhino-volume', String(level));
+      return level;
+    },
   };
 }

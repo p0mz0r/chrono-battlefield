@@ -3,7 +3,7 @@ import { readFromDir } from '../test/install.js';
 import { loadSounds } from './audio.js';
 import type { ReadFile } from './ra2/mount.js';
 
-it.skipIf(!process.env.RA2_DIR)('plays stock cues with duplicate, Limit and mute controls; a second load reads no audio', async () => {
+it.skipIf(!process.env.RA2_DIR)('plays stock cues with duplicate, Limit, mute and volume controls; a second load reads no audio', async () => {
   const stopped: number[] = [], sources: { buffer: { length: number; sampleRate: number } | undefined }[] = [];
   let started = 0, master: { gain: { value: number } } | undefined, last: { gain: { value: number } } | undefined;
   let context: Context;
@@ -32,8 +32,10 @@ it.skipIf(!process.env.RA2_DIR)('plays stock cues with duplicate, Limit and mute
     expect(audioReads).toContain('language.mix');
     audioReads.length = 0;
     master = undefined;
+    storage.set('rhino-volume', '0.5');
     const sound = await loadSounds(read, store);
     expect(audioReads).toEqual([]);
+    expect(master!.gain.value).toBe(0.5); // the remembered level
     sound.play('ready');
     sound.play('ready');
     expect(started).toBe(1);
@@ -55,5 +57,18 @@ it.skipIf(!process.env.RA2_DIR)('plays stock cues with duplicate, Limit and mute
     sound.mute();
     expect(master!.gain.value).toBe(0);
     expect(storage.get('rhino-mute')).toBe('1');
+    sound.mute();
+    expect(master!.gain.value).toBe(0.5); // unmuting returns to the chosen level
+    expect(sound.volume(-0.1)).toBe(0.4);
+    expect(master!.gain.value).toBe(0.4);
+    expect(storage.get('rhino-volume')).toBe('0.4');
+    sound.mute();
+    expect(sound.volume(0.1)).toBe(0.5); // changing the level unmutes
+    expect(master!.gain.value).toBe(0.5);
+    expect(storage.get('rhino-mute')).toBe('0');
+    for (let n = 0; n < 8; n++) sound.volume(0.1);
+    expect(sound.volume(0.1)).toBe(1);
+    for (let n = 0; n < 12; n++) sound.volume(-0.1);
+    expect(sound.volume(-0.1)).toBe(0);
   } finally { vi.unstubAllGlobals(); }
 });
