@@ -14,7 +14,7 @@ Needs Node 24 and an RA2 + YR install. Set `RA2_DIR` to the install folder.
 
 ## Operator keys
 
-`S` opens race setup. The keys work while the game window has focus. `Enter` opens the join window. `P` pauses or resumes. Press `E` twice within three seconds to end or cancel the race. `C` switches Overview and Director. In Overview, drag to pan and use the wheel to zoom. In Director, `1`–`9` and `0` cut to the tank in that place of the standings (`0` tenth), unless it has finished. `M` saves the mute choice. `F2` opens setup between races; it opens by itself on the first start. Setup and race setup list these keys too.
+`S` opens race setup. The keys work while the game window has focus. `Enter` opens the join window. `P` pauses or resumes. Press `E` twice within three seconds to end or cancel the race. `C` switches Overview and Director. In Overview, drag to pan and use the wheel to zoom. In Director, `1`–`9` and `0` cut to the tank in that place of the standings (`0` tenth), unless it has finished. `M` mutes or unmutes and `−` / `+` turn the game volume down or up in 10% steps; both are remembered, and unmuting returns to the chosen volume. `F2` opens setup between races; it opens by itself on the first start. Setup and race setup list these keys too.
 
 ## Layout
 

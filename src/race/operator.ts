@@ -206,17 +206,19 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, i
   };
   let endPromptUntil = 0;
   const prompt = document.createElement('div'); prompt.id = 'end-prompt'; document.body.append(prompt);
-  // Right edge, between the queue and the feed: the volume for 1.5 s after M, − or +, then it fades.
-  const meter = document.createElement('div'); meter.id = 'volume'; meter.innerHTML = '<span>🔊</span><div><div></div></div><span></span>';
-  document.body.append(meter);
-  let meterHide: ReturnType<typeof setTimeout> | undefined;
+  // Volume indicator: right edge, between the event queue and the interaction feed, for 1.5 s after M, − or +.
+  const indicator = document.createElement('div'); indicator.id = 'volume';
+  const icon = document.createElement('span'), gauge = document.createElement('div'), label = document.createElement('span');
+  gauge.append(document.createElement('div')); indicator.append(icon, gauge, label); document.body.append(indicator);
+  let indicatorHide: ReturnType<typeof setTimeout> | undefined;
   const showVolume = ({ gain, muted }: Volume) => {
     const percent = muted ? 0 : Math.round(gain * 100);
-    meter.style.setProperty('--volume', `${percent}%`);
-    meter.lastElementChild!.textContent = muted ? 'Muted' : `${percent}%`;
-    meter.classList.add('on');
-    clearTimeout(meterHide);
-    meterHide = setTimeout(() => meter.classList.remove('on'), 1500);
+    indicator.style.setProperty('--volume', `${percent}%`);
+    icon.textContent = muted ? '🔇' : '🔊';
+    label.textContent = muted ? 'Muted' : `${percent}%`;
+    indicator.classList.add('on');
+    clearTimeout(indicatorHide);
+    indicatorHide = setTimeout(() => indicator.classList.remove('on'), 1500);
   };
   const act = (action: string) => {
     const now = performance.now();
