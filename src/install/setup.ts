@@ -17,7 +17,7 @@ const dialog = document.createElement('dialog');
 dialog.id = 'setup';
 dialog.className = 'panel setup';
 dialog.setAttribute('aria-label', 'Setup');
-dialog.innerHTML = `<div class="inner"><header><img class="mark" src="${mark}" alt=""><h1>Setup</h1><small class="progress"></small></header>
+dialog.innerHTML = `<div class="inner"><header><img class="mark" src="${mark}" alt=""><h1>Setup</h1><small class="progress"></small><small>v${__APP_VERSION__}</small></header>
 <ol class="steps" aria-label="Setup steps"></ol><div class="scroll">
   <section data-step="install"><h2>Install <b class="chip install-chip"></b></h2>
     <p>The game reads its art, maps and sounds from your own Red Alert 2 + Yuri's Revenge install, in place. It looks for it by itself.</p>

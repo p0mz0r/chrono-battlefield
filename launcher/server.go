@@ -79,6 +79,6 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Wrong host", http.StatusForbidden)
 		return
 	}
-	w.Header().Set("X-Rhino-Race", "1") // tells a second launcher the game already runs
+	w.Header().Set("X-Rhino-Race", version) // tells a second launcher the game already runs, and which release
 	s.mux.ServeHTTP(w, r)
 }

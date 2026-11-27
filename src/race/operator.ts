@@ -182,7 +182,7 @@ export function mountOperator(race: Race, courses: Record<string, CourseFile>, i
       race.enabled = new Set(VERBS.filter((v) => choices.enabled.includes(v) && (v !== 'bridge' || race.course.file.bridges.length)));
       race.chaos = new Set(CHAOS.filter((c) => choices.chaos.includes(c)));
       openJoinWindow(race, { joinSeconds: choices.joinSeconds, finishSeconds: choices.finishSeconds });
-      // Off stream, in rhino-race.log beside the launcher.
+      // Off stream, in the launcher's %LOCALAPPDATA%\Rhino Race\rhino-race.log.
       const seedLine = `Rhino Race seed ${race.seed}: replay with ?course=${current.replace(/^.*\/|\.json$/g, '')}&seed=${race.seed}`;
       console.info(seedLine);
       if (!import.meta.env.DEV) navigator.sendBeacon('/__log', seedLine);
