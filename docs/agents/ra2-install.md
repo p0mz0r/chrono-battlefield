@@ -42,7 +42,7 @@ If launch fails with "Executable doesn't exist", run `npx playwright-core instal
 
 ## Running the launcher
 
-`npm run build` builds `release/rhino-race.exe` (Go must be on `PATH`; `go test` in `launcher/` tests its server, and the pre-commit hook runs `gofmt`, `go vet` and `go test` when `launcher/` is staged). Unzip `release/rhino-race.zip` into a short folder and run the exe to check the real thing: it opens an Edge app window on `%LOCALAPPDATA%\Rhino Race\profile`, the operator's own profile on the owner's PC, so leave its storage alone.
+`npm run build` builds `release/rhino-race.exe` (Go must be on `PATH`; `go test` in `launcher/` tests its server, and the pre-commit hook runs `gofmt`, `go vet` and `go test` when `launcher/` is staged). Unzip `release/rhino-race-<version>.zip` into a short folder and run the exe to check the real thing: it opens an Edge app window on `%LOCALAPPDATA%\Rhino Race\profile`, the operator's own profile on the owner's PC, so leave its storage alone.
 
 Check the real window, not only headless `shot.mjs`: Edge's cache, profile and flags differ, and a page that loads headless can fail there.
 

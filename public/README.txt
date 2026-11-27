@@ -21,8 +21,8 @@ START THE GAME
 Closing the game window stops the game. Your setup is kept for this Windows
 user, also when you unzip a newer release elsewhere.
 
-Each race writes its seed to rhino-race.log beside rhino-race.exe, never on
-stream: "Rhino Race seed N: replay with ?course=...&seed=N". Include that line
+Each race writes its seed to rhino-race.log in %LOCALAPPDATA%\Rhino Race
+(paste that into Explorer's address bar), never on stream: "Rhino Race seed N: replay with ?course=...&seed=N". Include that line
 when reporting a race that went wrong.
 
 

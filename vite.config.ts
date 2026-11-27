@@ -134,5 +134,7 @@ function saveCourse(): Plugin {
 
 // Relative asset URLs: OBS loads dist/index.html from http://absolute/<path>/.
 export default defineConfig({ base: './', plugins: [serveInstall(), saveCourse()],
+  // The release, from package.json, on the setup screen (src/env.d.ts).
+  define: { __APP_VERSION__: JSON.stringify((JSON.parse(readFileSync('package.json', 'utf8')) as { version: string }).version) },
   // Only this checkout's tests: agent worktrees can sit inside the repo folder.
   test: { include: ['src/**/*.test.ts', 'extension-backend/src/**/*.test.ts'] } });

@@ -1,12 +1,16 @@
 // After `vite build`: credit shipped custom maps in the operator README (ADR 0006), refuse any EA file type,
 // build the launcher with dist/ inside (ADR 0009, needs Go on PATH), and zip it with the README and LICENSE as
-// release/rhino-race.zip (one rhino-race/ folder inside). The courses in release-courses/ (course files as in courses/, or
-// exported .rhino-course.json files) ship as export files in rhino-race/courses/, which the game imports on every start (#161).
+// release/rhino-race-<version>.zip (one rhino-race/ folder inside), with SHA256SUMS.txt for it and the bare exe. The courses
+// in release-courses/ (course files as in courses/, or exported .rhino-course.json files) ship as export files in
+// rhino-race/courses/, which the game imports on every start (#161). The version is package.json's (#210).
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { crc32, deflateRawSync } from 'node:zlib';
 
+const { version } = JSON.parse(readFileSync('package.json', 'utf8'));
+writeFileSync('dist/README.txt', readFileSync('dist/README.txt', 'utf8').replace(/^RHINO RACE\r?\n=+\r?\n/, (title) => `${title}Version ${version}\r\n`));
 const courses = readdirSync('courses').filter((f) => f.endsWith('.json')).map((f) => JSON.parse(readFileSync(join('courses', f), 'utf8')));
 const credits = courses.filter((c) => c.source === 'shipped').map((c) => `  ${c.map}, by ${c.author}: ${c.link} (course "${c.name}")`);
 if (credits.length) writeFileSync('dist/README.txt', readFileSync('dist/README.txt', 'utf8') + `\n\nCUSTOM MAPS\n-----------\n\n${credits.join('\n')}\n`);
@@ -20,7 +24,7 @@ rmSync('launcher/dist', { recursive: true, force: true });
 cpSync('dist', 'launcher/dist', { recursive: true });
 writeFileSync('launcher/dist/.gitkeep', '');
 mkdirSync('release', { recursive: true });
-execFileSync('go', ['build', '-ldflags', '-H windowsgui -s -w', '-o', '../release/rhino-race.exe', '.'], {
+execFileSync('go', ['build', '-ldflags', `-H windowsgui -s -w -X main.version=${version}`, '-o', '../release/rhino-race.exe', '.'], {
   cwd: 'launcher', stdio: 'inherit', env: { ...process.env, GOOS: 'windows', GOARCH: 'amd64', CGO_ENABLED: '0' },
 });
 // A plain course on an install map becomes an export file by wrapping it; a custom map would have to travel inside it.
@@ -53,5 +57,9 @@ for (const [name, path] of files) {
 const dir = Buffer.concat(central), end = Buffer.alloc(22);
 end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(files.length, 8); end.writeUInt16LE(files.length, 10);
 end.writeUInt32LE(dir.length, 12); end.writeUInt32LE(offset, 16);
-writeFileSync('release/rhino-race.zip', Buffer.concat([...local, dir, end]));
-console.log(`release/rhino-race.zip: ${files.length} entries, ${releaseCourses.length} release courses`);
+const zip = `rhino-race-${version}.zip`;
+for (const old of readdirSync('release').filter((f) => /^rhino-race.*\.zip$/.test(f))) rmSync(join('release', old));
+writeFileSync(join('release', zip), Buffer.concat([...local, dir, end]));
+// sha256sum format, so `sha256sum -c SHA256SUMS.txt` (or Get-FileHash by eye) checks a download.
+writeFileSync('release/SHA256SUMS.txt', [zip, 'rhino-race.exe'].map((f) => `${createHash('sha256').update(readFileSync(join('release', f))).digest('hex')}  ${f}\n`).join(''));
+console.log(`release/${zip}: ${files.length} entries, ${releaseCourses.length} release courses`);
