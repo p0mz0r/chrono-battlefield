@@ -1,0 +1,29 @@
+/* The rail, rail A of the #171 prototype: in CSS px, since a Twitch overlay doesn't scale with the stream. */
+@font-face { font-family: 'Barlow Condensed'; font-weight: 900; src: url('../docs/brand/fonts/BarlowCondensed-Black.ttf'); }
+:root { --red: #bd2020; --gold: #ffd34e; --ink: #080b10; --dim: #aeb9c6; }
+html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+body { font: 11px/1.35 'Segoe UI', sans-serif; color: #fff; }
+
+/* Pinned under the stream's phase and hype queue (they end 108 px down a 1920 px stream, 5.6% of its width), so the top tile
+   never jumps when the rail gets shorter. Scrolls when the player is too short for it. */
+.ext { position: fixed; right: 0; top: 6vw; max-height: calc(100vh - 6vw); display: flex; flex-direction: row-reverse; align-items: flex-start; }
+.ext:empty { display: none; }
+.strip { width: 72px; max-height: calc(100vh - 6vw); overflow-y: auto; scrollbar-width: none; display: flex; flex-direction: column; gap: 4px; padding: 6px 0;
+  background: #080b10e6; border-left: 3px solid var(--red); box-sizing: border-box; align-items: center; }
+.tile { flex: none; width: 60px; padding: 5px 0; text-align: center; background: #ffffff0d; }
+.tile big { display: block; font: 900 26px/1 'Barlow Condensed', sans-serif; }
+.tile small { color: var(--dim); }
+.countdown { color: var(--gold); font-variant-numeric: tabular-nums; }
+button { flex: none; width: 60px; height: 46px; padding: 0; border: 0; font: inherit; color: inherit; cursor: pointer; line-height: 1.05;
+  background: linear-gradient(#36414e, #1e2730); }
+button i { display: block; font-style: normal; font-size: 17px; }
+button.rhino, button.nuke { height: 56px; font-weight: 800; background: linear-gradient(#d22a2a, #9c1414); }
+button.nuke { background: linear-gradient(#ffd34e, #d8a520); color: var(--ink); }
+.sep { flex: none; width: 40px; height: 1px; background: #fff3; }
+
+/* The hover card, to the rail's left. */
+.card { display: none; width: 250px; margin-right: 6px; padding: 10px; background: #080b10f2; font-size: 13px; box-shadow: 0 8px 24px #000a; box-sizing: border-box; }
+.ext:hover .card { display: block; }
+.card h3 big { display: inline; font: inherit; }
+.card h3 { margin: 0 0 6px; font: 900 18px/1 'Barlow Condensed', sans-serif; letter-spacing: .05em; text-transform: uppercase; }
+.card p { margin: 4px 0; color: var(--dim); }
