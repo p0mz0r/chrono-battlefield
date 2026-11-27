@@ -21,6 +21,22 @@ START THE GAME
 Closing the game window stops the game. Your setup is kept for this Windows
 user, also when you unzip a newer release elsewhere.
 
+
+UPDATES
+-------
+
+When a newer version is out, rhino-race.exe asks "Version X is available.
+Update now?" as it starts, before the game window opens. Yes downloads it,
+checks it and restarts on the new version with your setup kept; Later starts
+this version and asks again next time. Offline, it just starts. If an update
+fails, the old version starts as before.
+
+Only rhino-race.exe is updated. When a release adds or changes courses, its
+release notes say so: download the zip again for the new courses folder.
+
+Antivirus may flag rhino-race.exe for replacing itself, since it isn't
+signed. Allow it, or update by unzipping the new release instead.
+
 Each race writes its seed to rhino-race.log in %LOCALAPPDATA%\Rhino Race
 (paste that into Explorer's address bar), never on stream: "Rhino Race seed
 N: replay with ?course=...&seed=N". Include that line when reporting a race

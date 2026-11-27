@@ -1,4 +1,6 @@
 # A pushed tag v<version> (the version in package.json) builds the release and publishes it as a GitHub release (#210).
+# Installed exes update from it (ADR 0010): never rename the v<version> tag, the rhino-race.exe asset or
+# SHA256SUMS.txt and its lines, or every copy out there stops updating.
 name: Release
 on:
   push:

@@ -46,6 +46,22 @@ func main() {
 		}
 		fail("Port " + host[strings.LastIndex(host, ":")+1:] + " is used by another program. Close it and start Rhino Race again.")
 	}
+	// Before the window opens, so it never asks during a race; offline or failing, it starts as it is (#211).
+	os.Remove(exe + ".old") // left by the last update; still locked while that exe exits, then gone next start
+	if version != "dev" {
+		if tag, err := latestTag(releases); err == nil && newer(tag, version) &&
+			messageBox("Version "+strings.TrimPrefix(tag, "v")+" is available. Update now?", 0x24) == 6 { // Yes/No, ? icon; Yes
+			if err := install(releases, tag, exe); err != nil {
+				messageBox("The update failed: "+err.Error()+". Starting version "+version+".", 0x30)
+			} else {
+				listener.Close() // the new exe takes the port
+				if err := exec.Command(exe).Start(); err != nil {
+					fail("Updated, but the new version did not start: " + err.Error() + ". Start Rhino Race again.")
+				}
+				return
+			}
+		}
+	}
 	game, _ := fs.Sub(dist, "dist")
 	s := newServer(game, host, idleGrace)
 	// The seed of each race, off stream, for bug reports.
@@ -131,8 +147,14 @@ func fileExists(path string) bool {
 
 // fail shows the message in a box (the exe has no console) and exits.
 func fail(message string) {
+	messageBox(message, 0x10)
+	os.Exit(1)
+}
+
+// messageBox shows a MessageBoxW with these MB_ flags and returns the button pressed (IDYES is 6).
+func messageBox(message string, flags uintptr) uintptr {
 	text, _ := syscall.UTF16PtrFromString(message)
 	title, _ := syscall.UTF16PtrFromString("Rhino Race")
-	syscall.NewLazyDLL("user32.dll").NewProc("MessageBoxW").Call(0, uintptr(unsafe.Pointer(text)), uintptr(unsafe.Pointer(title)), 0x10)
-	os.Exit(1)
+	button, _, _ := syscall.NewLazyDLL("user32.dll").NewProc("MessageBoxW").Call(0, uintptr(unsafe.Pointer(text)), uintptr(unsafe.Pointer(title)), flags)
+	return button
 }
