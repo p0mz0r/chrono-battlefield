@@ -242,6 +242,8 @@ export interface Race {
 export const CHAT_LOG = 30;
 
 export interface Standing {
+  /** Undefined for bots. */
+  viewerId: string | undefined;
   name: string;
   bot: boolean;
   colour: number;
@@ -916,5 +918,5 @@ const ranked = (race: Race) => [...race.racers]
 /** Every tank: finished ones in finish order, then by course progress; ties broken by seed. */
 export function standings(race: Race): Standing[] {
   const len = race.course.length || 1;
-  return ranked(race).map((r) => ({ name: r.name, bot: r.bot, colour: r.colour, progress: r.finishedAt === undefined ? Math.min(r.progress / len, 1) : 1, finishTime: r.finishedAt === undefined ? undefined : r.finishedAt / TICK_HZ }));
+  return ranked(race).map((r) => ({ viewerId: r.viewerId, name: r.name, bot: r.bot, colour: r.colour, progress: r.finishedAt === undefined ? Math.min(r.progress / len, 1) : 1, finishTime: r.finishedAt === undefined ? undefined : r.finishedAt / TICK_HZ }));
 }

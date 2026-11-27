@@ -63,24 +63,27 @@ export async function logoutTwitch({ fetch = globalThis.fetch as Fetch } = {}) {
 /**
  * The stored login, kept good while in use: `refresh` trades the refresh token in for a new pair, once however many
  * callers hit the expiry, and the token is validated on start (`validated`, which rejects if that fails) and hourly. A refused refresh token logs
- * out and calls `onLogout`. Undefined when nobody is logged in.
+ * out and calls `onLogout` and each of `loggedOut`; a new pair calls each of `refreshed`. One per page: Twitch takes each
+ * refresh token once, so a second session's would be spent. Undefined when nobody is logged in.
  */
 export function twitchSession({ fetch = globalThis.fetch as Fetch, onLogout = () => {} } = {}) {
   const login = stored();
   if (!login) return undefined;
+  const refreshed = new Set<() => void>(), loggedOut = new Set([onLogout]);
   let refreshing: Promise<void> | undefined;
   const refresh = () => refreshing ??= (async () => {
     const reply = await fetch(`${ID}/token`, form({ grant_type: 'refresh_token', refresh_token: login.refresh }));
     if (reply.status === 400 || reply.status === 401) {
       localStorage.removeItem(LOGIN_KEY);
       close();
-      onLogout();
+      for (const listener of loggedOut) listener();
       throw new Error('Twitch login expired');
     }
     if (!reply.ok) throw new HelixError(reply.status);
     const token = await reply.json();
     Object.assign(login, { access: token.access_token, refresh: token.refresh_token });
     localStorage.setItem(LOGIN_KEY, JSON.stringify(login));
+    for (const listener of refreshed) listener();
   })().finally(() => { refreshing = undefined; });
   const validate = async () => {
     if ((await fetch(`${ID}/validate`, { headers: { Authorization: `OAuth ${login.access}` } })).status === 401) await refresh();
@@ -89,5 +92,7 @@ export function twitchSession({ fetch = globalThis.fetch as Fetch, onLogout = ()
   function close() { clearInterval(hourly); }
   const validated = validate();
   validated.catch(() => {}); // a caller that doesn't wait for it isn't left with an unhandled rejection
-  return { login, refresh, validated, close };
+  return { login, refresh, validated, close, refreshed, loggedOut };
 }
+/** The page's one Twitch login while in use. */
+export type TwitchSession = NonNullable<ReturnType<typeof twitchSession>>;

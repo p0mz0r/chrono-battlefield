@@ -198,6 +198,10 @@ _Avoid_: Overlay, panel, plugin
 The small hosted service between the game and the Twitch extension. It passes the race's state out to viewers and their actions in to the game, and vouches for which channel a game speaks for.
 _Avoid_: EBS, server, relay
 
+**Game link**:
+The game's own connection to the extension backend while the Twitch extension is switched on, opened with the operator's Twitch login, which the backend checks once to learn the channel. The race's state goes out over it as it changes and every few seconds; a newer link for the same channel replaces the old.
+_Avoid_: EBS connection, tunnel
+
 **Twitch login**:
 The operator's one login to their Twitch channel, made off stream in setup, which Twitch direct and the Twitch extension share; logging out ends both.
 _Avoid_: Token, auth, account link
