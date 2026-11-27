@@ -1,9 +1,7 @@
 import { chat, cheerEvent, paid, RETIRED_REWARDS, REWARDS, type PaidEvent, type Race } from '../race/race.js';
 import { heldRedemptions, RETRY, type ChatSource } from './streamerBot.js';
-import { HelixError, TWITCH_CLIENT_ID, twitchSession, type Fetch } from './twitchLogin.js';
+import { HelixError, REWARDS_KEY, TWITCH_CLIENT_ID, twitchSession, type Fetch } from './twitchLogin.js';
 
-/** Where the IDs of the rewards the game made live: only the app that made a reward may refund its redemptions. */
-const REWARDS_KEY = 'rhino-twitch-rewards';
 /** Where unsettled redemptions (ID to reward ID) survive a page reload. */
 const PENDING_KEY = 'rhino-twitch-redemptions';
 const HELIX = 'https://api.twitch.tv/helix';
@@ -34,7 +32,7 @@ export function connectTwitch(race: Race, { fetch = globalThis.fetch as Fetch, S
   // Online until the first drop: the first connection is still opening at page load.
   let socket: Socket | undefined, wait = RETRY.first, closed = false, up = true, opened = false, retry: ReturnType<typeof setTimeout> | undefined;
   if (!account) return { online: () => false, close() {} };
-  const { login, refresh } = account, broadcaster_id = login.userId;
+  const { login, refresh, close: closeLogin } = account, broadcaster_id = login.userId;
 
   const api = async (method: string, path: string, query: Record<string, string> | string[][], body?: unknown, retried = false): Promise<any> => {
     const reply = await fetch(`${HELIX}/${path}?${new URLSearchParams(query)}`, {
@@ -152,7 +150,7 @@ export function connectTwitch(race: Race, { fetch = globalThis.fetch as Fetch, S
     }
   }, 250);
 
-  function stop() { closed = true; clearTimeout(retry); clearInterval(drain); account!.close(); socket?.close(); }
+  function stop() { closed = true; clearTimeout(retry); clearInterval(drain); closeLogin(); socket?.close(); }
 
   connect();
   return { online: () => up && !opened ? undefined : up, close: stop };

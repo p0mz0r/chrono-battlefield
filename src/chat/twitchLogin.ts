@@ -5,8 +5,11 @@ const SCOPES = 'user:read:chat channel:manage:redemptions bits:read';
 const ID = 'https://id.twitch.tv/oauth2';
 /** Where the login survives reloads (ADR 0008). Never logged or sent anywhere but Twitch. */
 const LOGIN_KEY = 'rhino-twitch-login';
-/** Twitch direct's reward IDs belong to the channel logged in, so a new login forgets them. */
-const REWARDS_KEY = 'rhino-twitch-rewards';
+/**
+ * Where the IDs of the rewards the game made live: only the app that made a reward may refund its redemptions. They
+ * belong to the channel logged in, so a new login forgets them.
+ */
+export const REWARDS_KEY = 'rhino-twitch-rewards';
 /** Twitch asks apps to validate their token on start and hourly. */
 const VALIDATE_EVERY = 60 * 60_000;
 
@@ -59,7 +62,7 @@ export async function logoutTwitch({ fetch = globalThis.fetch as Fetch } = {}) {
 
 /**
  * The stored login, kept good while in use: `refresh` trades the refresh token in for a new pair, once however many
- * callers hit the expiry, and the token is validated on start (`validated`, which never rejects) and hourly. A refused refresh token logs
+ * callers hit the expiry, and the token is validated on start (`validated`, which rejects if that fails) and hourly. A refused refresh token logs
  * out and calls `onLogout`. Undefined when nobody is logged in.
  */
 export function twitchSession({ fetch = globalThis.fetch as Fetch, onLogout = () => {} } = {}) {
@@ -84,5 +87,7 @@ export function twitchSession({ fetch = globalThis.fetch as Fetch, onLogout = ()
   };
   const hourly = setInterval(() => void validate().catch(() => {}), VALIDATE_EVERY);
   function close() { clearInterval(hourly); }
-  return { login, refresh, validated: validate().catch(() => {}), close };
+  const validated = validate();
+  validated.catch(() => {}); // a caller that doesn't wait for it isn't left with an unhandled rejection
+  return { login, refresh, validated, close };
 }

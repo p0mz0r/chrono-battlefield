@@ -48,7 +48,7 @@ dialog.innerHTML = `<div class="inner"><header><img class="mark" src="${mark}" a
   <section data-step="twitch"><h2>Twitch login <b class="chip twitch-chip"></b></h2>
     <p class="report bad">Do this off stream: the login code shows in this window, which OBS captures.</p>
     <p class="twitch-status"></p>
-    <div class="row"><button type="button" class="twitch-login">Log in to Twitch</button><button type="button" class="twitch-logout" title="Also stops Twitch-direct chat">Log out of Twitch</button></div>
+    <div class="row"><button type="button" class="twitch-login">Log in to Twitch</button><button type="button" class="twitch-logout">Log out of Twitch</button></div>
     <p class="twitch-code hint" hidden></p>
   </section>
   <section data-step="obs"><h2>OBS capture</h2>

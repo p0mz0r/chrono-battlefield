@@ -369,6 +369,15 @@ describe('Twitch direct chat source', () => {
     expect([source.online(), storage.has('rhino-twitch-login')]).toEqual([true, true]);
   });
 
+  it('leaves the rewards alone when the login is refused on start', async () => {
+    source.close();
+    expire();
+    twitch.on(TOKEN, () => ({ status: 400, body: { message: 'Invalid refresh token' } }));
+    const from = twitch.calls.length;
+    await connect();
+    expect(twitch.calls.slice(from).map((c) => `${c.method} ${c.url.origin}${c.url.pathname}`)).toEqual([VALIDATE, TOKEN]);
+  });
+
   it('logs out and shows offline when the refresh token is no longer good', async () => {
     expire();
     twitch.on(TOKEN, () => ({ status: 400, body: { message: 'Invalid refresh token' } }));
