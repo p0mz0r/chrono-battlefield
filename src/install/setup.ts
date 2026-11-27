@@ -32,7 +32,7 @@ dialog.innerHTML = `<div class="inner"><header><img class="mark" src="${mark}" a
       <label class="tile"><input type="radio" name="chat" value="streamerbot"><span>Streamer.bot<small>Chat from every platform it's connected to, plus Twitch cheers.</small></span></label>
       <label class="tile"><input type="radio" name="chat" value="twitch"><span>Twitch direct<small>No other app: log in to Twitch from here once.</small></span></label>
     </fieldset>
-    <label class="show-chat"><input type="checkbox" name="show-chat"> Show chat on stream (off if you keep your own chat overlay)</label>
+    <label class="toggle"><input type="checkbox" name="show-chat"> Show chat on stream (off if you keep your own chat overlay)</label>
   </section>
   <section data-step="streamerbot"><h2>Streamer.bot <b class="chip chat-chip"></b></h2>
     <ol class="how">
@@ -64,7 +64,7 @@ dialog.innerHTML = `<div class="inner"><header><img class="mark" src="${mark}" a
       <li class="activate-step"><b>Activate as Overlay</b> in <a href="https://dashboard.twitch.tv/extensions" target="_blank" rel="noopener">your Extension Manager</a>.<span class="report bad other-extension" hidden></span></li>
       <li class="check-step"><b>Check</b>: <span class="check-status"></span></li>
     </ol>
-    <label class="show-chat"><input type="checkbox" name="extension"> Switch the Twitch extension on</label>
+    <label class="toggle"><input type="checkbox" name="extension"> Switch the Twitch extension on</label>
   </section>
   <section data-step="obs"><h2>OBS capture</h2>
     <ol class="how">
@@ -120,8 +120,8 @@ dialog.innerHTML = `<div class="inner"><header><img class="mark" src="${mark}" a
   #setup .import input { font-family: Consolas, monospace; font-size: 13px; }
   #setup input.copy { cursor: copy; }
   #setup input.copied { border-color: var(--cyan); }
-  #setup .show-chat { display: flex; align-items: center; gap: 8px; margin-top: 10px; cursor: pointer; }
-  #setup .show-chat input { flex: none; width: 16px; height: 16px; margin: 0; box-shadow: none; accent-color: var(--cyan); }
+  #setup .toggle { display: flex; align-items: center; gap: 8px; margin-top: 10px; cursor: pointer; }
+  #setup .toggle input { flex: none; width: 16px; height: 16px; margin: 0; box-shadow: none; accent-color: var(--cyan); }
   #setup footer .keys { flex: 1; }
   #setup .checklist li.done::marker { content: '✓  '; color: var(--cyan); }
   #setup .other-extension:not([hidden]) { display: block; margin-top: 4px; }
@@ -218,8 +218,9 @@ function paintSlot(slot: { ours: boolean; other?: string } | undefined) {
 }
 /** Checks the overlay slot now and every 5 s while the extension's step shows. */
 function startCheck() {
+  if (checking) return; // already running: keep its last answer on screen
   paintSlot(undefined);
-  if (checking || !twitchLogin()) return;
+  if (!twitchLogin()) return;
   // Twitch direct's session already keeps the stored token fresh; a second one would spend the same single-use refresh token.
   // ponytail: setup's own session for Streamer.bot; share one session per page once the game link holds one too.
   if (chatSource() !== 'twitch') session = twitchSession({ onLogout: reloadIntoSetup });

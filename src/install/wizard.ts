@@ -1,4 +1,4 @@
-// The setup wizard's steps (#161), as plain data: setup.ts draws them.
+// The setup wizard's steps (#161), as plain data, and what its checks read from Twitch: setup.ts draws them.
 import { HelixError, TWITCH_CLIENT_ID, type Fetch } from '../chat/twitchLogin.js';
 
 export type Step = 'install' | 'chat' | 'streamerbot' | 'twitch' | 'extension' | 'obs' | 'courses' | 'race' | 'keys' | 'trial';
