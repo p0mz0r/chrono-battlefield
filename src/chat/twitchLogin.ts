@@ -25,6 +25,8 @@ const stored = (): Login | undefined => { try { return JSON.parse(localStorage.g
 
 /** The Twitch account logged in, if any. */
 export const twitchLogin = () => stored()?.login;
+/** The stored login's access token, as the session last refreshed it. */
+export const twitchAccess = () => stored()?.access;
 
 /**
  * Device-code login (#116): `code` for the streamer to enter at `uri`; `done` resolves to their login once they have, and
