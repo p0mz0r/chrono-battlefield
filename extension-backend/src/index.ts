@@ -1,6 +1,6 @@
 import { TWITCH_CLIENT_ID } from '../../src/chat/twitchLogin.js';
-import type { ChatResult } from '../../src/race/race.js';
-import type { Press } from '../../src/chat/gameLink.js';
+import { CHEER_PRICES, type ChatResult, type PaidEvent } from '../../src/race/race.js';
+import type { Press, Purchase } from '../../src/chat/gameLink.js';
 
 // The extension backend (#187): a Cloudflare Worker that checks a game's Twitch token and hands its socket to one
 // Durable Object per channel, which passes the game's snapshots to that channel's viewers over Extension PubSub.
@@ -22,6 +22,8 @@ const ANSWER_WAIT = 3000;
 const GAME_OFFLINE: ChatResult = { ok: false, reason: 'Game offline' }, NO_ANSWER: ChatResult = { ok: false, reason: 'No answer' };
 /** Get Users failed, so the game was never asked: the game knows a viewer by name as well as ID. */
 const TWITCH_DOWN: ChatResult = { ok: false, reason: 'Twitch didn\'t answer' };
+/** A receipt plays once. */
+const PLAYED: ChatResult = { ok: false, reason: 'Already played' };
 /** The extension's page is served from Twitch's own origin; its JWT, not a cookie, says who presses. */
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Authorization, Content-Type', 'Access-Control-Allow-Methods': 'POST' };
 
@@ -38,6 +40,7 @@ interface WorkerSocket {
 interface State {
   acceptWebSocket(socket: WorkerSocket): void;
   getWebSockets(): WorkerSocket[];
+  storage: { get(key: string): Promise<unknown>; put(key: string, value: unknown): Promise<void> };
 }
 declare const WebSocketPair: new () => { 0: WorkerSocket; 1: WorkerSocket };
 type Upgrade = ResponseInit & { webSocket: WorkerSocket };
@@ -81,15 +84,28 @@ async function broadcastJwt(env: Env, channel: string) {
   return `${body}.${base64url(new Uint8Array(await crypto.subtle.sign('HMAC', await secretKey(env, 'sign'), new TextEncoder().encode(body))))}`;
 }
 
-/** A viewer's `onAuthorized` JWT once it checks out: signed with the extension secret, unexpired. `user_id` only once they share identity. */
-async function viewerOf(env: Env, jwt: string | undefined): Promise<{ channel_id: string; user_id?: string } | undefined> {
+/** A JWT's claims once it checks out: signed by Twitch with the extension secret, unexpired. */
+async function claimsOf(env: Env, jwt: string | undefined): Promise<any> {
   const [header, payload, signature] = jwt?.split('.') ?? [];
   if (!signature) return undefined;
   try {
     if (!await crypto.subtle.verify('HMAC', await secretKey(env, 'verify'), fromBase64url(signature), new TextEncoder().encode(`${header}.${payload}`))) return undefined;
     const claims = JSON.parse(new TextDecoder().decode(fromBase64url(payload!)));
-    return claims.exp > Date.now() / 1000 && claims.channel_id ? claims : undefined;
+    return claims.exp > Date.now() / 1000 ? claims : undefined;
   } catch { return undefined; }
+}
+
+/** A viewer's `onAuthorized` JWT once it checks out. `user_id` only once they share identity. */
+async function viewerOf(env: Env, request: Request): Promise<{ channel_id: string; user_id?: string } | undefined> {
+  const claims = await claimsOf(env, request.headers.get('Authorization')?.replace(/^Bearer /, ''));
+  return claims?.channel_id ? claims : undefined;
+}
+
+/** A Bits transaction receipt once it checks out: Twitch signed it, for one of the catalog's SKUs at its price (#191). */
+async function purchaseOf(env: Env, receipt: string | undefined): Promise<{ userId: string; event: PaidEvent; transactionId: string } | undefined> {
+  const claims = await claimsOf(env, receipt), data = claims?.data, sku = data?.product?.sku, cost = data?.product?.cost;
+  if (claims?.topic !== 'bits_transaction_receipt' || !data?.userId || !data.transactionId || !Object.hasOwn(CHEER_PRICES, sku)) return undefined;
+  return cost?.type === 'bits' && cost.amount === CHEER_PRICES[sku as PaidEvent] ? { userId: data.userId, event: sku, transactionId: data.transactionId } : undefined;
 }
 
 /** The extension's app access token for Get Users, kept until a minute before Twitch expires it. */
@@ -104,17 +120,35 @@ async function appToken(env: Env) {
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
 
+const notSigned = () => json(401, { ok: false, reason: 'Not signed by Twitch' });
+/** The game's answer to a checked press or purchase, from the viewer's channel's object. */
+async function ask(env: Env, request: Request, channel: string, body: object): Promise<Response> {
+  const answer = await env.CHANNEL.get(env.CHANNEL.idFromName(channel)).fetch(new Request(request.url, { method: 'POST', body: JSON.stringify(body) }));
+  return json(200, await answer.json());
+}
+
 /** `/press`: a viewer's button press, checked here, answered by their channel's game. */
 async function press(request: Request, env: Env): Promise<Response> {
-  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
-  const viewer = await viewerOf(env, request.headers.get('Authorization')?.replace(/^Bearer /, ''));
-  if (!viewer) return json(401, { ok: false, reason: 'Not signed by Twitch' });
+  const viewer = await viewerOf(env, request);
+  if (!viewer) return notSigned();
   // The game knows a viewer by their Twitch user ID, which Twitch gives only once they share identity.
   if (!viewer.user_id) return json(403, { ok: false, reason: 'Share your Twitch identity to play' });
   const { command } = await request.json().catch(() => ({})) as { command?: string };
   if (!command || !PRESSES.includes(command)) return json(400, { ok: false, reason: 'Unknown action' });
-  const answer = await env.CHANNEL.get(env.CHANNEL.idFromName(viewer.channel_id)).fetch(new Request(request.url, { method: 'POST', body: JSON.stringify({ userId: viewer.user_id, command }) }));
-  return json(200, await answer.json());
+  return ask(env, request, viewer.channel_id, { userId: viewer.user_id, command });
+}
+
+/**
+ * `/bits`: a viewer's Bits purchase, its receipt checked here, played by their channel's game. The viewer's JWT names the
+ * channel; the receipt names the buyer, so no shared identity is needed. Never stored or redelivered (#173).
+ */
+async function bits(request: Request, env: Env): Promise<Response> {
+  const viewer = await viewerOf(env, request);
+  if (!viewer) return notSigned();
+  const { receipt } = await request.json().catch(() => ({})) as { receipt?: string };
+  const purchase = await purchaseOf(env, receipt);
+  if (!purchase) return json(400, { ok: false, reason: 'Not a Bits receipt' });
+  return ask(env, request, viewer.channel_id, purchase);
 }
 
 /** One channel's link: at most one game socket, its snapshots out to the channel's viewers. */
@@ -127,9 +161,12 @@ export class ChannelLink {
 
   constructor(private state: State, private env: Env) {}
 
-  /** A game the Worker has checked, for the channel it names (a newer one replaces the old), or a viewer's checked press. */
+  /** A game the Worker has checked, for the channel it names (a newer one replaces the old), or a viewer's checked press or purchase. */
   async fetch(request: Request): Promise<Response> {
-    if (request.headers.get('Upgrade') !== 'websocket') return new Response(JSON.stringify(await this.press(await request.json())));
+    if (request.headers.get('Upgrade') !== 'websocket') {
+      const body = await request.json();
+      return new Response(JSON.stringify(await ('event' in body ? this.bits(body) : this.press(body))));
+    }
     const channel = request.headers.get('X-Channel')!;
     return upgrade((socket) => {
       for (const old of this.state.getWebSockets()) old.close(REPLACED, 'Replaced by a newer link');
@@ -159,20 +196,38 @@ export class ChannelLink {
   /** The game's socket failed: as a close. */
   async webSocketError(socket: WorkerSocket) { await this.webSocketClose(socket, 1011, 'Link failed'); }
 
+  private game() { return this.state.getWebSockets().find((s) => s.readyState === 1); }
+
   /** A viewer's press, sent to the game with a request ID: the game's answer, or why there is none. Never retried. */
   private async press({ userId, command }: { userId: string; command: string }): Promise<ChatResult> {
-    const game = () => this.state.getWebSockets().find((s) => s.readyState === 1);
-    if (!game()) return GAME_OFFLINE;
+    if (!this.game()) return GAME_OFFLINE;
     const name = await this.nameOf(userId);
     if (!name) return TWITCH_DOWN;
-    const socket = game(); // the lookup took a moment: the game may have gone since
+    return this.ask((id) => ({ type: 'press', id, userId, name, command }));
+  }
+
+  /** A viewer's checked purchase, sent as a press is: played once per receipt, and never lost to a failed Get Users. */
+  private async bits({ userId, event, transactionId }: { userId: string; event: PaidEvent; transactionId: string }): Promise<ChatResult> {
+    if (!this.game()) return GAME_OFFLINE;
+    // In storage, so a replayed receipt stays refused after the object hibernates.
+    // ponytail: never trimmed, one key per purchase; and per channel, so a receipt replayed to another channel plays there.
+    const key = `receipt:${transactionId}`;
+    if (await this.state.storage.get(key)) return PLAYED;
+    await this.state.storage.put(key, true);
+    const name = await this.nameOf(userId) ?? 'A viewer';
+    return this.ask((id) => ({ type: 'bits', id, userId, name, event }));
+  }
+
+  /** `message` to the game under a new request ID: its answer, or "No answer" after 3 s. */
+  private async ask(message: (id: string) => Press | Purchase): Promise<ChatResult> {
+    const socket = this.game(); // naming the viewer took a moment: the game may have gone since
     if (!socket) return GAME_OFFLINE;
     const id = crypto.randomUUID();
     try {
       return await new Promise<ChatResult>((resolve) => {
         this.waiting.set(id, resolve);
         setTimeout(() => resolve(NO_ANSWER), ANSWER_WAIT);
-        socket.send(JSON.stringify({ type: 'press', id, userId, name, command } satisfies Press));
+        socket.send(JSON.stringify(message(id)));
       });
     } finally { this.waiting.delete(id); }
   }
@@ -200,11 +255,13 @@ export class ChannelLink {
   }
 }
 
-/** The Worker: `/game` takes a game's link, checks its Twitch login and hands it to its channel's object; `/press` a viewer's press. */
+/** The Worker: `/game` takes a game's link, checks its Twitch login and hands it to its channel's object; `/press` a viewer's press, `/bits` their purchase. */
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const { pathname } = new URL(request.url);
+    if ((pathname === '/press' || pathname === '/bits') && request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
     if (pathname === '/press') return press(request, env);
+    if (pathname === '/bits') return bits(request, env);
     if (pathname !== '/game' || request.headers.get('Upgrade') !== 'websocket') return new Response('Not found', { status: 404 });
     const offered = (request.headers.get('Sec-WebSocket-Protocol') ?? '').split(',').map((p) => p.trim());
     const channel = offered.includes(PROTOCOL) ? await channelOf(offered.find((p) => p !== PROTOCOL)) : undefined;

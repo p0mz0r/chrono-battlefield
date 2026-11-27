@@ -27,9 +27,11 @@ class FakeSocket {
   serializeAttachment(value: unknown) { this.attachment = structuredClone(value); }
   deserializeAttachment() { return this.attachment; }
 }
-/** The runtime's Durable Object state: only the hibernatable sockets the backend uses. */
+/** The runtime's Durable Object state: the hibernatable sockets and the storage the backend uses. */
 class FakeState {
   sockets: FakeSocket[] = [];
+  stored = new Map<string, unknown>();
+  storage = { get: async (key: string) => this.stored.get(key), put: async (key: string, value: unknown) => { this.stored.set(key, value); } };
   acceptWebSocket(socket: FakeSocket) { this.sockets.push(socket); }
   /** As the runtime: a socket stays listed until its close completes, even once the backend closed it. */
   getWebSockets() { return this.sockets; }
@@ -163,9 +165,12 @@ describe('extension backend', () => {
 });
 
 /** A JWT as Twitch hands a viewer of channel 427115971 in `onAuthorized`, signed with `secret`; `user_id` once they share identity. */
-async function viewerJwt(claims: object = {}, secret = SECRET) {
+const viewerJwt = (claims: object = {}, secret = SECRET) =>
+  signed({ exp: Math.floor(Date.now() / 1000) + 3600, opaque_user_id: 'U1', user_id: '1', channel_id: '427115971', role: 'viewer', ...claims }, secret);
+/** `claims` as an HS256 JWT signed with `secret`, as Twitch signs its JWTs with the extension secret. */
+async function signed(claims: object, secret = SECRET) {
   const encode = (value: unknown) => btoa(JSON.stringify(value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-  const body = `${encode({ alg: 'HS256', typ: 'JWT' })}.${encode({ exp: Math.floor(Date.now() / 1000) + 3600, opaque_user_id: 'U1', user_id: '1', channel_id: '427115971', role: 'viewer', ...claims })}`;
+  const body = `${encode({ alg: 'HS256', typ: 'JWT' })}.${encode(claims)}`;
   const key = await crypto.subtle.importKey('raw', Uint8Array.from(atob(secret), (c) => c.charCodeAt(0)), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   return `${body}.${btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(body))))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`;
 }
@@ -258,5 +263,56 @@ describe('viewer presses', () => {
     expect([preflight.status, preflight.headers.get('Access-Control-Allow-Origin'), preflight.headers.get('Access-Control-Allow-Headers')]).toEqual([204, '*', 'Authorization, Content-Type']);
     const reply = await worker.fetch(new Request('https://backend.test/press', { method: 'POST', body: '{}' }), env) as unknown as { headers: Headers };
     expect(reply.headers.get('Access-Control-Allow-Origin')).toBe('*');
+  });
+});
+
+/** A Bits transaction receipt as `onTransactionComplete` hands it over: `userId` bought `sku` at its price. */
+const receipt = ({ userId = '1', sku = 'kirov', amount = 20, transactionId = 'T1', topic = 'bits_transaction_receipt', exp = Math.floor(Date.now() / 1000) + 60 } = {}, secret = SECRET) =>
+  signed({ topic, exp, data: { transactionId, time: new Date().toISOString(), userId, product: { domainId: `twitch.ext.${EXTENSION_CLIENT_ID}`, sku, cost: { amount, type: 'bits' } } } }, secret);
+/** A purchase as the front end sends it: the viewer's JWT, which names the channel, and the receipt. */
+async function buy(jwt: string, receipt: string) {
+  const reply = await worker.fetch(new Request('https://backend.test/bits', { method: 'POST', headers: { Authorization: `Bearer ${jwt}` }, body: JSON.stringify({ receipt }) }), env) as unknown as { status: number; json(): Promise<unknown> };
+  return [reply.status, await reply.json()];
+}
+/** The game links its channel and plays each purchase; returns the purchases it got. */
+async function gamePlaying() {
+  await link('operator-token');
+  const got: unknown[] = [];
+  ends().backend.game = (message) => { if (message.type !== 'bits') return; got.push(message); return { type: 'reply', id: message.id, result: { ok: true, reason: 'queued' } }; };
+  return got;
+}
+
+describe('Bits purchases', () => {
+  it("forwards a checked receipt to the channel's game as that viewer's purchase of its event, named by Twitch", async () => {
+    const got = await gamePlaying();
+    // Bits need no shared identity: the receipt names the buyer.
+    expect(await buy(await viewerJwt({ user_id: undefined }), await receipt())).toEqual([200, { ok: true, reason: 'queued' }]);
+    expect(got).toEqual([{ type: 'bits', id: expect.any(String), userId: '1', name: 'Kane', event: 'kirov' }]);
+  });
+
+  it('refuses a forged or expired receipt, one for another product or price, and one already played', async () => {
+    const got = await gamePlaying();
+    expect((await buy(await viewerJwt(), await receipt({ transactionId: 'T0' })))[0]).toBe(200);
+    for (const forged of ['', 'not.a.jwt', await receipt({}, btoa('some other secret, 32 bytes long')), await receipt({ exp: Math.floor(Date.now() / 1000) - 1 }),
+      await receipt({ topic: 'something_else' }), await receipt({ sku: 'nuke', amount: 100 }), await receipt({ sku: 'kirov', amount: 10 })])
+      expect((await buy(await viewerJwt(), forged))[0]).toBe(400);
+    expect(await buy(await viewerJwt(), await receipt({ transactionId: 'T0' }))).toEqual([200, { ok: false, reason: 'Already played' }]);
+    expect(got).toHaveLength(1);
+  });
+
+  it("refuses a purchase without the viewer's JWT, which says whose channel it is for", async () => {
+    const got = await gamePlaying();
+    expect((await buy(await viewerJwt({}, btoa('some other secret, 32 bytes long')), await receipt()))[0]).toBe(401);
+    expect(got).toEqual([]);
+  });
+
+  it('answers "Game offline" with no game linked, and the purchase is lost', async () => {
+    expect(await buy(await viewerJwt(), await receipt())).toEqual([200, { ok: false, reason: 'Game offline' }]);
+  });
+
+  it("still plays a purchase when Twitch can't name the buyer", async () => {
+    const got = await gamePlaying();
+    await buy(await viewerJwt(), await receipt({ userId: '9', sku: 'desolator', amount: 10 }));
+    expect(got).toEqual([{ type: 'bits', id: expect.any(String), userId: '9', name: 'A viewer', event: 'desolator' }]);
   });
 });

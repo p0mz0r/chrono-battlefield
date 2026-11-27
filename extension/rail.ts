@@ -1,5 +1,5 @@
 import type { Snapshot } from '../src/chat/gameLink.js';
-import { MAX_TANKS, type ChatResult } from '../src/race/race.js';
+import { CHEER_PRICES, MAX_TANKS, PAID_TITLES, type ChatResult, type PaidEvent } from '../src/race/race.js';
 
 /** Milliseconds without a snapshot before the rail draws nothing: the game re-sends every 5 s, so two missed means it's gone. */
 const SILENCE = 10_000;
@@ -18,7 +18,7 @@ export const TILES: Record<Action, [icon: string, label: string]> = {
 /** The last snapshot the extension heard and when (ms). */
 export interface Heard { snapshot: Snapshot; at: number }
 /** The answer to the viewer's last press and when it came (ms). */
-export interface Reply { action: Action; result: ChatResult; at: number }
+export interface Reply { action: Action | PaidEvent; result: ChatResult; at: number }
 
 /**
  * What the rail (and the phone view) draws. `shared`: the viewer has shared their Twitch identity, so their first press
@@ -28,25 +28,27 @@ export type Rail =
   | { state: 'none' }
   | { state: 'between' }
   | { state: 'join'; countdown: number; field: number; max: number; shared: boolean; join: boolean; failure?: string }
-  /** `me`: the viewer's own tank; `ownTank`: Shield and V3 for it; `randomTank`: Boost, Missile, Tesla; `nuke`: while armed. */
-  | { state: 'race'; field: number; me?: Snapshot['racers'][number]; shared: boolean; ownTank: Action[]; randomTank: Action[]; nuke: boolean; failure?: string };
+  /** `me`: the viewer's own tank; `ownTank`: Shield and V3 for it; `randomTank`: Boost, Missile, Tesla; `nuke`: while armed; `bits`: the big events for Bits. */
+  | { state: 'race'; field: number; me?: Snapshot['racers'][number]; shared: boolean; ownTank: Action[]; randomTank: Action[]; nuke: boolean; bits: PaidEvent[]; failure?: string };
 
 /** Why `reply`'s press failed, as the rail words it ("Tesla failed: cooldown 12 s"), while it still shows. */
 function failure(reply: Reply | undefined, now: number) {
   if (!reply || reply.result.ok || now - reply.at >= FAILURE_SHOWS) return undefined;
-  const { action, result: { reason } } = reply, label = TILES[action][1];
+  const { action, result: { reason } } = reply, label = action in TILES ? TILES[action as Action][1] : PAID_TITLES[action as PaidEvent];
   if (BACKEND_REASONS.includes(reason)) return reason;
   return reason === 'ignored' ? `${label} failed` : `${label} failed: ${reason}`;
 }
 
 const OWN_TANK: Action[] = ['shield', 'v3'], RANDOM_TANK: Action[] = ['boost', 'missile', 'tesla'];
+/** The Bits catalog (#191), cheapest first: one SKU per big event, named as the event. The Nuke is never sold. */
+export const BITS = (Object.keys(CHEER_PRICES) as PaidEvent[]).sort((a, b) => CHEER_PRICES[a] - CHEER_PRICES[b]);
 
 /**
  * What to draw now (#187, seam 6) from the last snapshot heard, the viewer's Twitch user ID (null until they share
- * identity), the answer to their last press and the clock. Nothing when there's no snapshot, the rail is hidden (trial
+ * identity), the answer to their last press, the clock and whether the channel takes Bits (`isBitsEnabled`). Nothing when there's no snapshot, the rail is hidden (trial
  * race, game link offline) or the game has gone quiet.
  */
-export function rail(heard: Heard | undefined, viewer: string | null, reply: Reply | undefined, now: number): Rail {
+export function rail(heard: Heard | undefined, viewer: string | null, reply: Reply | undefined, now: number, bitsEnabled = false): Rail {
   const s = heard?.snapshot;
   if (!s?.show || now - heard!.at >= SILENCE) return { state: 'none' };
   const me = viewer === null ? undefined : s.racers.find((r) => r.id === viewer), shared = viewer !== null;
@@ -56,5 +58,6 @@ export function rail(heard: Heard | undefined, viewer: string | null, reply: Rep
   }
   // Interactions only work once racing (`chat()` ignores them before); the place shows from the countdown.
   const on = (a: Action) => s.phase === 'racing' && s.interactions.includes(a);
-  return { state: 'race', field: s.field, me, shared, ownTank: me && !me.finished ? OWN_TANK.filter(on) : [], randomTank: RANDOM_TANK.filter(on), nuke: s.phase === 'racing' && s.armed, failure: failure(reply, now) };
+  return { state: 'race', field: s.field, me, shared, ownTank: me && !me.finished ? OWN_TANK.filter(on) : [], randomTank: RANDOM_TANK.filter(on), nuke: s.phase === 'racing' && s.armed,
+    bits: bitsEnabled && s.phase === 'racing' ? BITS.filter((e) => s.paid.includes(e)) : [], failure: failure(reply, now) };
 }
