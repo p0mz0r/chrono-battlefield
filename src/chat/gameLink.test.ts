@@ -18,10 +18,15 @@ class FakeSocket {
   sent: string[] = [];
   onopen: (() => void) | null = null;
   onclose: ((e: { code: number }) => void) | null = null;
+  onmessage: ((e: { data: string }) => void) | null = null;
   constructor(public url: string, public protocols: string[]) { FakeSocket.all.push(this); }
   send(data: string) { this.sent.push(data); }
   close() { this.drop(); }
   open() { this.readyState = 1; this.onopen?.(); }
+  /** The backend accepts the token: open, then its greeting. */
+  link() { this.open(); this.onmessage?.({ data: JSON.stringify({ type: 'linked' }) }); }
+  /** The backend refuses the token: the socket still opens, then closes with the refusal code. */
+  refuse() { this.open(); this.drop(4001); }
   drop(code = 1006) { if (this.readyState === 3) return; this.readyState = 3; this.onclose?.({ code }); }
   snapshots(): Snapshot[] { return this.sent.map((data) => JSON.parse(data)).filter((m) => m.type === 'snapshot').map((m) => m.snapshot); }
 }
@@ -29,18 +34,26 @@ const last = () => FakeSocket.all.at(-1)!;
 
 let storage: Map<string, string>, race: Race, link: ReturnType<typeof connectGameLink>, session: NonNullable<ReturnType<typeof twitchSession>>, access: string;
 /** Twitch's id service: the stored token validates; a refresh hands out `acc-2`. */
-const fetch: Fetch = async (url) => url.endsWith('/token')
-  ? { ok: true, status: 200, json: async () => ({ access_token: access = 'acc-2', refresh_token: 'ref-2' }) }
-  : { ok: true, status: 200, json: async () => ({}) };
+/** Refreshes Twitch was asked for, and how it answers the next: a new pair, a refused refresh token, or unreachable. */
+let refreshes = 0, twitch: 'up' | 'refuses' | 'down' = 'up';
+const fetch: Fetch = async (url) => {
+  if (!url.endsWith('/token')) return { ok: true, status: 200, json: async () => ({}) };
+  refreshes++;
+  if (twitch === 'down') throw new Error('network down');
+  if (twitch === 'refuses') return { ok: false, status: 400, json: async () => ({ message: 'Invalid refresh token' }) };
+  return { ok: true, status: 200, json: async () => ({ access_token: access = 'acc-2', refresh_token: 'ref-2' }) };
+};
 beforeEach(() => {
   vi.useFakeTimers();
   storage = new Map([['rhino-twitch-login', JSON.stringify({ access: 'acc-1', refresh: 'ref-1', userId: '427115971', login: 'p0mz0r' })]]);
   vi.stubGlobal('localStorage', { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value), removeItem: (key: string) => storage.delete(key) });
   FakeSocket.all = [];
+  refreshes = 0;
+  twitch = 'up';
   race = newRace();
   session = twitchSession({ fetch })!;
   link = connectGameLink(race, COLOURS, session, { url: 'wss://backend.test/game', Socket: FakeSocket });
-  last().open();
+  last().link();
 });
 afterEach(() => { link.close(); session.close(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
@@ -98,11 +111,13 @@ describe('game link', () => {
     expect(last().snapshots().at(-1)!.show).toBe(false);
   });
 
-  it('reconnects with the refreshed token when the login\'s token goes bad', async () => {
+  it('reconnects with the refreshed token when the login\'s token goes bad, keeping the old link until the new one links', async () => {
     const old = last();
     await session.refresh();
     await vi.advanceTimersByTimeAsync(0);
-    expect([old.readyState, FakeSocket.all.length, last().protocols[1]]).toEqual([3, 2, access]);
+    expect([old.readyState, FakeSocket.all.length, last().protocols[1], link.status()]).toEqual([1, 2, 'acc-2', 'linked']);
+    last().link();
+    expect(old.readyState).toBe(3);
   });
 
   it('reconnects after a drop, but not once a newer link for the channel has replaced it', async () => {
@@ -113,5 +128,94 @@ describe('game link', () => {
     last().drop(4000);
     await vi.advanceTimersByTimeAsync(60_000);
     expect(FakeSocket.all).toHaveLength(2);
+  });
+
+  it('reconnects with growing waits, 1 s doubling to 30 s', async () => {
+    const opened: number[] = [], start = Date.now();
+    for (let n = 0; n < 7; n++) { last().drop(); const count = FakeSocket.all.length; while (FakeSocket.all.length === count) await vi.advanceTimersByTimeAsync(100); opened.push(Math.round((Date.now() - start) / 1000)); }
+    expect(opened).toEqual([1, 3, 7, 15, 31, 61, 91]);
+  });
+
+  it('after a refusal refreshes the login and tries once more; a second refusal stops it trying', async () => {
+    last().refuse();
+    await vi.advanceTimersByTimeAsync(0);
+    expect([refreshes, FakeSocket.all.length, last().protocols[1], link.status()]).toEqual([1, 2, 'acc-2', 'offline']);
+    last().refuse();
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect([refreshes, FakeSocket.all.length, link.status()]).toEqual([1, 2, 'refused']);
+  });
+
+  it('spends no try on a refresh that never reached Twitch', async () => {
+    twitch = 'down';
+    last().refuse();
+    await vi.advanceTimersByTimeAsync(1000);
+    twitch = 'up';
+    last().refuse(); // the old token again, after the wait
+    await vi.advanceTimersByTimeAsync(0);
+    expect([refreshes, FakeSocket.all.length, last().protocols[1]]).toEqual([2, 3, 'acc-2']);
+  });
+
+  it('stops as refused once Twitch refuses the refresh token itself', async () => {
+    twitch = 'refuses';
+    last().refuse();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect([FakeSocket.all.length, link.status(), link.offline()]).toEqual([1, 'refused', true]);
+  });
+
+  it('counts a refusal after a working link as the first one again', async () => {
+    last().refuse();
+    await vi.advanceTimersByTimeAsync(0);
+    last().link();
+    last().drop();
+    await vi.advanceTimersByTimeAsync(1000);
+    last().refuse();
+    await vi.advanceTimersByTimeAsync(0);
+    expect([refreshes, FakeSocket.all.length]).toEqual([2, 4]);
+  });
+});
+
+describe('extension offline marker', () => {
+  /** A link whose first socket is still opening. */
+  const fresh = () => { link.close(); return link = connectGameLink(race, COLOURS, session, { url: 'wss://backend.test/game', Socket: FakeSocket }); };
+
+  it('stays off while the first link is still opening, then shows once that attempt fails', () => {
+    fresh();
+    expect([link.status(), link.offline()]).toEqual(['opening', false]);
+    last().drop();
+    expect([link.status(), link.offline()]).toEqual(['offline', true]);
+  });
+
+  it('shows once an open link drops, and goes once it is linked again', async () => {
+    expect([link.status(), link.offline()]).toEqual(['linked', false]);
+    last().drop();
+    expect(link.offline()).toBe(true);
+    await vi.advanceTimersByTimeAsync(1000);
+    last().link();
+    expect(link.offline()).toBe(false);
+  });
+
+  it('stays on after a second refusal', async () => {
+    last().refuse();
+    await vi.advanceTimersByTimeAsync(0);
+    last().refuse();
+    expect(link.offline()).toBe(true);
+  });
+
+  it('never shows in a trial race', () => {
+    race.trial = true;
+    last().drop();
+    expect(link.offline()).toBe(false);
+  });
+
+  it('never stops a race: one runs to its results with every link attempt failing', async () => {
+    fresh();
+    openJoinWindow(race, { joinSeconds: 1 });
+    chat(race, { viewerId: 'twitch:1', name: 'Kane', text: '!rhino' });
+    for (let s = 0; s < 600 && race.phase !== 'results'; s++) {
+      if (last().readyState !== 3) last().drop();
+      tick(1);
+      await vi.advanceTimersByTimeAsync(1000);
+    }
+    expect([race.phase, race.results.length]).toEqual(['results', 8]);
   });
 });

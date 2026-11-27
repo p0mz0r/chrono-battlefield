@@ -187,7 +187,7 @@ The small "CHAT OFFLINE" tag on stream while the chat source's connection is dow
 _Avoid_: Disconnected banner, error
 
 **Extension offline marker**:
-The small "EXTENSION OFFLINE" tag on stream while the game's link to the extension backend is down with the Twitch extension switched on; viewers' rails draw nothing meanwhile and Bits bought then are lost. It doesn't show while the first link is still opening. The race carries on and the game reconnects with growing waits, unless the backend has refused it twice, when it stops trying until the operator fixes the login in setup.
+The small "EXTENSION OFFLINE" tag on stream while the game's link to the extension backend is down with the Twitch extension switched on; viewers' rails draw nothing meanwhile and Bits bought then are lost. It doesn't show while the first link is still opening, nor in a trial race. The race carries on and the game reconnects with growing waits, unless the backend has refused it twice, when it stops trying until the operator fixes the login in setup.
 _Avoid_: Disconnected banner, error
 
 **Twitch extension**:
