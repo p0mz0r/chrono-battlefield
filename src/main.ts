@@ -1,7 +1,8 @@
 import { Application, Container, Graphics, Rectangle, Sprite, Text, Texture } from 'pixi.js';
 import type { CellGrid } from './battlefield/grid.js';
 import { openInstall, readInstall } from './install/read.js';
-import { bindSetupKey, chatSource, lendToSetup, setupDone, showChat, showSetup, watchChat } from './install/setup.js';
+import { bindSetupKey, chatSource, extensionSeen, lendToSetup, setupDone, showChat, showSetup, watchChat } from './install/setup.js';
+import { opensOnExtension } from './install/wizard.js';
 import { connectStreamerBot, type ChatSource } from './chat/streamerBot.js';
 import { connectTwitch } from './chat/twitch.js';
 import { floorLevel, LEPTONS_PER_CELL, spotLevel, tankCell, TICK_HZ, type Cell, type Spot } from './movement/index.js';
@@ -608,6 +609,7 @@ async function main() {
     if (chatLink) watchChat(chatLink.online);
     if (import.meta.env.DEV) (await import('./race/devPanel.js')).mountDevPanel(race, params, !chatLink);
     if (!setupDone()) showSetup();
+    else if (opensOnExtension({ source: chatSource(), setupDone: true, extensionSeen: extensionSeen() })) showSetup([], 'extension');
   }
   document.body.dataset.ready = String(terrain.missing === 0);
 }

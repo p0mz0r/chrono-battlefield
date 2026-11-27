@@ -2,17 +2,17 @@ import mark from '../../docs/brand/final/mark.png';
 import settleImport from '../chat/settleAction.sb?raw';
 import { SETTLE_ACTION } from '../chat/streamerBot.js';
 import { missingRewards } from '../chat/twitch.js';
-import { loginTwitch, logoutTwitch, twitchLogin } from '../chat/twitchLogin.js';
+import { HelixError, loginTwitch, logoutTwitch, twitchAccess, twitchLogin, twitchSession } from '../chat/twitchLogin.js';
 import '../panel.css';
 import { RETIRED_REWARDS, REWARDS } from '../race/race.js';
 import { savedPath, useFolder } from './read.js';
-import { canLeave, wizardSteps, type RaceForms, type Step } from './wizard.js';
+import { canLeave, EXTENSION_ID, overlaySlot, wizardSteps, type RaceForms, type Step } from './wizard.js';
 
 // Setup, in the game window (#161): a wizard, one step at a time, that opens by itself on the first start and on F2
 // between races. A change that needs a reload reopens it on the same step.
 /** The channel-point rewards the streamer makes: none while paid events are cheers only (#184). */
 const rewards = Object.values(REWARDS);
-const TITLES: Record<Step, string> = { install: 'Install', chat: 'Chat source', streamerbot: 'Streamer.bot', twitch: 'Twitch login', obs: 'OBS capture', courses: 'Courses', race: 'Race setup', keys: 'Keys', trial: 'Trial race' };
+const TITLES: Record<Step, string> = { install: 'Install', chat: 'Chat source', streamerbot: 'Streamer.bot', twitch: 'Twitch login', extension: 'Twitch extension', obs: 'OBS capture', courses: 'Courses', race: 'Race setup', keys: 'Keys', trial: 'Trial race' };
 const dialog = document.createElement('dialog');
 dialog.id = 'setup';
 dialog.className = 'panel setup';
@@ -32,7 +32,7 @@ dialog.innerHTML = `<div class="inner"><header><img class="mark" src="${mark}" a
       <label class="tile"><input type="radio" name="chat" value="streamerbot"><span>Streamer.bot<small>Chat from every platform it's connected to, plus Twitch cheers.</small></span></label>
       <label class="tile"><input type="radio" name="chat" value="twitch"><span>Twitch direct<small>No other app: log in to Twitch from here once.</small></span></label>
     </fieldset>
-    <label class="show-chat"><input type="checkbox" name="show-chat"> Show chat on stream (off if you keep your own chat overlay)</label>
+    <label class="toggle"><input type="checkbox" name="show-chat"> Show chat on stream (off if you keep your own chat overlay)</label>
   </section>
   <section data-step="streamerbot"><h2>Streamer.bot <b class="chip chat-chip"></b></h2>
     <ol class="how">
@@ -50,6 +50,21 @@ dialog.innerHTML = `<div class="inner"><header><img class="mark" src="${mark}" a
     <p class="twitch-status"></p>
     <div class="row"><button type="button" class="twitch-login">Log in to Twitch</button><button type="button" class="twitch-logout">Log out of Twitch</button></div>
     <p class="twitch-code hint" hidden></p>
+  </section>
+  <section data-step="extension"><h2>Twitch extension <b class="chip extension-chip"></b></h2>
+    <p>Optional. With the Rhino Race extension, viewers on Twitch join and play from buttons beside the video, on a phone too, and follow their own place. It works beside your chat source, never instead of it. Until you switch it on below, this step is only information.</p>
+    <div class="extension-login">
+      <p class="report bad logged-out">Do this off stream: the login code shows in this window, which OBS captures.</p>
+      <p class="extension-status"></p>
+      <div class="row"><button type="button" class="twitch-login">Log in to Twitch</button><button type="button" class="twitch-logout">Log out of Twitch</button></div>
+      <p class="twitch-code hint" hidden></p>
+    </div>
+    <ol class="how checklist">
+      <li class="install-step"><b>Install</b>: open <a href="https://www.twitch.tv/ext/${EXTENSION_ID}" target="_blank" rel="noopener">the Rhino Race extension on Twitch</a> and install it.</li>
+      <li class="activate-step"><b>Activate as Overlay</b> in <a href="https://dashboard.twitch.tv/extensions" target="_blank" rel="noopener">your Extension Manager</a>.<span class="report bad other-extension" hidden></span></li>
+      <li class="check-step"><b>Check</b>: <span class="check-status"></span></li>
+    </ol>
+    <label class="toggle"><input type="checkbox" name="extension"> Switch the Twitch extension on</label>
   </section>
   <section data-step="obs"><h2>OBS capture</h2>
     <ol class="how">
@@ -105,9 +120,13 @@ dialog.innerHTML = `<div class="inner"><header><img class="mark" src="${mark}" a
   #setup .import input { font-family: Consolas, monospace; font-size: 13px; }
   #setup input.copy { cursor: copy; }
   #setup input.copied { border-color: var(--cyan); }
-  #setup .show-chat { display: flex; align-items: center; gap: 8px; margin-top: 10px; cursor: pointer; }
-  #setup .show-chat input { flex: none; width: 16px; height: 16px; margin: 0; box-shadow: none; accent-color: var(--cyan); }
+  #setup .toggle { display: flex; align-items: center; gap: 8px; margin-top: 10px; cursor: pointer; }
+  #setup .toggle input { flex: none; width: 16px; height: 16px; margin: 0; box-shadow: none; accent-color: var(--cyan); }
   #setup footer .keys { flex: 1; }
+  #setup .checklist li.done::marker { content: '✓  '; color: var(--cyan); }
+  #setup .other-extension:not([hidden]) { display: block; margin-top: 4px; }
+  #setup .checklist { margin-top: 14px; }
+  #setup .checklist a { color: var(--cyan); }
 </style>`;
 const $ = <T extends HTMLElement>(sel: string) => dialog.querySelector<T>(sel)!;
 const pathInput = $<HTMLInputElement>('input[name=path]');
@@ -129,6 +148,12 @@ export const showChat = () => localStorage.getItem(SHOW_CHAT_KEY) !== 'off';
 
 /** Whether the operator finished setup once for this Windows user; until then it opens by itself on every start. */
 export const setupDone = () => localStorage.getItem(DONE_KEY) === '1';
+
+const EXTENSION_KEY = 'rhino-extension', EXTENSION_SEEN_KEY = 'rhino-extension-seen';
+/** Whether the operator switched the Twitch extension on, in its setup step: the only place it switches. */
+export const extensionOn = () => localStorage.getItem(EXTENSION_KEY) === 'on';
+/** Whether setup has shown the Twitch extension's step, so it never opens by itself on it again. */
+export const extensionSeen = () => localStorage.getItem(EXTENSION_SEEN_KEY) === '1';
 
 /** The chat source's connection, for setup's status: `online` as `ChatSource.online`. */
 export const watchChat = (online: () => boolean | undefined) => { chatOnline = online; };
@@ -175,7 +200,47 @@ function render() {
   $<HTMLButtonElement>('.back').disabled = at === 0;
   $('.next').hidden = step === 'trial';
   $('.finish').hidden = $('.trial').hidden = step !== 'trial';
+  if (step === 'extension') { localStorage.setItem(EXTENSION_SEEN_KEY, '1'); startCheck(); } else stopCheck();
   paintChat();
+}
+
+let checking: ReturnType<typeof setInterval> | undefined, session: ReturnType<typeof twitchSession>;
+/** Paints the Twitch chip and the checklist from what holds the overlay slot: `undefined` while Twitch can't say. */
+function paintSlot(slot: { ours: boolean; other?: string } | undefined) {
+  const status = $('.check-status'), other = $('.other-extension');
+  $('.check-step').classList.toggle('done', !!slot?.ours);
+  other.hidden = !slot?.other;
+  if (slot?.other) other.textContent = `${slot.other} holds your overlay slot: a channel has only one. Deactivate it there to activate Rhino Race.`;
+  if (!twitchLogin()) { chip('.extension-chip', 'Not logged in', 'bad'); status.textContent = 'Log in to Twitch first.'; }
+  else if (!slot) { chip('.extension-chip', 'Checking…'); status.textContent = 'Asking Twitch…'; }
+  else if (slot.ours) { chip('.extension-chip', 'Active', 'ok'); status.textContent = 'Active in your overlay slot.'; }
+  else { chip('.extension-chip', 'Not active in your overlay slot', 'bad'); status.textContent = 'Ticks itself once the extension is active in your overlay slot.'; }
+}
+/** Checks the overlay slot now and every 5 s while the extension's step shows. */
+function startCheck() {
+  if (checking) return; // already running: keep its last answer on screen
+  paintSlot(undefined);
+  if (!twitchLogin()) return;
+  // Twitch direct's session already keeps the stored token fresh; a second one would spend the same single-use refresh token.
+  // ponytail: setup's own session for Streamer.bot; share one session per page once the game link holds one too.
+  if (chatSource() !== 'twitch') session = twitchSession({ onLogout: reloadIntoSetup });
+  const check = async () => {
+    try {
+      await session?.validated;
+      paintSlot(await overlaySlot(twitchAccess()!));
+    } catch (err) {
+      if (err instanceof HelixError && err.status === 401) session?.refresh().catch(() => {});
+      paintSlot(undefined);
+    }
+  };
+  void check();
+  checking = setInterval(check, 5000);
+}
+function stopCheck() {
+  clearInterval(checking);
+  checking = undefined;
+  session?.close();
+  session = undefined;
 }
 
 function go(to: Step) {
@@ -231,10 +296,15 @@ $('.next').addEventListener('click', () => { const steps = wizardSteps(chatSourc
 const finish = () => { localStorage.setItem(DONE_KEY, '1'); dialog.close(); };
 $('.finish').addEventListener('click', finish);
 $('.trial').addEventListener('click', () => { finish(); lent?.trial(); });
-dialog.addEventListener('close', () => { clearInterval(painting); painting = undefined; });
+dialog.addEventListener('close', () => { clearInterval(painting); painting = undefined; stopCheck(); });
 
-$('.twitch-login').addEventListener('click', async () => {
-  const code = $('.twitch-code');
+$<HTMLInputElement>('input[name=extension]').addEventListener('change', (e) => {
+  localStorage.setItem(EXTENSION_KEY, (e.target as HTMLInputElement).checked ? 'on' : 'off');
+  reloadIntoSetup();
+});
+
+for (const button of dialog.querySelectorAll('.twitch-login')) button.addEventListener('click', async () => {
+  const code = button.closest('section')!.querySelector<HTMLElement>('.twitch-code')!;
   // Opened before the await, while the click still counts: browsers block a popup opened later.
   const popup = open('', 'twitch-login', 'popup,width=520,height=760');
   try {
@@ -254,7 +324,8 @@ $('.twitch-login').addEventListener('click', async () => {
   }
 });
 
-$('.twitch-logout').addEventListener('click', async () => {
+for (const button of dialog.querySelectorAll('.twitch-logout')) button.addEventListener('click', async () => {
+  stopCheck();
   await logoutTwitch();
   reloadIntoSetup(); // stops Twitch-direct chat, which still holds the login
 });
@@ -269,8 +340,12 @@ export function showSetup(problems: string[] = [], at?: Step) {
   const source = chatSource();
   for (const input of chatInputs) input.checked = input.value === source;
   $<HTMLInputElement>('input[name=show-chat]').checked = showChat();
+  $<HTMLInputElement>('input[name=extension]').checked = extensionOn();
   const login = twitchLogin(), missing = missingRewards();
-  $('.twitch-logout').hidden = !login;
+  for (const button of dialog.querySelectorAll<HTMLElement>('.twitch-logout')) button.hidden = !login;
+  for (const loggedOut of dialog.querySelectorAll<HTMLElement>('.extension-login :is(.logged-out, .twitch-login)')) loggedOut.hidden = !!login;
+  $('.extension-status').textContent = login ? `Logged in as ${login}: the extension uses the same Twitch login as Twitch direct. Logging out also stops Twitch-direct chat.`
+    : 'Log in once as the channel that streams, so the game can prove it speaks for your channel.';
   if (!login) chip('.twitch-chip', 'Not logged in', 'bad');
   else if (missing.length) chip('.twitch-chip', `${login} · rewards missing`, 'bad');
   else chip('.twitch-chip', `Logged in as ${login}`, 'ok');

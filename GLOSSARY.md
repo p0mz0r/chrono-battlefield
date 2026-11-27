@@ -194,6 +194,10 @@ _Avoid_: Disconnected banner, error
 The small rail Rhino Race draws over the stream on Twitch, plus its phone view, where a viewer joins, sets off audience interactions with buttons and follows their own place without typing commands. It's an extra input next to the chat source, never a replacement for it, and works the same with either chat source. The operator installs and activates it on Twitch and switches it on in setup; it shows only while the game is open with it switched on, races and race setup alike, and draws nothing otherwise. Its button presses show in the event feed like the typed commands, never in the chat panel.
 _Avoid_: Overlay, panel, plugin
 
+**Overlay slot**:
+Twitch's single place per channel for an extension drawn over the video. The operator activates the Twitch extension there on Twitch; setup only checks what holds it, and names another extension found there. The game never writes it.
+_Avoid_: Overlay (for the Twitch extension itself)
+
 **Extension backend**:
 The small hosted service between the game and the Twitch extension. It passes the race's state out to viewers and their actions in to the game, and vouches for which channel a game speaks for.
 _Avoid_: EBS, server, relay
