@@ -1,7 +1,8 @@
 import mark from '../../docs/brand/final/mark.png';
 import settleImport from '../chat/settleAction.sb?raw';
 import { SETTLE_ACTION } from '../chat/streamerBot.js';
-import { loginTwitch, missingRewards, twitchLogin } from '../chat/twitch.js';
+import { missingRewards } from '../chat/twitch.js';
+import { loginTwitch, logoutTwitch, twitchLogin } from '../chat/twitchLogin.js';
 import '../panel.css';
 import { RETIRED_REWARDS, REWARDS } from '../race/race.js';
 import { savedPath, useFolder } from './read.js';
@@ -47,7 +48,7 @@ dialog.innerHTML = `<div class="inner"><header><img class="mark" src="${mark}" a
   <section data-step="twitch"><h2>Twitch login <b class="chip twitch-chip"></b></h2>
     <p class="report bad">Do this off stream: the login code shows in this window, which OBS captures.</p>
     <p class="twitch-status"></p>
-    <div class="row"><button type="button" class="twitch-login">Log in to Twitch</button></div>
+    <div class="row"><button type="button" class="twitch-login">Log in to Twitch</button><button type="button" class="twitch-logout" title="Also stops Twitch-direct chat">Log out of Twitch</button></div>
     <p class="twitch-code hint" hidden></p>
   </section>
   <section data-step="obs"><h2>OBS capture</h2>
@@ -253,6 +254,11 @@ $('.twitch-login').addEventListener('click', async () => {
   }
 });
 
+$('.twitch-logout').addEventListener('click', async () => {
+  await logoutTwitch();
+  reloadIntoSetup(); // stops Twitch-direct chat, which still holds the login
+});
+
 /** Opens setup on `at` (default: the install step if it has `problems`, else the step last shown), listing what's wrong with the install. */
 export function showSetup(problems: string[] = [], at?: Step) {
   if (!dialog.isConnected) document.body.append(dialog);
@@ -264,12 +270,14 @@ export function showSetup(problems: string[] = [], at?: Step) {
   for (const input of chatInputs) input.checked = input.value === source;
   $<HTMLInputElement>('input[name=show-chat]').checked = showChat();
   const login = twitchLogin(), missing = missingRewards();
+  $('.twitch-logout').hidden = !login;
   if (!login) chip('.twitch-chip', 'Not logged in', 'bad');
   else if (missing.length) chip('.twitch-chip', `${login} · rewards missing`, 'bad');
   else chip('.twitch-chip', `Logged in as ${login}`, 'ok');
   $('.twitch-status').textContent = !login ? `Log in once as the channel that streams.${rewards.length ? ` The game then creates its rewards. Set their cost and turn them on or off in Twitch's dashboard.` : ''}`
     : missing.length ? `Logged in as ${login}. Rewards not created yet: ${missing.join(', ')}. If Twitch already has a reward with that title, delete or rename it, then reload.`
     : `Logged in as ${login}.${rewards.length ? ` The game's rewards are created: set their cost and turn them on or off in Twitch's dashboard.` : ''}`;
+  if (login) $('.twitch-status').textContent += ' Logging out also stops Twitch-direct chat.';
   report(problems);
   render();
   painting ??= setInterval(paintChat, 1000);
