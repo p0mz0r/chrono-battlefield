@@ -41,7 +41,8 @@
   .queue .playing { background: #bd2020; color: #fff; }
   .queue .hype { min-width: 90px; background: linear-gradient(90deg, #d8a520 var(--fill), #080b10cc var(--fill)); color: #fff; text-align: center; }
   .queue .hype.armed { background: #ffd34e; color: #080b10; font-weight: bold; }
-  .chat-offline { position: absolute; top: 116px; right: 24px; padding: 4px 10px; background: #080b10cc; color: #f88; font-size: 13px; }
+  .offline { position: absolute; top: 116px; right: 24px; display: flex; gap: 6px; }
+  .offline span { padding: 4px 10px; background: #080b10cc; color: #f88; font-size: 13px; }
   /* Starts past .left (24px in, plus a 24px gap) so it never covers the standings. */
   .feed { position: absolute; left: calc(48px + var(--left-width)); right: 24px; bottom: 24px; max-width: 460px; max-height: 40vh; margin-left: auto; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; font-size: 16px; text-align: right; }
   .feed div { margin-top: 5px; padding: 6px 12px; background: #080b10cc; border-right: 4px solid #db3030; }

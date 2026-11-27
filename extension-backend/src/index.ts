@@ -9,11 +9,15 @@ const EXTENSION_CLIENT_ID = 'v7ctzkptbah93gk31kw0jx0t2p9657';
 const PROTOCOL = 'rhino-game';
 /** Close codes the game can tell apart: its socket was taken by a newer one for the same channel, or its token was refused. */
 const REPLACED = 4000, REFUSED = 4001;
+/** The snapshot viewers get once the game's link is gone: the rail draws nothing. */
+const OFFLINE = { show: false };
 /** Extension PubSub's largest message. */
 const MAX_MESSAGE = 5 * 1024;
 
 /** The parts of the Workers runtime the backend uses, so it builds and tests without Cloudflare's types. */
 interface WorkerSocket {
+  /** 1 while open; a socket the backend is closing still lists until the game answers. */
+  readyState: number;
   accept(): void;
   send(data: string): void;
   close(code: number, reason: string): void;
@@ -73,6 +77,8 @@ export class ChannelLink {
       for (const old of this.state.getWebSockets()) old.close(REPLACED, 'Replaced by a newer link');
       this.state.acceptWebSocket(socket); // hibernatable: the attachment is all that survives between messages
       socket.serializeAttachment({ channel });
+      // A refused socket opens too, before its close; this tells the game it is linked.
+      socket.send(JSON.stringify({ type: 'linked' }));
     });
   }
 
@@ -82,7 +88,21 @@ export class ChannelLink {
     if (message.type !== 'snapshot') return;
     const text = JSON.stringify(message.snapshot), { channel } = socket.deserializeAttachment();
     if (new TextEncoder().encode(text).length > MAX_MESSAGE) return;
-    // ponytail: a failed broadcast is dropped; the game re-sends within 5 s anyway.
+    await this.broadcast(channel, text);
+  }
+
+  /** The game's socket closed: unless a newer link holds the channel, its viewers' rails draw nothing. */
+  async webSocketClose(socket: WorkerSocket, code: number, reason: string) {
+    try { socket.close(code, reason); } catch { /* already closed */ }
+    if (this.state.getWebSockets().some((s) => s !== socket && s.readyState === 1)) return;
+    await this.broadcast(socket.deserializeAttachment().channel, JSON.stringify(OFFLINE));
+  }
+  /** The game's socket failed: as a close. */
+  async webSocketError(socket: WorkerSocket) { await this.webSocketClose(socket, 1011, 'Link failed'); }
+
+  /** `text` to `channel`'s viewers as one Extension PubSub broadcast. */
+  private async broadcast(channel: string, text: string) {
+    // ponytail: a failed broadcast is dropped; the game re-sends within 5 s, and a rail goes blank after ~10 s of silence anyway.
     await fetch('https://api.twitch.tv/helix/extensions/pubsub', {
       method: 'POST', headers: { Authorization: `Bearer ${await broadcastJwt(this.env, channel)}`, 'Client-Id': EXTENSION_CLIENT_ID, 'Content-Type': 'application/json' },
       body: JSON.stringify({ target: ['broadcast'], broadcaster_id: channel, is_global_broadcast: false, message: text }),

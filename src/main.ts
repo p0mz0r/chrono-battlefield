@@ -1,7 +1,7 @@
 import { Application, Container, Graphics, Rectangle, Sprite, Text, Texture } from 'pixi.js';
 import type { CellGrid } from './battlefield/grid.js';
 import { openInstall, readInstall } from './install/read.js';
-import { bindSetupKey, chatSource, extensionOn, extensionSeen, lendToSetup, setupDone, showChat, showSetup, watchChat } from './install/setup.js';
+import { bindSetupKey, chatSource, extensionOn, extensionSeen, lendToSetup, setupDone, showChat, showSetup, watchChat, watchGameLink } from './install/setup.js';
 import { opensOnExtension } from './install/wizard.js';
 import { connectStreamerBot, type ChatSource } from './chat/streamerBot.js';
 import { connectTwitch } from './chat/twitch.js';
@@ -327,7 +327,7 @@ async function main() {
   let cameraMode: CameraMode = 'overview';
   const colours = rhinos.map((t) => t.rgb);
   const drawOverlay = edit ? undefined : mountStreamView(colours, showChat(), extensionOn());
-  let chatLink: ChatSource | undefined;
+  let chatLink: ChatSource | undefined, gameLink: ReturnType<typeof connectGameLink> | undefined;
   if (edit) world.scale.set(Math.min(app.screen.width / terrain.width, app.screen.height / terrain.height));
   const bounds = [...course.line, ...[...course.forks.values()].flatMap((fork) => fork.line)]
     .map((point) => toScreen(point.x, point.y, level(Math.floor(point.x), Math.floor(point.y))));
@@ -569,7 +569,7 @@ async function main() {
       arcs(top.x, top.y, 3 * 30 * Math.SQRT2, 8, 0xffffff);
     }
     for (let i = fxUsed; i < fx.children.length; i++) fx.children[i]!.visible = false;
-    drawOverlay?.(race, shot, chatLink?.online() === false);
+    drawOverlay?.(race, shot, chatLink?.online() === false, gameLink?.offline());
     hud.textContent = hudText(race);
     // For headless checks.
     Object.assign(document.body.dataset, {
@@ -611,7 +611,10 @@ async function main() {
     // One session for both: Twitch spends each refresh token once.
     const account = chatSource() === 'twitch' || extensionOn() ? twitchSession() : undefined;
     if (chatSource() === 'twitch') chatLink = connectTwitch(race, { account });
-    if (extensionOn() && account) connectGameLink(race, colours, account);
+    if (extensionOn() && account) {
+      gameLink = connectGameLink(race, colours, account);
+      watchGameLink(gameLink.status);
+    }
     if (chatLink) watchChat(chatLink.online);
     if (import.meta.env.DEV) (await import('./race/devPanel.js')).mountDevPanel(race, params, !chatLink);
     if (!setupDone()) showSetup();

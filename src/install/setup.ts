@@ -1,5 +1,6 @@
 import mark from '../../docs/brand/final/mark.png';
 import settleImport from '../chat/settleAction.sb?raw';
+import type { LinkStatus } from '../chat/gameLink.js';
 import { SETTLE_ACTION } from '../chat/streamerBot.js';
 import { missingRewards } from '../chat/twitch.js';
 import { HelixError, loginTwitch, logoutTwitch, twitchAccess, twitchLogin, twitchSession } from '../chat/twitchLogin.js';
@@ -51,7 +52,7 @@ dialog.innerHTML = `<div class="inner"><header><img class="mark" src="${mark}" a
     <div class="row"><button type="button" class="twitch-login">Log in to Twitch</button><button type="button" class="twitch-logout">Log out of Twitch</button></div>
     <p class="twitch-code hint" hidden></p>
   </section>
-  <section data-step="extension"><h2>Twitch extension <b class="chip extension-chip"></b></h2>
+  <section data-step="extension"><h2>Twitch extension <b class="chip extension-chip"></b> <b class="chip link-chip"></b></h2>
     <p>Optional. With the Rhino Race extension, viewers on Twitch join and play from buttons beside the video, on a phone too, and follow their own place. It works beside your chat source, never instead of it. Until you switch it on below, this step is only information.</p>
     <div class="extension-login">
       <p class="report bad logged-out">Do this off stream: the login code shows in this window, which OBS captures.</p>
@@ -132,7 +133,7 @@ const $ = <T extends HTMLElement>(sel: string) => dialog.querySelector<T>(sel)!;
 const pathInput = $<HTMLInputElement>('input[name=path]');
 const chatInputs = [...dialog.querySelectorAll<HTMLInputElement>('input[name=chat]')];
 const CHAT_KEY = 'rhino-chat-source', DONE_KEY = 'rhino-setup-done';
-let chatOnline: (() => boolean | undefined) | undefined, installFound = false, painting: ReturnType<typeof setInterval> | undefined;
+let chatOnline: (() => boolean | undefined) | undefined, linkStatus: (() => LinkStatus) | undefined, installFound = false, painting: ReturnType<typeof setInterval> | undefined;
 let step: Step = 'install';
 let lent: RaceForms | undefined;
 
@@ -158,6 +159,9 @@ export const extensionSeen = () => localStorage.getItem(EXTENSION_SEEN_KEY) === 
 /** The chat source's connection, for setup's status: `online` as `ChatSource.online`. */
 export const watchChat = (online: () => boolean | undefined) => { chatOnline = online; };
 
+/** The game link's state, for the Game link chip; only set while the extension is switched on and logged in. */
+export const watchGameLink = (status: () => LinkStatus) => { linkStatus = status; };
+
 /** Lends setup race setup's forms and trial race, once the battlefield is loaded. */
 export function lendToSetup(forms: RaceForms) {
   lent = forms;
@@ -178,6 +182,11 @@ function paintChat() {
   if (!chatSource()) chip('.chat-chip', '');
   else if (!chatOnline) chip('.chat-chip', installFound ? 'Connecting…' : 'Waits for the install');
   else chip('.chat-chip', online === undefined ? 'Connecting…' : online ? 'Connected' : 'Offline', online === undefined ? '' : online ? 'ok' : 'bad');
+  const link = linkStatus?.();
+  if (!link) chip('.link-chip', '');
+  else if (link === 'linked') chip('.link-chip', `Game link: Linked to ${twitchLogin()}`, 'ok');
+  else if (link === 'refused') chip('.link-chip', 'Game link: Refused', 'bad');
+  else chip('.link-chip', 'Game link: Connecting…');
   $<HTMLButtonElement>('.next').disabled = !canLeave(step, { installFound, chatOnline: online, twitchLogin: twitchLogin() ?? '' });
   $<HTMLButtonElement>('.trial').disabled = !lent;
 }

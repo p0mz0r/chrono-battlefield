@@ -7,8 +7,10 @@ import type { TwitchSession } from './twitchLogin.js';
 export const GAME_LINK_URL = 'wss://rhino-race.p0mz0r.workers.dev/game';
 /** The subprotocol the backend picks; the token rides beside it, since a browser WebSocket can't send headers. */
 const PROTOCOL = 'rhino-game';
-/** The backend's close code for a socket a newer link for the same channel took over. */
-const REPLACED = 4000;
+/** The backend's close codes: a newer link for the same channel took the socket over, or the token was refused. */
+const REPLACED = 4000, REFUSED = 4001;
+/** The backend's greeting once it has accepted the token. */
+const LINKED = JSON.stringify({ type: 'linked' });
 /** Milliseconds: a change goes out at most this often (Extension PubSub takes one message a second a channel)… */
 const MIN_GAP = 1000;
 /** …and the snapshot goes out again this often unchanged, so a rail that missed one catches up. */
@@ -48,17 +50,29 @@ interface Socket {
   readyState: number;
   onopen: (() => void) | null;
   onclose: ((e: { code: number }) => void) | null;
+  onmessage: ((e: { data: string }) => void) | null;
   send(data: string): void;
   close(): void;
 }
 
 /**
+ * How the game link is: its first socket still `opening`; `linked` (the backend accepted the token); `offline` (down,
+ * reconnecting); or `refused` twice, when it stops trying until the operator logs in again.
+ */
+export type LinkStatus = 'opening' | 'linked' | 'offline' | 'refused';
+
+/**
  * The game link (#187): while the Twitch extension is switched on, an outbound socket to the extension backend, which
  * checks the operator's token once and binds the socket to their channel. Snapshots go out on change and every few
- * seconds. A new token from the shared login reconnects with it; a drop reconnects with growing waits.
+ * seconds. A new token from the shared login reconnects with it; a drop reconnects with growing waits. A refused token is
+ * refreshed and tried once more; refused again, the link stops trying.
  */
 export function connectGameLink(race: Race, colours: number[], account: TwitchSession, { url = GAME_LINK_URL, Socket = WebSocket as new (url: string, protocols: string[]) => Socket } = {}) {
   let socket: Socket | undefined, wait = RETRY.first, closed = false, retry: ReturnType<typeof setTimeout> | undefined, sent = '', sentAt = -Infinity;
+  let status: LinkStatus = 'opening', refusedOnce = false;
+  /** The link a new token is replacing: kept open until the new one links or fails, so viewers' rails never blank on a refresh. */
+  let superseded: Socket | undefined;
+  const dropSuperseded = () => { superseded?.close(); superseded = undefined; };
 
   const send = () => {
     if (socket?.readyState !== 1) return;
@@ -71,28 +85,60 @@ export function connectGameLink(race: Race, colours: number[], account: TwitchSe
 
   const connect = () => {
     const s = socket = new Socket(url, [PROTOCOL, account.login.access]);
-    s.onopen = () => { wait = RETRY.first; sentAt = -Infinity; send(); };
+    s.onopen = () => { sentAt = -Infinity; send(); };
+    s.onmessage = ({ data }) => {
+      if (s !== socket || data !== LINKED) return;
+      dropSuperseded();
+      status = 'linked';
+      wait = RETRY.first;
+      refusedOnce = false;
+    };
     s.onclose = ({ code }) => {
+      if (closed || s !== socket) return;
+      dropSuperseded();
+      status = 'offline';
       // Replaced: another game links this channel now; taking it back would start the two trading it forever.
-      if (closed || s !== socket || code === REPLACED) return;
-      retry = setTimeout(connect, wait * 1000);
-      wait = Math.min(wait * 2, RETRY.longest);
+      if (code === REPLACED) return;
+      if (code === REFUSED && refusedOnce) { status = 'refused'; return; }
+      // The refreshed token comes back through `refreshed`, which reconnects. A refresh that didn't happen (Twitch unreachable)
+      // spends no try: the old token goes again after a wait.
+      if (code === REFUSED) { refusedOnce = true; account.refresh().catch(() => { refusedOnce = false; retryLater(); }); return; }
+      retryLater();
     };
   };
-  const reconnect = () => { const old = socket; clearTimeout(retry); connect(); old?.close(); };
+  const retryLater = () => {
+    if (closed) return;
+    retry = setTimeout(connect, wait * 1000);
+    wait = Math.min(wait * 2, RETRY.longest);
+  };
+  const reconnect = () => {
+    if (status === 'refused') return;
+    clearTimeout(retry);
+    dropSuperseded();
+    superseded = socket;
+    connect();
+  };
+  // A refresh token Twitch refused logs the operator out: the link stops, as after a second refusal.
+  const loggedOut = () => { close(); status = 'refused'; };
 
   const beat = setInterval(send, 250);
   account.refreshed.add(reconnect);
-  account.loggedOut.add(close);
+  account.loggedOut.add(loggedOut);
   function close() {
     closed = true;
     clearTimeout(retry);
     clearInterval(beat);
     account.refreshed.delete(reconnect);
-    account.loggedOut.delete(close);
+    account.loggedOut.delete(loggedOut);
+    dropSuperseded();
     socket?.close();
   }
 
   connect();
-  return { close };
+  return {
+    close,
+    status: () => status,
+    /** The stream's extension offline marker: down after the first attempt, never in a trial race. */
+    offline: () => !race.trial && (status === 'offline' || status === 'refused'),
+  };
 }

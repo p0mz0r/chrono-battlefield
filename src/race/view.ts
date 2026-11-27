@@ -36,14 +36,14 @@ export function paintNames(text: string, names: Map<string, string>): string {
   return text.split(new RegExp(`(?<=^|\\s)(${words.join('|')})(?=$|\\s|:)`)).map((part, i) => i % 2 ? `<span style="color:${names.get(part)}">${esc(part)}</span>` : esc(part)).join('');
 }
 
-/** Fixed screen overlay: standings, chat (unless `showChat` is off), the command board (pointing to the Twitch extension when `extension` is on), phase or event banner, hype meter and event queue, commands, feed, results, the director shot's lower third and the "chat offline" marker. Tank labels stay in Pixi. */
-export function mountStreamView(colours: number[], showChat = true, extension = false): (race: Race, shot?: Shot, chatOffline?: boolean) => void {
+/** Fixed screen overlay: standings, chat (unless `showChat` is off), the command board (pointing to the Twitch extension when `extension` is on), phase or event banner, hype meter and event queue, commands, feed, results, the director shot's lower third and the "chat offline" and "extension offline" markers. Tank labels stay in Pixi. */
+export function mountStreamView(colours: number[], showChat = true, extension = false): (race: Race, shot?: Shot, chatOffline?: boolean, extensionOffline?: boolean) => void {
   const root = document.createElement('div');
   root.id = 'stream-view';
   document.body.append(root);
   let previous = '';
   const css = (colour: number) => houseCss(colours, colour);
-  return (race, shot, chatOffline = false) => {
+  return (race, shot, chatOffline = false, extensionOffline = false) => {
     const focus = shot?.racer;
     const order = race.phase === 'results' ? race.results : standings(race);
     const byName = new Map(race.racers.map((r) => [r.name, r]));
@@ -75,7 +75,7 @@ export function mountStreamView(colours: number[], showChat = true, extension = 
       ${board.length ? `<div class="commands command-board"><header>CHAT COMMANDS</header>${board.map((g) => `<div><b>${esc(g.heading)}</b><span>${g.commands.map((c) => `<i>${esc(c)}</i>`).join('')}</span></div>`).join('')}${extension ? '<p>No typing? Tap the buttons in the Twitch extension.</p>' : ''}</div>`
         : commands.length ? `<div class="commands">${commands.map(esc).join(' &nbsp; ')}</div>` : ''}
       ${race.phase === 'racing' && race.feed.length ? `<div class="feed">${race.feed.map((line) => `<div>${paintNames(line, colourOf)}</div>`).join('')}</div>` : ''}
-      ${chatOffline ? '<div class="chat-offline">CHAT OFFLINE</div>' : ''}
+      ${chatOffline || extensionOffline ? `<div class="offline">${extensionOffline ? '<span>EXTENSION OFFLINE</span>' : ''}${chatOffline ? '<span>CHAT OFFLINE</span>' : ''}</div>` : ''}
       ${resultRows}`;
     if (html !== previous) { root.innerHTML = html; previous = html; }
   };

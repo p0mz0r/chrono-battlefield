@@ -16,6 +16,8 @@ class FakeSocket {
   accept() { this.accepted = true; }
   send(data: string) { this.sent.push(data); }
   close(code: number, reason: string) { this.closed = { code, reason }; }
+  /** Closed by the backend: closing, until the game answers. */
+  get readyState() { return this.closed ? 2 : 1; }
   serializeAttachment(value: unknown) { this.attachment = structuredClone(value); }
   deserializeAttachment() { return this.attachment; }
 }
@@ -23,7 +25,8 @@ class FakeSocket {
 class FakeState {
   sockets: FakeSocket[] = [];
   acceptWebSocket(socket: FakeSocket) { this.sockets.push(socket); }
-  getWebSockets() { return this.sockets.filter((s) => !s.closed); }
+  /** As the runtime: a socket stays listed until its close completes, even once the backend closed it. */
+  getWebSockets() { return this.sockets; }
 }
 
 /** Twitch: `/oauth2/validate` knows two tokens; PubSub records each broadcast. */
@@ -108,5 +111,32 @@ describe('extension backend', () => {
     const first = ends().backend;
     await link('operator-token');
     expect([first.closed?.code, ends().backend.closed, channels.size]).toEqual([4000, undefined, 1]);
+  });
+
+  it('greets a game it accepts, so the game can tell a link from a refusal', async () => {
+    await link('operator-token');
+    expect(ends().backend.sent).toEqual([JSON.stringify({ type: 'linked' })]);
+  });
+
+  it('tells the channel\'s viewers the game is offline when its socket closes', async () => {
+    await link('operator-token');
+    const backend = ends().backend;
+    await channels.get('427115971')!.webSocketClose(backend as never, 1006, '');
+    expect(broadcasts.map((b) => [b.body.broadcaster_id, JSON.parse(b.body.message)])).toEqual([['427115971', { show: false }]]);
+  });
+
+  it('tells viewers the game is offline when the newer link drops while the one it replaced is still closing', async () => {
+    await link('operator-token');
+    await link('operator-token');
+    await channels.get('427115971')!.webSocketClose(ends().backend as never, 1006, '');
+    expect(broadcasts.map((b) => JSON.parse(b.body.message))).toEqual([{ show: false }]);
+  });
+
+  it('broadcasts no offline when the closing socket was replaced by a newer link', async () => {
+    await link('operator-token');
+    const first = ends().backend;
+    await link('operator-token');
+    await channels.get('427115971')!.webSocketClose(first as never, 4000, 'Replaced by a newer link');
+    expect(broadcasts).toHaveLength(0);
   });
 });
