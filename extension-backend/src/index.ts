@@ -1,5 +1,6 @@
 import { TWITCH_CLIENT_ID } from '../../src/chat/twitchLogin.js';
 import type { ChatResult } from '../../src/race/race.js';
+import type { Press } from '../../src/chat/gameLink.js';
 
 // The extension backend (#187): a Cloudflare Worker that checks a game's Twitch token and hands its socket to one
 // Durable Object per channel, which passes the game's snapshots to that channel's viewers over Extension PubSub.
@@ -14,11 +15,13 @@ const REPLACED = 4000, REFUSED = 4001;
 const OFFLINE = { show: false };
 /** Extension PubSub's largest message. */
 const MAX_MESSAGE = 5 * 1024;
-/** The bare commands the rail's tiles send (#198): a viewer can press nothing else. */
+/** The chat commands the rail's buttons send, bare (#198): a viewer can press nothing else. */
 const PRESSES = ['!rhino', '!boost', '!missile', '!tesla', '!shield', '!v3', '!nuke'];
 /** Milliseconds a press waits for the game's answer. */
 const ANSWER_WAIT = 3000;
 const GAME_OFFLINE: ChatResult = { ok: false, reason: 'Game offline' }, NO_ANSWER: ChatResult = { ok: false, reason: 'No answer' };
+/** Get Users failed, so the game was never asked: the game knows a viewer by name as well as ID. */
+const TWITCH_DOWN: ChatResult = { ok: false, reason: 'Twitch didn\'t answer' };
 /** The extension's page is served from Twitch's own origin; its JWT, not a cookie, says who presses. */
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Authorization, Content-Type', 'Access-Control-Allow-Methods': 'POST' };
 
@@ -101,7 +104,7 @@ async function appToken(env: Env) {
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
 
-/** `/press`: a viewer's tile press, checked here, answered by their channel's game. */
+/** `/press`: a viewer's button press, checked here, answered by their channel's game. */
 async function press(request: Request, env: Env): Promise<Response> {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
   const viewer = await viewerOf(env, request.headers.get('Authorization')?.replace(/^Bearer /, ''));
@@ -161,7 +164,7 @@ export class ChannelLink {
     const game = () => this.state.getWebSockets().find((s) => s.readyState === 1);
     if (!game()) return GAME_OFFLINE;
     const name = await this.nameOf(userId);
-    if (!name) return NO_ANSWER;
+    if (!name) return TWITCH_DOWN;
     const socket = game(); // the lookup took a moment: the game may have gone since
     if (!socket) return GAME_OFFLINE;
     const id = crypto.randomUUID();
@@ -169,20 +172,22 @@ export class ChannelLink {
       return await new Promise<ChatResult>((resolve) => {
         this.waiting.set(id, resolve);
         setTimeout(() => resolve(NO_ANSWER), ANSWER_WAIT);
-        socket.send(JSON.stringify({ type: 'press', id, userId, name, command }));
+        socket.send(JSON.stringify({ type: 'press', id, userId, name, command } satisfies Press));
       });
     } finally { this.waiting.delete(id); }
   }
 
   /** A viewer's display name, from Get Users the first time. */
-  private async nameOf(userId: string) {
+  private async nameOf(userId: string): Promise<string | undefined> {
     const known = this.names.get(userId);
     if (known) return known;
-    const reply = await fetch(`https://api.twitch.tv/helix/users?id=${userId}`, { headers: { Authorization: `Bearer ${await appToken(this.env)}`, 'Client-Id': EXTENSION_CLIENT_ID } }).catch(() => undefined);
-    if (reply?.status === 401) app = undefined; // revoked early: a new token on the next press
-    const name = reply?.ok ? (await reply.json() as { data: { display_name: string }[] }).data[0]?.display_name : undefined;
-    if (name) this.names.set(userId, name);
-    return name;
+    try {
+      const reply = await fetch(`https://api.twitch.tv/helix/users?id=${userId}`, { headers: { Authorization: `Bearer ${await appToken(this.env)}`, 'Client-Id': EXTENSION_CLIENT_ID } });
+      if (reply.status === 401) app = undefined; // revoked early: a new token on the next press
+      const name = reply.ok ? (await reply.json() as { data: { display_name: string }[] }).data[0]?.display_name : undefined;
+      if (name) this.names.set(userId, name);
+      return name;
+    } catch { return undefined; }
   }
 
   /** `text` to `channel`'s viewers as one Extension PubSub broadcast. */
@@ -198,8 +203,9 @@ export class ChannelLink {
 /** The Worker: `/game` takes a game's link, checks its Twitch login and hands it to its channel's object; `/press` a viewer's press. */
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    if (new URL(request.url).pathname === '/press') return press(request, env);
-    if (new URL(request.url).pathname !== '/game' || request.headers.get('Upgrade') !== 'websocket') return new Response('Not found', { status: 404 });
+    const { pathname } = new URL(request.url);
+    if (pathname === '/press') return press(request, env);
+    if (pathname !== '/game' || request.headers.get('Upgrade') !== 'websocket') return new Response('Not found', { status: 404 });
     const offered = (request.headers.get('Sec-WebSocket-Protocol') ?? '').split(',').map((p) => p.trim());
     const channel = offered.includes(PROTOCOL) ? await channelOf(offered.find((p) => p !== PROTOCOL)) : undefined;
     // Refused over an open socket, so the game can tell a refusal from a network failure.

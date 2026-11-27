@@ -45,8 +45,8 @@ export function snapshot(race: Race, colours: number[]): Snapshot {
   };
 }
 
-/** A viewer's press from the backend: `command` is one of the backend's bare commands, `userId` their Twitch user ID. */
-interface Press { type: 'press'; id: string; userId: string; name: string; command: string }
+/** A viewer's button press from the backend: `command` a bare chat command, `userId` their Twitch user ID. */
+export interface Press { type: 'press'; id: string; userId: string; name: string; command: string }
 
 /** The part of a WebSocket the link uses, so tests can stand in for the backend. */
 interface Socket {

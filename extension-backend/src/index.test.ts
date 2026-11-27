@@ -63,6 +63,7 @@ beforeEach(() => {
     if (url === `https://id.twitch.tv/oauth2/token?client_id=${EXTENSION_CLIENT_ID}&client_secret=client-secret&grant_type=client_credentials`) return { ok: true, status: 200, json: async () => ({ access_token: 'app-token', expires_in: 5_000_000 }) };
     if (url.startsWith('https://api.twitch.tv/helix/users?id=')) {
       const id = url.split('=')[1]!;
+      if (id === '9') throw new Error('network down');
       expect([init.headers.Authorization, init.headers['Client-Id']]).toEqual(['Bearer app-token', EXTENSION_CLIENT_ID]);
       userLookups.push(id);
       return { ok: true, status: 200, json: async () => ({ data: USERS[id] ? [{ id, display_name: USERS[id] }] : [] }) };
@@ -210,6 +211,12 @@ describe('viewer presses', () => {
     await link('operator-token');
     await channels.get('427115971')!.webSocketClose(ends().backend as never, 1006, '');
     expect(await press(await viewerJwt(), '!rhino')).toEqual([200, { ok: false, reason: 'Game offline' }]);
+  });
+
+  it('answers "Twitch didn\'t answer", asking the game nothing, when Twitch can\'t name the viewer', async () => {
+    const got = await gameAnswering(() => ({ ok: true, reason: '' }));
+    expect(await press(await viewerJwt({ user_id: '9' }), '!rhino')).toEqual([200, { ok: false, reason: 'Twitch didn\'t answer' }]);
+    expect(got).toEqual([]);
   });
 
   it('answers "No answer" when the game stays silent for 3 s', async () => {
