@@ -30,6 +30,8 @@ export interface ChatLine {
   /** Display name as the stream shows it. */
   name: string;
   text: string;
+  /** A Twitch extension button press: acts as the typed command, but never shows in the chat panel. */
+  via?: 'extension';
 }
 
 /** What a chat line did. `reason: 'ignored'` = silent: nothing shows on stream. */
@@ -107,6 +109,8 @@ export interface PaidLine {
   name: string;
   event: BigEvent;
   via: 'redemption' | 'cheer';
+  /** A cheer bought in the Twitch extension: it plays even with its event switched off (#170). */
+  extension?: boolean;
   /** The source's opaque redemption reference, handed back in a settlement. */
   reference: string;
 }
@@ -126,6 +130,8 @@ export interface Turn {
   reference: string | undefined;
   /** Set off by a cheer: never fails, tries again `CHEER_RETRY` later or carries over to the next race instead. */
   cheer: boolean;
+  /** Bought in the Twitch extension: skips the race-setup switch, now and when carried. */
+  extension?: boolean;
   /** Race frame a cheer whose swap had no valid pair may take its turn again; it keeps its place meanwhile. */
   retryAt: number;
   lands: number | undefined;
@@ -300,7 +306,7 @@ const IGNORED: ChatResult = { ok: false, reason: 'ignored' };
 
 /** The chat-command contract: every line from every source comes through here. */
 export function chat(race: Race, line: ChatLine): ChatResult {
-  race.chatLog.push(line);
+  if (line.via !== 'extension') race.chatLog.push(line);
   if (race.chatLog.length > CHAT_LOG) race.chatLog.shift();
   if (race.paused || race.trial) return IGNORED;
   const words = line.text.trim().toLowerCase().split(/\s+/);
@@ -397,17 +403,17 @@ function callNuke(race: Race, line: ChatLine): ChatResult {
 
 /**
  * The paid entry: queues a redemption during a race, refunds it outside one or when its event is switched off; a cheer
- * queues ahead of redemptions, and does nothing while its event is switched off. Chat sources pick a cheer's event
- * with `cheerEvent`.
+ * queues ahead of redemptions, and does nothing while its event is switched off unless bought in the extension. Chat
+ * sources pick a cheer's event with `cheerEvent`.
  */
 export function paid(race: Race, line: PaidLine): ChatResult {
-  const cheer = line.via === 'cheer';
-  if (line.event === 'nuke' || !race.chaos.has(line.event)) {
+  const cheer = line.via === 'cheer', extension = cheer && line.extension === true;
+  if (line.event === 'nuke' || (!extension && !race.chaos.has(line.event))) {
     if (cheer) return IGNORED;
     settle(race, line.reference, 'refunded');
     return { ok: false, reason: 'switched off' };
   }
-  const turn: Turn = { event: line.event, viewerId: line.viewerId, by: line.name, reference: cheer ? undefined : line.reference, cheer, retryAt: 0, lands: undefined, picks: [], callers: [], firstAway: undefined, ship: undefined, patch: undefined };
+  const turn: Turn = { event: line.event, viewerId: line.viewerId, by: line.name, reference: cheer ? undefined : line.reference, cheer, extension, retryAt: 0, lands: undefined, picks: [], callers: [], firstAway: undefined, ship: undefined, patch: undefined };
   if (cheer && !viewersRacing(race)) {
     race.carried.push(turn);
     return { ok: true, reason: 'next race' };
@@ -810,8 +816,8 @@ export function tickRace(race: Race): void {
   if (race.phase === 'join' && --race.timer <= 0) closeJoinWindow(race);
   else if (race.phase === 'countdown' && --race.timer <= 0) {
     race.phase = 'racing';
-    // A cheer for an event switched off this race keeps waiting for one that has it on.
-    const due = viewersRacing(race) ? race.carried.filter((t) => t.event !== 'nuke' && race.chaos.has(t.event)) : [];
+    // A chat cheer for an event switched off this race keeps waiting for one that has it on; an extension cheer plays.
+    const due = viewersRacing(race) ? race.carried.filter((t) => t.event !== 'nuke' && (t.extension || race.chaos.has(t.event))) : [];
     race.queue.push(...due);
     race.carried = race.carried.filter((t) => !due.includes(t));
   }
