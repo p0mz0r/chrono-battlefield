@@ -1,4 +1,4 @@
-import { armed, CHAOS, secondsLeft, standings, type PaidEvent, type Phase, type Race } from '../race/race.js';
+import { armed, CHAOS, chat, secondsLeft, standings, type PaidEvent, type Phase, type Race } from '../race/race.js';
 import { houseCss } from '../race/view.js';
 import { RETRY } from './streamerBot.js';
 import type { TwitchSession } from './twitchLogin.js';
@@ -45,6 +45,9 @@ export function snapshot(race: Race, colours: number[]): Snapshot {
   };
 }
 
+/** A viewer's button press from the backend: `command` a bare chat command, `userId` their Twitch user ID. */
+export interface Press { type: 'press'; id: string; userId: string; name: string; command: string }
+
 /** The part of a WebSocket the link uses, so tests can stand in for the backend. */
 interface Socket {
   readyState: number;
@@ -87,7 +90,8 @@ export function connectGameLink(race: Race, colours: number[], account: TwitchSe
     const s = socket = new Socket(url, [PROTOCOL, account.login.access]);
     s.onopen = () => { sentAt = -Infinity; send(); };
     s.onmessage = ({ data }) => {
-      if (s !== socket || data !== LINKED) return;
+      if (s !== socket) return;
+      if (data !== LINKED) return answer(s, data);
       dropSuperseded();
       status = 'linked';
       wait = RETRY.first;
@@ -105,6 +109,14 @@ export function connectGameLink(race: Race, colours: number[], account: TwitchSe
       if (code === REFUSED) { refusedOnce = true; account.refresh().catch(() => { refusedOnce = false; retryLater(); }); return; }
       retryLater();
     };
+  };
+  /** A viewer's press the backend forwards: the bare command as that Twitch viewer typing it, answered by request ID. */
+  const answer = (s: Socket, data: string) => {
+    let press: Press;
+    try { press = JSON.parse(data); } catch { return; }
+    if (press.type !== 'press') return;
+    const result = chat(race, { viewerId: `twitch:${press.userId}`, name: press.name, text: press.command, via: 'extension' });
+    s.send(JSON.stringify({ type: 'reply', id: press.id, result }));
   };
   const retryLater = () => {
     if (closed) return;
