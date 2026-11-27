@@ -121,7 +121,7 @@ export function connectGameLink(race: Race, colours: number[], account: TwitchSe
     try { m = JSON.parse(data); } catch { return; }
     const viewerId = `twitch:${m.userId}`;
     const result = m.type === 'press' ? chat(race, { viewerId, name: m.name, text: m.command, via: 'extension' })
-      : m.type === 'bits' ? (m.event in CHEER_PRICES ? paid(race, { viewerId, name: m.name, event: m.event as PaidEvent, via: 'cheer', extension: true, reference: '' }) : { ok: false, reason: 'ignored' })
+      : m.type === 'bits' ? (Object.hasOwn(CHEER_PRICES, m.event) ? paid(race, { viewerId, name: m.name, event: m.event as PaidEvent, via: 'cheer', extension: true, reference: '' }) : { ok: false, reason: 'ignored' })
         : undefined;
     if (result) s.send(JSON.stringify({ type: 'reply', id: m.id, result }));
   };

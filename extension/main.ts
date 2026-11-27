@@ -80,13 +80,13 @@ function draw() {
   root.querySelector('.strip')?.scrollTo(0, scrolled);
 }
 
-/** `body` to the backend's `url` as this viewer: what the game did, "No answer", or undefined on a 403 (no shared identity). */
+/** `body` to the backend's `url` as this viewer: what the game did, why the backend refused it, "No answer", or undefined on a 403 (no shared identity). */
 async function send(url: string, body: object): Promise<ChatResult | undefined> {
   try {
     const answer = await fetch(url, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(PRESS_WAIT) });
     if (answer.status === 403) return undefined;
-    // Any other refusal: it never reached the game.
-    if (answer.ok) return await answer.json();
+    // A refusal says why, in the game's own shape: it never reached the game.
+    return await answer.json();
   } catch { /* no reply in time, or none at all */ }
   return NO_ANSWER;
 }
@@ -115,7 +115,8 @@ root.addEventListener('click', (e) => {
 });
 // A purchase this viewer made: the signed receipt to the backend, once. Lost if the game is offline (#173).
 Twitch.ext.bits.onTransactionComplete(async (t) => {
-  if (t.initiator !== 'current_user') return;
+  // Twitch's docs say `current_user`; some helper versions have sent it upper case.
+  if (t.initiator.toLowerCase() !== 'current_user') return;
   const mine = ++presses;
   answered(mine, t.product.sku as PaidEvent, await send(BITS_URL, { receipt: t.transactionReceipt }) ?? NO_ANSWER);
 });

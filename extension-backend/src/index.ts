@@ -122,7 +122,7 @@ const json = (status: number, body: unknown) => new Response(JSON.stringify(body
 
 const notSigned = () => json(401, { ok: false, reason: 'Not signed by Twitch' });
 /** The game's answer to a checked press or purchase, from the viewer's channel's object. */
-async function ask(env: Env, request: Request, channel: string, body: object): Promise<Response> {
+async function toChannel(env: Env, request: Request, channel: string, body: object): Promise<Response> {
   const answer = await env.CHANNEL.get(env.CHANNEL.idFromName(channel)).fetch(new Request(request.url, { method: 'POST', body: JSON.stringify(body) }));
   return json(200, await answer.json());
 }
@@ -135,7 +135,7 @@ async function press(request: Request, env: Env): Promise<Response> {
   if (!viewer.user_id) return json(403, { ok: false, reason: 'Share your Twitch identity to play' });
   const { command } = await request.json().catch(() => ({})) as { command?: string };
   if (!command || !PRESSES.includes(command)) return json(400, { ok: false, reason: 'Unknown action' });
-  return ask(env, request, viewer.channel_id, { userId: viewer.user_id, command });
+  return toChannel(env, request, viewer.channel_id, { userId: viewer.user_id, command });
 }
 
 /**
@@ -148,7 +148,7 @@ async function bits(request: Request, env: Env): Promise<Response> {
   const { receipt } = await request.json().catch(() => ({})) as { receipt?: string };
   const purchase = await purchaseOf(env, receipt);
   if (!purchase) return json(400, { ok: false, reason: 'Not a Bits receipt' });
-  return ask(env, request, viewer.channel_id, purchase);
+  return toChannel(env, request, viewer.channel_id, purchase);
 }
 
 /** One channel's link: at most one game socket, its snapshots out to the channel's viewers. */

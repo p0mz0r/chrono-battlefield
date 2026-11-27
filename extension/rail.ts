@@ -34,7 +34,7 @@ export type Rail =
 /** Why `reply`'s press failed, as the rail words it ("Tesla failed: cooldown 12 s"), while it still shows. */
 function failure(reply: Reply | undefined, now: number) {
   if (!reply || reply.result.ok || now - reply.at >= FAILURE_SHOWS) return undefined;
-  const { action, result: { reason } } = reply, label = action in TILES ? TILES[action as Action][1] : PAID_TITLES[action as PaidEvent];
+  const { action, result: { reason } } = reply, label = Object.hasOwn(TILES, action) ? TILES[action as Action][1] : PAID_TITLES[action as PaidEvent] ?? 'Bits';
   if (BACKEND_REASONS.includes(reason)) return reason;
   return reason === 'ignored' ? `${label} failed` : `${label} failed: ${reason}`;
 }
