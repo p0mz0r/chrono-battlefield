@@ -1,5 +1,5 @@
 import type { Snapshot } from '../src/chat/gameLink.js';
-import { cooldownAfter, MAX_TANKS, type ChatResult } from '../src/race/race.js';
+import { CHEER_PRICES, cooldownAfter, MAX_TANKS, PAID_TITLES, type ChatResult, type PaidEvent } from '../src/race/race.js';
 
 /** Milliseconds without a snapshot before the rail draws nothing: the game re-sends every 5 s, so two missed means it's gone. */
 const SILENCE = 10_000;
@@ -22,7 +22,7 @@ export const TILES: Record<Action, [icon: string, label: string]> = {
 /** The last snapshot the extension heard and when (ms); `since`: when it first heard the race now on (ms). */
 export interface Heard { snapshot: Snapshot; at: number; since: number }
 /** The answer to the viewer's last press and when it came (ms). */
-export interface Reply { action: Action; result: ChatResult; at: number }
+export interface Reply { action: Action | PaidEvent; result: ChatResult; at: number }
 /** The answer to the viewer's last press of a personal tile: the cooldown ring's only source. */
 export type PersonalReply = Reply & { action: Personal };
 
@@ -42,14 +42,15 @@ export type Rail =
   | { state: 'join'; countdown: number; field: number; max: number; shared: boolean; join: boolean; failure?: string }
   /**
    * `me`: the viewer's own tank; `ownTank`: Shield and V3 for it; `randomTank`: Boost, Missile, Tesla; `nuke`: while armed;
-   * `cooldown`: the ring the personal tiles fold into; `back`: the ring has just closed, so the tiles flash as they return.
+   * `cooldown`: the ring the personal tiles fold into; `back`: the ring has just closed, so the tiles flash as they return;
+   * `bits`: the big events for Bits.
    */
-  | { state: 'race'; field: number; me?: Snapshot['racers'][number]; shared: boolean; ownTank: Action[]; randomTank: Action[]; nuke: boolean; failure?: string; cooldown?: Cooldown; back: boolean };
+  | { state: 'race'; field: number; me?: Snapshot['racers'][number]; shared: boolean; ownTank: Action[]; randomTank: Action[]; nuke: boolean; failure?: string; cooldown?: Cooldown; back: boolean; bits: PaidEvent[] };
 
 /** Why `reply`'s press failed, as the rail words it ("Tesla failed: cooldown 12 s"), while it still shows. */
 function failure(reply: Reply | undefined, now: number) {
   if (!reply || reply.result.ok || now - reply.at >= FAILURE_SHOWS) return undefined;
-  const { action, result: { reason } } = reply, label = TILES[action][1];
+  const { action, result: { reason } } = reply, label = Object.hasOwn(TILES, action) ? TILES[action as Action][1] : PAID_TITLES[action as PaidEvent] ?? 'Bits';
   if (BACKEND_REASONS.includes(reason)) return reason;
   return reason === 'ignored' ? `${label} failed` : `${label} failed: ${reason}`;
 }
@@ -76,14 +77,19 @@ function cooldownRun(reply: PersonalReply | undefined, since: number, now: numbe
 }
 
 const OWN_TANK: Personal[] = ['shield', 'v3'], RANDOM_TANK: Personal[] = ['boost', 'missile', 'tesla'];
+/** Whether `reply` answers a personal tile: the cooldown ring's only source. */
+export const isPersonal = (reply: Reply): reply is PersonalReply => (OWN_TANK as string[]).includes(reply.action) || (RANDOM_TANK as string[]).includes(reply.action);
+/** The Bits catalog (#191), cheapest first: one SKU per big event, named as the event. The Nuke is never sold. */
+export const BITS = (Object.keys(CHEER_PRICES) as PaidEvent[]).sort((a, b) => CHEER_PRICES[a] - CHEER_PRICES[b]);
 
 /**
  * What to draw now (#187, seam 6) from the last snapshot heard, the viewer's Twitch user ID (null until they share
  * identity), the answer to their last press, the clock, and the answer to their last personal press: the cooldown ring's
- * only source, as no snapshot or whisper carries the viewer's cooldown. Nothing when there's no snapshot, the rail is hidden (trial
+ * only source, as no snapshot or whisper carries the viewer's cooldown, and whether the channel takes Bits
+ * (`isBitsEnabled`). Nothing when there's no snapshot, the rail is hidden (trial
  * race, game link offline) or the game has gone quiet.
  */
-export function rail(heard: Heard | undefined, viewer: string | null, reply: Reply | undefined, now: number, personal?: PersonalReply): Rail {
+export function rail(heard: Heard | undefined, viewer: string | null, reply: Reply | undefined, now: number, personal?: PersonalReply, bitsEnabled = false): Rail {
   const s = heard?.snapshot;
   if (!s?.show || now - heard!.at >= SILENCE) return { state: 'none' };
   const me = viewer === null ? undefined : s.racers.find((r) => r.id === viewer), shared = viewer !== null;
@@ -97,5 +103,7 @@ export function rail(heard: Heard | undefined, viewer: string | null, reply: Rep
   const cooldown = run && run.left > 0 ? run : undefined;
   return { state: 'race', field: s.field, me, shared, ownTank: me && !me.finished && !cooldown ? OWN_TANK.filter(on) : [],
     randomTank: cooldown ? [] : RANDOM_TANK.filter(on), nuke: s.phase === 'racing' && s.armed, failure: failure(reply, now),
+    // Bits never wait for the cooldown (#187).
+    bits: bitsEnabled && s.phase === 'racing' ? BITS.filter((e) => s.paid.includes(e)) : [],
     ...cooldown && { cooldown }, back: !!run && run.left <= 0 && -run.left < FLASH };
 }

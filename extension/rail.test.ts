@@ -44,13 +44,13 @@ describe('the rail', () => {
 
   it('shows "race on" and the random-tank tiles to a viewer who is not racing', () => {
     expect(rail(heard(), '42', undefined, 1000))
-      .toEqual({ state: 'race', field: 10, me: undefined, shared: true, ownTank: [], randomTank: ['boost', 'missile', 'tesla'], nuke: false, back: false });
+      .toEqual({ state: 'race', field: 10, me: undefined, shared: true, ownTank: [], randomTank: ['boost', 'missile', 'tesla'], nuke: false, back: false, bits: [] });
   });
 
   it("shows a racer's place, progress and house colour, with Shield and V3 for their own tank", () => {
     const me = { id: '42', place: 8, progress: 63, colour: '#ff4fd8', finished: false };
     expect(rail(heard({ racers: [{ id: '7', place: 1, progress: 90, colour: '#ff5050', finished: false }, me] }), '42', undefined, 1000))
-      .toEqual({ state: 'race', field: 10, me, shared: true, ownTank: ['shield', 'v3'], randomTank: ['boost', 'missile', 'tesla'], nuke: false, back: false });
+      .toEqual({ state: 'race', field: 10, me, shared: true, ownTank: ['shield', 'v3'], randomTank: ['boost', 'missile', 'tesla'], nuke: false, back: false, bits: [] });
   });
 
   it('keeps the random-tank tiles but drops Shield and V3 once the racer has finished', () => {
@@ -87,6 +87,23 @@ describe('the rail', () => {
     expect(rail(heard(), '42', reply(true), 2000)).toMatchObject({ failure: undefined });
     expect(rail(heard({}, 8000), '42', reply(false), 8999)).toMatchObject({ failure: 'Boost failed: cooldown 3 s' });
     expect(rail(heard({}, 8000), '42', reply(false), 9000)).toMatchObject({ failure: undefined });
+  });
+
+  it('offers a Bits tile for each big event switched on, cheapest first, while racing on a channel with Bits', () => {
+    expect(rail(heard({ paid: ['chronosphere', 'kirov'] }), null, undefined, 1000, undefined, true)).toMatchObject({ state: 'race', bits: ['kirov', 'chronosphere'] });
+    expect(rail(heard(), '42', undefined, 1000, undefined, true)).toMatchObject({ bits: ['desolator', 'kirov', 'chronosphere'] });
+  });
+
+  it('hides the Bits tiles on a channel without Bits, before racing and in a trial race', () => {
+    expect(rail(heard(), '42', undefined, 1000, undefined, false)).toMatchObject({ bits: [] });
+    expect(rail(heard({ phase: 'countdown' }), '42', undefined, 1000, undefined, true)).toMatchObject({ bits: [] });
+    expect(rail(heard({ phase: 'join' }), '42', undefined, 1000, undefined, true)).not.toHaveProperty('bits');
+    for (const phase of ['idle', 'results'] as const) expect(rail(heard({ phase }), '42', undefined, 1000, undefined, true)).toEqual({ state: 'between' });
+    expect(rail(heard({ show: false }), '42', undefined, 1000, undefined, true)).toEqual({ state: 'none' });
+  });
+
+  it('shows a purchase the game never got under the place', () => {
+    expect(rail(heard(), '42', { action: 'kirov', result: { ok: false, reason: 'Game offline' }, at: 1000 }, 2000, undefined, true)).toMatchObject({ failure: 'Game offline' });
   });
 
   it('shows only the interactions switched on, and the nuke only while the hype meter is armed', () => {
@@ -133,8 +150,9 @@ describe('the cooldown ring', () => {
     expect(ring(rail(h, '42', undefined, 4000, reply('boost', true, 'boost Seth', 2000)))).toEqual({ used: 'boost', left: 18_000, total: 20_000 });
   });
 
-  it('never holds the Nuke tile', () => {
-    expect(rail(heard({ racers: [me], armed: true }, 3000), '42', undefined, 3000, reply('shield', true, 'shield Eva'))).toMatchObject({ nuke: true, cooldown: { used: 'shield' } });
+  it('never holds the Nuke or the Bits tiles', () => {
+    expect(rail(heard({ racers: [me], armed: true }, 3000), '42', undefined, 3000, reply('shield', true, 'shield Eva'), true))
+      .toMatchObject({ nuke: true, bits: ['desolator', 'kirov', 'chronosphere'], cooldown: { used: 'shield' } });
   });
 
   it('brings the tiles back with a short flash when the ring closes, counting real seconds', () => {

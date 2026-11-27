@@ -115,6 +115,15 @@ describe('game link', () => {
     expect([race.racers.map((r) => [r.viewerId, r.name]), race.chatLog]).toEqual([[['twitch:1', 'Kane']], []]);
   });
 
+  it('plays a purchase as an extension cheer for its event, even switched off, carried to the next race with no viewer racing', () => {
+    race.chaos.delete('kirov');
+    last().onmessage?.({ data: JSON.stringify({ type: 'bits', id: 'b1', userId: '1', name: 'Kane', event: 'kirov' }) });
+    last().onmessage?.({ data: JSON.stringify({ type: 'bits', id: 'b2', userId: '1', name: 'Kane', event: 'nuke' }) });
+    const replies = last().sent.map((data) => JSON.parse(data)).filter((m) => m.type === 'reply');
+    expect(replies).toEqual([{ type: 'reply', id: 'b1', result: { ok: true, reason: 'next race' } }, { type: 'reply', id: 'b2', result: { ok: false, reason: 'ignored' } }]);
+    expect(race.carried.map((t) => [t.event, t.by, t.viewerId, t.cheer, t.extension])).toEqual([['kirov', 'Kane', 'twitch:1', true, true]]);
+  });
+
   it('hides the rail during a trial race', async () => {
     race.trial = true;
     await vi.advanceTimersByTimeAsync(1000);
