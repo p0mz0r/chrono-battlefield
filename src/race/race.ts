@@ -404,6 +404,11 @@ export function chat(race: Race, line: ChatLine): ChatResult {
   return { ok: true, reason: `${verb} ${target.name}` };
 }
 
+/** Seconds a viewer's cooldown runs after `result` of their `verb`: the command's own after a success, what a cooldown bounce says is left. */
+export function cooldownAfter(verb: Interaction, { ok, reason }: ChatResult): number {
+  return ok ? COMMANDS[verb].cooldown : Number(/^cooldown (\d+) s$/.exec(reason)?.[1] ?? 0);
+}
+
 /** `!nuke` while armed: free, and each viewer counts once per armed spell. */
 function callNuke(race: Race, line: ChatLine): ChatResult {
   const { hype } = race;
