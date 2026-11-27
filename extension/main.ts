@@ -1,6 +1,6 @@
 import { GAME_LINK_URL } from '../src/chat/gameLink.js';
 import { CHEER_PRICES, PAID_TITLES, type ChatResult, type PaidEvent } from '../src/race/race.js';
-import { rail, TILES, type Action, type Heard, type Rail, type Reply } from './rail.js';
+import { hear, isPersonal, rail, TILES, type Action, type Cooldown, type Heard, type PersonalReply, type Rail, type Reply } from './rail.js';
 
 /** The parts of Twitch's extension helper the rail uses. */
 declare const Twitch: { ext: {
@@ -12,7 +12,7 @@ declare const Twitch: { ext: {
   bits: {
     useBits(sku: string): void;
     /** Every viewer's page hears every purchase; `initiator` says whether this viewer made it. */
-    onTransactionComplete(callback: (t: { initiator: 'current_user' | 'other'; transactionReceipt: string; product: { sku: string } }) => void): void;
+    onTransactionComplete(callback: (t: { initiator: string; transactionReceipt: string; product: { sku: string } }) => void): void;
   };
 } };
 
@@ -27,7 +27,14 @@ const PRESS_WAIT = 6000;
 const share = (verb: string) => `<p>${verb} shares your Twitch name with Rhino Race. Twitch asks once.</p>`;
 const escape = (text: string) => text.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 
-const tile = (a: Action) => `<button type="button" class="${a}" data-action="${a}">${TILES[a][0] ? `<i>${TILES[a][0]}</i>` : ''}${TILES[a][1]}</button>`;
+const tile = (a: Action, back = false) => `<button type="button" class="${a}${back ? ' back' : ''}" data-action="${a}">${TILES[a][0] ? `<i>${TILES[a][0]}</i>` : ''}${TILES[a][1]}</button>`;
+/** `back`: the tiles flash gold as they return from the cooldown ring. */
+const tiles = (actions: Action[], back: boolean) => actions.map((a) => tile(a, back)).join('');
+const caption = (c: Cooldown) => c.used ? [TILES[c.used][1], 'used'] : ['Cooldown'];
+const seconds = (c: Cooldown) => Math.ceil(c.left / 1000);
+/** The cooldown ring, closing clockwise: a CSS animation started as far in as the cooldown has run. */
+const ring = (c: Cooldown) => `<div class="cdslot"><div class="ring" style="animation-duration:${c.total}ms;animation-delay:${c.left - c.total}ms">`
+  + `<b>${seconds(c)}</b></div>${caption(c).join('<br>')}</div>`;
 /** A failed press, under the top tile. */
 const fail = (failure: string | undefined) => failure ? `<div class="fail">${escape(failure)}</div>` : '';
 /** A big event for Bits: the event and its price, the SKU in `data-bits`. Never "cheer", "buy" or "spend" (#187). */
@@ -48,14 +55,16 @@ function html(r: Rail): string {
     card = `<h3>Join window · ${r.countdown} s</h3><p>${r.field} of ${r.max} racers.</p>`
       + (!r.join ? '<p>You have a tank in this race.</p>' : r.shared ? '<p>JOIN gets you a tank in this race.</p>' : share('Joining'));
   } else {
-    const { me, ownTank, randomTank, bits } = r, progress = me?.finished ? 'finished' : `${me?.progress}%`;
+    const { me, ownTank, randomTank, cooldown, bits } = r, progress = me?.finished ? 'finished' : `${me?.progress}%`;
     const place = me && `<big style="color:${colour(me.colour)}">P${me.place}</big>`;
     strip = (place ? `<div class="tile">${place}<small>${progress}</small></div>` : '<div class="tile"><b>RACE</b><br><small>on</small></div>')
       + fail(r.failure) + (r.nuke ? tile('nuke') : '')
-      + ownTank.map(tile).join('') + (ownTank.length && randomTank.length ? '<div class="sep"></div>' : '') + randomTank.map(tile).join('')
+      + (cooldown ? ring(cooldown) : '')
+      + tiles(ownTank, r.back) + (ownTank.length && randomTank.length ? '<div class="sep"></div>' : '') + tiles(randomTank, r.back)
       + (bits.length ? '<div class="sep"></div>' : '') + bits.map(bitsTile).join('');
     card = `<h3>${place ? `${place} of ${r.field} · ${progress}` : 'Race on'}</h3>`
       + (r.nuke ? '<p>☢ Nuke: the hype meter is armed.</p>' : '')
+      + (cooldown ? `<p class="cd">${caption(cooldown).join(' ')} · next in ${seconds(cooldown)} s</p>` : '')
       + (ownTank.length ? `<p>${labels(ownTank)}: your own tank.</p>` : '') + (randomTank.length ? `<p>${labels(randomTank)}: a random tank.</p>` : '')
       + (bits.length ? `<p>${bits.map((e) => `${PAID_TITLES[e]} ${CHEER_PRICES[e]}`).join(', ')} Bits: a big event for the whole race.</p>` : '')
       + (!r.shared && (r.nuke || randomTank.length) ? share('Pressing') : '');
@@ -66,35 +75,20 @@ function html(r: Rail): string {
 const root = document.getElementById('rail')!;
 root.className = 'ext';
 let heard: Heard | undefined, reply: Reply | undefined, token = '', drawn = '';
+/** The answer to the last personal press, even one a newer press overtook: the cooldown ring's only source. */
+let personal: PersonalReply | undefined;
 /** A press made before the viewer shared identity: sent once Twitch's prompt shares it, dropped if they decline. */
 let awaitingShare: Action | undefined;
 /** Presses made so far: only the latest one's answer shows. */
 let presses = 0;
 const NO_ANSWER: ChatResult = { ok: false, reason: 'No answer' };
 function draw() {
-  const next = html(rail(heard, Twitch.ext.viewer.id, reply, Date.now(), Twitch.ext.features.isBitsEnabled));
+  const next = html(rail(heard, Twitch.ext.viewer.id, reply, Date.now(), personal, Twitch.ext.features.isBitsEnabled));
   if (next === drawn) return;
   // Kept across a redraw, so a scrolled rail on a short player stays where the viewer left it.
   const scrolled = root.querySelector('.strip')?.scrollTop ?? 0;
   root.innerHTML = drawn = next;
   root.querySelector('.strip')?.scrollTo(0, scrolled);
-}
-
-/** `body` to the backend's `url` as this viewer: what the game did, why the backend refused it, "No answer", or undefined on a 403 (no shared identity). */
-async function send(url: string, body: object): Promise<ChatResult | undefined> {
-  try {
-    const answer = await fetch(url, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(PRESS_WAIT) });
-    if (answer.status === 403) return undefined;
-    // A refusal says why, in the game's own shape: it never reached the game.
-    return await answer.json();
-  } catch { /* no reply in time, or none at all */ }
-  return NO_ANSWER;
-}
-/** The answer to the viewer's press or purchase, unless a newer one came since: that one's answer is the one to show. */
-function answered(mine: number, action: Reply['action'], result: ChatResult) {
-  if (mine !== presses) return;
-  reply = { action, result, at: Date.now() };
-  draw();
 }
 
 /** A button press: the bare chat command to the backend, which answers with what the game did. Never retried. */
@@ -106,6 +100,23 @@ async function press(action: Action) {
   // The backend sees no shared identity: the viewer took it back.
   if (!result) return askToShare();
   answered(mine, action, result);
+}
+/** `body` to the backend's `url` as this viewer: what the game did, why the backend refused it, "No answer", or undefined on a 403 (no shared identity). */
+async function send(url: string, body: object): Promise<ChatResult | undefined> {
+  try {
+    const answer = await fetch(url, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(PRESS_WAIT) });
+    if (answer.status === 403) return undefined;
+    // A refusal says why, in the game's own shape: it never reached the game.
+    return await answer.json();
+  } catch { /* no reply in time, or none at all */ }
+  return NO_ANSWER;
+}
+/** The answer to a press or purchase: the cooldown ring hears every personal one, the rail only the latest. */
+function answered(mine: number, action: Reply['action'], result: ChatResult) {
+  const reply_ = { action, result, at: Date.now() };
+  if (isPersonal(reply_)) personal = reply_;
+  if (mine === presses) reply = reply_;
+  draw();
 }
 root.addEventListener('click', (e) => {
   const button = (e.target as Element).closest<HTMLElement>('[data-action], [data-bits]');
@@ -131,8 +142,8 @@ Twitch.ext.onAuthorized((auth) => {
   draw();
 });
 Twitch.ext.listen('broadcast', (_target, _type, message) => {
-  try { heard = { snapshot: JSON.parse(message), at: Date.now() }; } catch { return; }
+  try { heard = hear(heard, JSON.parse(message), Date.now()); } catch { return; }
   draw();
 });
-// The ~10 s silence clears the rail with nothing arriving to redraw it.
-setInterval(draw, 1000);
+// The silence and the ring's end come with nothing to redraw them; a quarter second keeps the ring and the flash on time.
+setInterval(draw, 250);
