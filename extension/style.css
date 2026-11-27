@@ -19,6 +19,7 @@ button { flex: none; width: 60px; height: 46px; padding: 0; border: 0; font: inh
 button i { display: block; font-style: normal; font-size: 17px; }
 button.rhino, button.nuke { height: 56px; font-weight: 800; background: linear-gradient(#d22a2a, #9c1414); }
 button.nuke { background: linear-gradient(#ffd34e, #d8a520); color: var(--ink); }
+.fail { flex: none; width: 60px; padding: 3px; box-sizing: border-box; text-align: center; font-size: 10px; color: #ffc9c9; background: #b81c1c40; border: 1px solid #e23a3a77; }
 .sep { flex: none; width: 40px; height: 1px; background: #fff3; }
 
 /* The hover card, to the rail's left. */
