@@ -24,6 +24,9 @@ var dist embed.FS
 // The release, from package.json: tools/release.mjs sets it with -ldflags -X.
 var version = "dev"
 
+// The game's own folder: its Edge profile and seed log, kept when a new release is unzipped elsewhere.
+var appData = filepath.Join(os.Getenv("LOCALAPPDATA"), "Rhino Race")
+
 // Never change it: browser storage belongs to the origin, port included, so a new port loses setup and logins.
 const host = "127.0.0.1:27135"
 
@@ -45,17 +48,15 @@ func main() {
 	}
 	game, _ := fs.Sub(dist, "dist")
 	s := newServer(game, host, idleGrace)
-	// The seed of each race, off stream, for bug reports. Beside the profile, so the history survives unzipping a new
-	// release elsewhere.
-	logDir := filepath.Join(os.Getenv("LOCALAPPDATA"), "Rhino Race")
+	// The seed of each race, off stream, for bug reports.
 	s.mux.HandleFunc("POST /__log", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Sec-Fetch-Site") != "same-origin" { // a page elsewhere can POST here too
 			http.Error(w, "Not the game", http.StatusForbidden)
 			return
 		}
 		line, _ := io.ReadAll(io.LimitReader(r.Body, 1000))
-		os.MkdirAll(logDir, 0o755)
-		if f, err := os.OpenFile(filepath.Join(logDir, "rhino-race.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+		os.MkdirAll(appData, 0o755)
+		if f, err := os.OpenFile(filepath.Join(appData, "rhino-race.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
 			f.WriteString(time.Now().Format("2006-01-02 15:04:05 ") + string(line) + "\r\n")
 			f.Close()
 		}
@@ -107,7 +108,7 @@ func openWindow(url string) *exec.Cmd {
 	if edge == "" {
 		fail("Microsoft Edge was not found. Rhino Race runs in an Edge window.")
 	}
-	cmd := exec.Command(edge, "--app="+url, "--user-data-dir="+filepath.Join(os.Getenv("LOCALAPPDATA"), "Rhino Race", "profile"), "--no-first-run",
+	cmd := exec.Command(edge, "--app="+url, "--user-data-dir="+filepath.Join(appData, "profile"), "--no-first-run",
 		// This process stays the browser (no relaunch, no running on in the background), so it exits when the window closes.
 		"--edge-skip-compat-layer-relaunch", "--disable-background-mode",
 		// Full frame rate while the window is covered; sound without a click first, as in a browser source.
