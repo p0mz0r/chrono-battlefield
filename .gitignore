@@ -27,3 +27,6 @@ launcher/dist/*
 # The extension backend's local secrets and wrangler state
 extension-backend/.dev.vars
 extension-backend/.wrangler/
+
+# The built Twitch extension front end
+extension/dist/

@@ -11,7 +11,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "prepare": "git config core.hooksPath .githooks",
-    "lint": "oxlint --deny-warnings"
+    "lint": "oxlint --deny-warnings",
+    "dev:extension": "vite extension",
+    "build:extension": "vite build extension --base ./ --emptyOutDir"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
