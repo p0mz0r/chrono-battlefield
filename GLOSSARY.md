@@ -227,7 +227,7 @@ The subtle on-screen list of the chat commands available right now while racing;
 _Avoid_: Help, menu
 
 **Command board**:
-The big panel on stream during the join window, readable on a phone, that lists every chat command race setup leaves on, grouped by who can use it: `!rhino` to join, then those for racers, then those for any viewer. All but `!rhino` work only once the race is running. It also points viewers to the Twitch extension.
+The big panel on stream during the join window, readable on a phone, that lists every chat command race setup leaves on, grouped by who can use it: `!rhino` to join, then those for racers, then those for any viewer. All but `!rhino` work only once the race is running. With the Twitch extension switched on, it also points viewers to it.
 _Avoid_: Help screen, command menu
 
 **Interaction feed**:

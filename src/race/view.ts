@@ -36,8 +36,8 @@ export function paintNames(text: string, names: Map<string, string>): string {
   return text.split(new RegExp(`(?<=^|\\s)(${words.join('|')})(?=$|\\s|:)`)).map((part, i) => i % 2 ? `<span style="color:${names.get(part)}">${esc(part)}</span>` : esc(part)).join('');
 }
 
-/** Fixed screen overlay: standings, chat (unless `showChat` is off), phase or event banner, hype meter and event queue, commands, feed, results, the director shot's lower third and the "chat offline" marker. Tank labels stay in Pixi. */
-export function mountStreamView(colours: number[], showChat = true): (race: Race, shot?: Shot, chatOffline?: boolean) => void {
+/** Fixed screen overlay: standings, chat (unless `showChat` is off), the command board (pointing to the Twitch extension when `extension` is on), phase or event banner, hype meter and event queue, commands, feed, results, the director shot's lower third and the "chat offline" marker. Tank labels stay in Pixi. */
+export function mountStreamView(colours: number[], showChat = true, extension = false): (race: Race, shot?: Shot, chatOffline?: boolean) => void {
   const root = document.createElement('div');
   root.id = 'stream-view';
   document.body.append(root);
@@ -72,7 +72,7 @@ export function mountStreamView(colours: number[], showChat = true): (race: Race
       ${race.paused ? '<div class="pause-banner">PAUSED</div>' : ''}
       ${race.phase === 'racing' && focus ? `<div class="lower-third" style="--house:${css(focus.colour)}"><strong>${order.findIndex((s) => s.name === focus.name) + 1}</strong><div>${esc(focus.name)}<small>${esc(shot!.reason)}</small></div></div>` : ''}
       ${race.phase === 'racing' || chips.length ? `<div class="queue">${race.phase === 'racing' ? hype : ''}${chips.map((c) => `<span${c.playing ? ' class="playing"' : ''}>${esc(c.label)}</span>`).join('')}</div>` : ''}
-      ${board.length ? `<div class="commands command-board"><header>CHAT COMMANDS</header>${board.map((g) => `<div><b>${esc(g.heading)}</b><span>${g.commands.map((c) => `<i>${esc(c)}</i>`).join('')}</span></div>`).join('')}<p>No typing? Tap the buttons in the Twitch extension.</p></div>`
+      ${board.length ? `<div class="commands command-board"><header>CHAT COMMANDS</header>${board.map((g) => `<div><b>${esc(g.heading)}</b><span>${g.commands.map((c) => `<i>${esc(c)}</i>`).join('')}</span></div>`).join('')}${extension ? '<p>No typing? Tap the buttons in the Twitch extension.</p>' : ''}</div>`
         : commands.length ? `<div class="commands">${commands.map(esc).join(' &nbsp; ')}</div>` : ''}
       ${race.phase === 'racing' && race.feed.length ? `<div class="feed">${race.feed.map((line) => `<div>${paintNames(line, colourOf)}</div>`).join('')}</div>` : ''}
       ${chatOffline ? '<div class="chat-offline">CHAT OFFLINE</div>' : ''}
