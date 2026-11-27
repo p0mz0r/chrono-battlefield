@@ -223,8 +223,12 @@ A viewer spending bits to set off a paid event; in chat, the exact amount picks 
 _Avoid_: Bits, donation, redemption
 
 **Command list**:
-The subtle on-screen list of the chat commands available right now, such as `!rhino` during the join window; a chat command not on it is ignored silently. While racing it ends with the cheer price of each paid event switched on, such as `10 bits: Desolator`.
+The subtle on-screen list of the chat commands available right now while racing; a chat command not on it is ignored silently. During the join window the **Command board** takes its place. While racing it ends with the cheer price of each paid event switched on, such as `10 bits: Desolator`.
 _Avoid_: Help, menu
+
+**Command board**:
+The big panel on stream during the join window, readable on a phone, that lists every chat command race setup leaves on, grouped by who can use it: `!rhino` to join, then those for racers, then those for any viewer. All but `!rhino` work only once the race is running. With the Twitch extension switched on, it also points viewers to it.
+_Avoid_: Help screen, command menu
 
 **Interaction feed**:
 The short on-stream lines naming who did what: each audience interaction that lands, with the viewer who used it and the tank it hit or helped, and each available chat command that failed, with the reason, such as a cooldown or an unknown name; the game posts nothing to chat itself.

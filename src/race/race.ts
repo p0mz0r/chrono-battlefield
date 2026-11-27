@@ -20,6 +20,7 @@ const COMMANDS = {
 } as const;
 type Interaction = Exclude<keyof typeof COMMANDS, 'rhino'>;
 const interactions = Object.keys(COMMANDS).filter((verb): verb is Interaction => verb !== 'rhino');
+const label = (verb: keyof typeof COMMANDS) => `!${verb}${COMMANDS[verb].hint}`;
 
 export type Phase = 'idle' | 'join' | 'countdown' | 'racing' | 'results' | 'cancelled';
 
@@ -266,12 +267,29 @@ export function createRace(course: Course, grid: CellGrid, seed: number): Race {
 
 export function commandList(race: Race): string[] {
   if (race.paused || race.trial) return [];
-  if (race.phase === 'join') return [`!rhino${COMMANDS.rhino.hint}`];
+  if (race.phase === 'join') return [label('rhino')];
   if (race.phase !== 'racing') return [];
   return [...interactions.filter((verb) => race.enabled.has(verb))
-    .map((verb) => `!${verb}${COMMANDS[verb].hint}${COMMANDS[verb].racers ? ' (racers)' : ''}`), ...armed(race) ? ['!nuke'] : [],
+    .map((verb) => `${label(verb)}${COMMANDS[verb].racers ? ' (racers)' : ''}`), ...armed(race) ? ['!nuke'] : [],
     ...(Object.keys(CHEER_PRICES) as PaidEvent[]).filter((event) => race.chaos.has(event)).sort((a, b) => CHEER_PRICES[a] - CHEER_PRICES[b])
       .map((event) => `${CHEER_PRICES[event]} bits: ${PAID_TITLES[event]}`)];
+}
+
+/** One row of the command board: who may use its commands, and those commands with their argument hints. */
+export interface CommandGroup {
+  heading: string;
+  commands: string[];
+}
+
+/** The command board (join window only): every command race setup leaves on, grouped by who can use it. */
+export function commandBoard(race: Race): CommandGroup[] {
+  if (race.phase !== 'join' || race.paused || race.trial) return [];
+  const on = interactions.filter((verb) => race.enabled.has(verb));
+  return [
+    { heading: 'Join the race', commands: [label('rhino')] },
+    { heading: 'Racers', commands: on.filter((verb) => COMMANDS[verb].racers).map(label) },
+    { heading: 'Viewers', commands: [...on.filter((verb) => !COMMANDS[verb].racers).map(label), ...hypeLive(race) ? ['!nuke'] : []] },
+  ].filter((group) => group.commands.length);
 }
 
 /** Operator: opens the join window (default 90 s); the finish timer (default 60 s) starts at the first finish. */

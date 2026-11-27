@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { findRoute, moveTank, stepTo, type CellGrid, type Spot } from '../movement/index.js';
 import { courseProgress, loadCourse, mapHash, type CourseFile } from './course.js';
-import { CHAT_LOG, CHEER_PRICES, chat, cheerEvent, commandList, createRace, endRace, eventChips, hypeLive, openJoinWindow, paid, simulateRace, standings, tickRace, type PaidEvent, type Race, type Racer } from './race.js';
+import { CHAT_LOG, CHEER_PRICES, chat, cheerEvent, commandList, createRace, endRace, eventChips, hypeLive, commandBoard, openJoinWindow, paid, simulateRace, standings, tickRace, type PaidEvent, type Race, type Racer } from './race.js';
 import { TICK_HZ } from '../movement/index.js';
 import { readdirSync, readFileSync } from 'node:fs';
 import { describeInstall, readFromDir } from '../../test/install.js';
@@ -250,6 +250,28 @@ describe('audience interactions', () => {
     race.paused = false;
     endRace(race);
     expect(commandList(race)).toEqual([]);
+  });
+
+  it('lists every chat command on the command board during the join window, grouped by who can use it, following race setup', () => {
+    const race = createRace(course(), ARENA, 1);
+    expect(commandBoard(race)).toEqual([]);
+    openJoinWindow(race, { joinSeconds: 1 });
+    expect(commandBoard(race)).toEqual([
+      { heading: 'Join the race', commands: ['!rhino'] },
+      { heading: 'Racers', commands: ['!shield', '!v3 [back|fwd]'] },
+      { heading: 'Viewers', commands: ['!boost [name]', '!missile [name]', '!tesla [name]', '!nuke'] },
+    ]);
+    race.enabled.delete('shield');
+    race.enabled.delete('v3');
+    race.enabled.delete('missile');
+    race.enabled.add('bridge'); // a course with bridges in play
+    race.chaos.delete('hype');
+    expect(commandBoard(race)).toEqual([
+      { heading: 'Join the race', commands: ['!rhino'] },
+      { heading: 'Viewers', commands: ['!boost [name]', '!tesla [name]', '!bridge B1'] },
+    ]);
+    race.paused = true;
+    expect(commandBoard(race)).toEqual([]);
   });
 
   it('parses names, rejects ambiguous targets without spending cooldown, and shows phase commands', () => {
