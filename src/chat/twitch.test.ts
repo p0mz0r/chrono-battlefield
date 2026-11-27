@@ -2,7 +2,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import type { CellGrid } from '../movement/index.js';
 import { loadCourse, mapHash } from '../race/course.js';
 import { createRace, eventChips, openJoinWindow, REWARDS as GAME_REWARDS, type Race } from '../race/race.js';
-import { connectTwitch, loginTwitch } from './twitch.js';
+import { connectTwitch } from './twitch.js';
+import { loginTwitch, logoutTwitch, twitchSession } from './twitchLogin.js';
 
 const MAP = new TextEncoder().encode('[Map]\nTheater=TEMPERATE\n');
 const OPEN: CellGrid = { width: 20, height: 10, speed: new Array(200).fill(1), level: new Array(200).fill(0), ramp: new Array(200).fill(0), blocked: new Array(200).fill(false), deck: new Array(200).fill(-1) };
@@ -72,6 +73,65 @@ describe('Twitch direct login', () => {
     expect(new URLSearchParams(twitch.sent(TOKEN)[0]!.body).get('grant_type')).toBe('urn:ietf:params:oauth:grant-type:device_code');
     expect(twitch.sent(VALIDATE)[0]!.headers.Authorization).toBe('OAuth acc-1');
     expect(JSON.parse(storage.get('rhino-twitch-login')!)).toEqual({ access: 'acc-1', refresh: 'ref-1', userId: '427115971', login: 'p0mz0r' });
+  });
+});
+
+const REVOKE = 'POST https://id.twitch.tv/oauth2/revoke';
+
+describe('Shared Twitch login', () => {
+  const STORED = { access: 'acc-1', refresh: 'ref-1', userId: '42', login: 'p0mz0r' };
+  beforeEach(() => { storage.set('rhino-twitch-login', JSON.stringify(STORED)); });
+
+  it('has no session without a stored login', () => {
+    storage.clear();
+    expect(twitchSession({ fetch: twitch.fetch })).toBeUndefined();
+  });
+
+  it('refreshes once however many callers hit the expiry, and remembers the new pair', async () => {
+    twitch.on(VALIDATE, () => ({ body: {} })).on(TOKEN, () => ({ body: { access_token: 'acc-2', refresh_token: 'ref-2' } }));
+    const session = twitchSession({ fetch: twitch.fetch })!;
+    await Promise.all([session.refresh(), session.refresh()]);
+    expect(twitch.sent(TOKEN).map((c) => Object.fromEntries(new URLSearchParams(c.body)))).toEqual([{ client_id: '5cm8euhmabzd9g4mnkwidz07sftngy', grant_type: 'refresh_token', refresh_token: 'ref-1' }]);
+    expect(session.login.access).toBe('acc-2');
+    expect(JSON.parse(storage.get('rhino-twitch-login')!)).toEqual({ ...STORED, access: 'acc-2', refresh: 'ref-2' });
+    session.close();
+  });
+
+  it('validates on start and hourly, refreshing once Twitch no longer accepts the token', async () => {
+    let good = 'acc-1';
+    twitch.on(VALIDATE, ({ headers }) => headers.Authorization === `OAuth ${good}` ? { body: {} } : { status: 401 })
+      .on(TOKEN, () => ({ body: { access_token: 'acc-2', refresh_token: 'ref-2' } }));
+    const session = twitchSession({ fetch: twitch.fetch })!;
+    await session.validated;
+    expect([twitch.sent(VALIDATE).length, twitch.sent(TOKEN).length]).toEqual([1, 0]);
+    good = 'acc-2';
+    await vi.advanceTimersByTimeAsync(60 * 60_000);
+    expect([twitch.sent(VALIDATE).length, twitch.sent(TOKEN).length]).toEqual([2, 1]);
+    session.close();
+    await vi.advanceTimersByTimeAsync(60 * 60_000);
+    expect(twitch.sent(VALIDATE)).toHaveLength(2);
+  });
+
+  it('logs out when Twitch refuses the refresh token, but not when it is merely down', async () => {
+    let refused = false;
+    twitch.on(VALIDATE, () => ({ body: {} })).on(TOKEN, () => refused ? { status: 400, body: { message: 'Invalid refresh token' } } : { status: 503 });
+    let loggedOut = 0;
+    const session = twitchSession({ fetch: twitch.fetch, onLogout: () => loggedOut++ })!;
+    await expect(session.refresh()).rejects.toThrow();
+    expect([loggedOut, storage.has('rhino-twitch-login')]).toEqual([0, true]);
+    refused = true;
+    await expect(session.refresh()).rejects.toThrow('Twitch login expired');
+    expect([loggedOut, storage.has('rhino-twitch-login')]).toEqual([1, false]);
+  });
+
+  it('log out revokes the token and forgets the login, even when Twitch is down', async () => {
+    twitch.on(REVOKE, () => ({ body: {} }));
+    await logoutTwitch({ fetch: twitch.fetch });
+    expect(twitch.sent(REVOKE).map((c) => Object.fromEntries(new URLSearchParams(c.body)))).toEqual([{ client_id: '5cm8euhmabzd9g4mnkwidz07sftngy', token: 'acc-1' }]);
+    expect(storage.has('rhino-twitch-login')).toBe(false);
+    storage.set('rhino-twitch-login', JSON.stringify(STORED));
+    await logoutTwitch({ fetch: async () => { throw new TypeError('Failed to fetch'); } });
+    expect(storage.has('rhino-twitch-login')).toBe(false);
   });
 });
 
@@ -307,6 +367,15 @@ describe('Twitch direct chat source', () => {
     redeemKirov();
     await vi.advanceTimersByTimeAsync(1000);
     expect([source.online(), storage.has('rhino-twitch-login')]).toEqual([true, true]);
+  });
+
+  it('leaves the rewards alone when the login is refused on start', async () => {
+    source.close();
+    expire();
+    twitch.on(TOKEN, () => ({ status: 400, body: { message: 'Invalid refresh token' } }));
+    const from = twitch.calls.length;
+    await connect();
+    expect(twitch.calls.slice(from).map((c) => `${c.method} ${c.url.origin}${c.url.pathname}`)).toEqual([VALIDATE, TOKEN]);
   });
 
   it('logs out and shows offline when the refresh token is no longer good', async () => {
