@@ -34,7 +34,8 @@
   .queue .hype { min-width: 90px; background: linear-gradient(90deg, #d8a520 var(--fill), #080b10cc var(--fill)); color: #fff; text-align: center; }
   .queue .hype.armed { background: #ffd34e; color: #080b10; font-weight: bold; }
   .chat-offline { position: absolute; top: 116px; right: 24px; padding: 4px 10px; background: #080b10cc; color: #f88; font-size: 13px; }
-  .feed { position: absolute; right: 24px; bottom: 24px; width: 460px; font-size: 16px; text-align: right; }
+  /* Starts past .left (24px + 360px + a 24px gap) so it can never reach the standings: it narrows on a small output, and past its height cap the oldest lines clip at the top. */
+  .feed { position: absolute; left: 408px; right: 24px; bottom: 24px; max-width: 460px; max-height: 40vh; margin-left: auto; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; font-size: 16px; text-align: right; }
   .feed div { margin-top: 5px; padding: 6px 12px; background: #080b10cc; border-right: 4px solid #db3030; }
   .lower-third { position: absolute; left: 420px; bottom: 95px; display: flex; min-width: 420px; background: #080b10dd; font-size: 30px; }
   .lower-third strong { display: grid; place-content: center; min-width: 76px; background: var(--house, #bd2020); font-size: 48px; text-shadow: 0 0 3px #000, 0 0 6px #000; }
