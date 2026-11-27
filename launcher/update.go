@@ -14,7 +14,7 @@ import (
 )
 
 // The release pages, not the API (no rate limit, no JSON). Its asset names are a contract with installed exes.
-var releases = "https://github.com/p0mz0r/chrono-battlefield/releases"
+const releases = "https://github.com/p0mz0r/chrono-battlefield/releases"
 
 // latestTag reads the latest release's tag from where /releases/latest redirects (…/releases/tag/vX.Y.Z).
 // A short timeout: it runs before the window opens, and offline it must not hold up the start.
@@ -50,6 +50,7 @@ func newer(tag, current string) bool {
 // which stays beside it as .old (Windows lets a running exe be renamed, not overwritten). On any error exe is
 // left as it was.
 func install(base, tag, exe string) error {
+	// ponytail: no progress window, the whole exe in memory, 60 s per file; a progress window if the exe outgrows ~8 MB.
 	client := http.Client{Timeout: 60 * time.Second}
 	get := func(name string, limit int64) ([]byte, error) {
 		res, err := client.Get(base + "/download/" + tag + "/" + name)
@@ -83,17 +84,15 @@ func install(base, tag, exe string) error {
 		return errors.New("the download does not match its checksum")
 	}
 	// Written beside it first, so a folder that can't be written to fails before the exe is touched.
+	defer os.Remove(exe + ".new") // gone already once it is the exe
 	if err := os.WriteFile(exe+".new", data, 0o755); err != nil {
-		os.Remove(exe + ".new")
 		return err
 	}
 	if err := rename(exe, exe+".old"); err != nil {
-		os.Remove(exe + ".new")
 		return err
 	}
 	if err := rename(exe+".new", exe); err != nil {
 		rename(exe+".old", exe)
-		os.Remove(exe + ".new")
 		return err
 	}
 	return nil

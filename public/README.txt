@@ -27,7 +27,7 @@ UPDATES
 
 When a newer version is out, rhino-race.exe asks "Version X is available.
 Update now?" as it starts, before the game window opens. Yes downloads it,
-checks it and restarts on the new version with your setup kept; Later starts
+checks it and restarts on the new version with your setup kept; No starts
 this version and asks again next time. Offline, it just starts. If an update
 fails, the old version starts as before.
 
