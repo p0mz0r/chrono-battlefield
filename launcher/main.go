@@ -5,6 +5,7 @@ package main
 import (
 	"embed"
 	"encoding/json"
+	"errors"
 	"io"
 	"io/fs"
 	"net"
@@ -45,6 +46,27 @@ func main() {
 			return
 		}
 		fail("Port " + host[strings.LastIndex(host, ":")+1:] + " is used by another program. Close it and start Rhino Race again.")
+	}
+	// Before the window opens, so it never asks during a race; offline or failing, it starts as it is (#211).
+	os.Remove(exe + ".old") // left by the last update; still locked while that exe exits, then gone next start
+	if version != "dev" {
+		if tag, err := latestTag(releases); err == nil && newer(tag, version) &&
+			messageBox("Version "+strings.TrimPrefix(tag, "v")+" is available. Update now?", mbYesNo|mbIconQuestion) == idYes {
+			err := install(releases, tag, exe)
+			if err == nil {
+				listener.Close() // the new exe takes the port
+				if err = exec.Command(exe).Start(); err == nil {
+					return
+				}
+				// It didn't start: back to this version, on the port again.
+				rename(exe+".old", exe)
+				if listener, err = net.Listen("tcp", host); err != nil {
+					fail("The update failed and the port was lost: " + err.Error() + ". Start Rhino Race again.")
+				}
+				err = errors.New("the new version did not start")
+			}
+			messageBox("The update failed: "+err.Error()+". Starting version "+version+".", mbIconWarning)
+		}
 	}
 	game, _ := fs.Sub(dist, "dist")
 	s := newServer(game, host, idleGrace)
@@ -131,8 +153,23 @@ func fileExists(path string) bool {
 
 // fail shows the message in a box (the exe has no console) and exits.
 func fail(message string) {
+	messageBox(message, mbIconError)
+	os.Exit(1)
+}
+
+// MessageBoxW's flags and the button it returns.
+const (
+	mbYesNo        = 0x4
+	mbIconError    = 0x10
+	mbIconQuestion = 0x20
+	mbIconWarning  = 0x30
+	idYes          = 6
+)
+
+// messageBox shows a MessageBoxW with these flags and returns the button pressed.
+func messageBox(message string, flags uintptr) uintptr {
 	text, _ := syscall.UTF16PtrFromString(message)
 	title, _ := syscall.UTF16PtrFromString("Rhino Race")
-	syscall.NewLazyDLL("user32.dll").NewProc("MessageBoxW").Call(0, uintptr(unsafe.Pointer(text)), uintptr(unsafe.Pointer(title)), 0x10)
-	os.Exit(1)
+	button, _, _ := syscall.NewLazyDLL("user32.dll").NewProc("MessageBoxW").Call(0, uintptr(unsafe.Pointer(text)), uintptr(unsafe.Pointer(title)), flags)
+	return button
 }

@@ -105,6 +105,16 @@ describe('game link', () => {
     expect(racers.map((r) => r.place)).toEqual(racers.map((r) => place(r.id)));
   });
 
+  it('answers each press by its request ID with what the bare command did, as that Twitch viewer, never in the chat panel', () => {
+    openJoinWindow(race, { joinSeconds: 60 });
+    const press = (id: string, command: string) => last().onmessage?.({ data: JSON.stringify({ type: 'press', id, userId: '1', name: 'Kane', command }) });
+    press('r1', '!rhino');
+    press('r2', '!tesla');
+    const replies = last().sent.map((data) => JSON.parse(data)).filter((m) => m.type === 'reply');
+    expect(replies).toEqual([{ type: 'reply', id: 'r1', result: { ok: true, reason: 'joined as Kane' } }, { type: 'reply', id: 'r2', result: { ok: false, reason: 'ignored' } }]);
+    expect([race.racers.map((r) => [r.viewerId, r.name]), race.chatLog]).toEqual([[['twitch:1', 'Kane']], []]);
+  });
+
   it('hides the rail during a trial race', async () => {
     race.trial = true;
     await vi.advanceTimersByTimeAsync(1000);

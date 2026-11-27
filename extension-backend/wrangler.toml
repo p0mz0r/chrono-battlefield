@@ -6,7 +6,7 @@ compatibility_date = "2026-11-01"
 [vars]
 # The Twitch user ID that owns the extension; its broadcasts are signed as this user. Check it at deploy (#202).
 EXTENSION_OWNER_ID = "427115971"
-# EXTENSION_SECRET is a secret, never in this file: `npx wrangler secret put EXTENSION_SECRET`.
+# EXTENSION_SECRET and EXTENSION_CLIENT_SECRET are secrets, never in this file: `npx wrangler secret put <name>`.
 
 [[durable_objects.bindings]]
 name = "CHANNEL"
