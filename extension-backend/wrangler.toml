@@ -1,0 +1,18 @@
+# The extension backend (#187): deploy with `npx wrangler deploy` from this folder (#202).
+name = "rhino-race"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+
+[vars]
+# The Twitch user ID that owns the extension; its broadcasts are signed as this user. Check it at deploy (#202).
+EXTENSION_OWNER_ID = "427115971"
+# EXTENSION_SECRET is a secret, never in this file: `npx wrangler secret put EXTENSION_SECRET`.
+
+[[durable_objects.bindings]]
+name = "CHANNEL"
+class_name = "ChannelLink"
+
+# The free plan takes SQLite-backed Durable Objects only.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ChannelLink"]

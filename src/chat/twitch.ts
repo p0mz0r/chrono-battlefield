@@ -27,11 +27,11 @@ export const missingRewards = () => (Object.keys(REWARDS) as PaidEvent[]).filter
  * Twitch direct (ADR 0008): chat, redemptions of the game's own rewards and cheers over EventSub, for the logged-in
  * streamer's channel. Creates the rewards it is missing, so it may refund them, and removes its retired ones.
  */
-export function connectTwitch(race: Race, { fetch = globalThis.fetch as Fetch, Socket = WebSocket as new (url: string) => Socket } = {}): ChatSource {
-  const account = twitchSession({ fetch, onLogout: () => { up = false; stop(); } });
+export function connectTwitch(race: Race, { fetch = globalThis.fetch as Fetch, Socket = WebSocket as new (url: string) => Socket, account = twitchSession({ fetch }) } = {}): ChatSource {
   // Online until the first drop: the first connection is still opening at page load.
   let socket: Socket | undefined, wait = RETRY.first, closed = false, up = true, opened = false, retry: ReturnType<typeof setTimeout> | undefined;
   if (!account) return { online: () => false, close() {} };
+  account.loggedOut.add(() => { up = false; stop(); });
   const { login, refresh, close: closeLogin } = account, broadcaster_id = login.userId;
 
   const api = async (method: string, path: string, query: Record<string, string> | string[][], body?: unknown, retried = false): Promise<any> => {

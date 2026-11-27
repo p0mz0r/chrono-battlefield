@@ -12,6 +12,9 @@ export function readable(colour: number): number {
   return rgb.reduce((out, v) => out << 8 | Math.round(v + (255 - v) * lift), 0);
 }
 
+/** House colour `colour` (an index into the course art's `colours`) as CSS, made `readable`. */
+export const houseCss = (colours: number[], colour: number) => `#${readable(colours[colour]!).toString(16).padStart(6, '0')}`;
+
 /** Where a knocked-back tank is drawn `t` (0–1) through its throw along `path`, in cells: fast at first, then slowing (cubic ease-out). */
 export function thrownAt(path: { x: number; y: number }[], t: number): { x: number; y: number } {
   const legs = path.slice(1).map((p, i) => Math.hypot(p.x - path[i]!.x, p.y - path[i]!.y));
@@ -39,7 +42,7 @@ export function mountStreamView(colours: number[], showChat = true): (race: Race
   root.id = 'stream-view';
   document.body.append(root);
   let previous = '';
-  const css = (colour: number) => `#${readable(colours[colour]!).toString(16).padStart(6, '0')}`;
+  const css = (colour: number) => houseCss(colours, colour);
   return (race, shot, chatOffline = false) => {
     const focus = shot?.racer;
     const order = race.phase === 'results' ? race.results : standings(race);

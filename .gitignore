@@ -23,3 +23,7 @@ courses/maps/2_arctic_circle.map
 launcher/dist/*
 !launcher/dist/.gitkeep
 
+
+# The extension backend's local secrets and wrangler state
+extension-backend/.dev.vars
+extension-backend/.wrangler/
