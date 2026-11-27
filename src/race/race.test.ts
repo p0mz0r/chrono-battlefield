@@ -101,6 +101,22 @@ describe('audience interactions', () => {
     expect(race.chatLog.at(-1)!.text).toBe('!boost Kara');
   });
 
+  it('acts on an extension press exactly as on the typed command, but leaves it out of the chat log', () => {
+    const run = (via?: 'extension') => {
+      const race = racing(3);
+      const press = (viewerId: string, text: string) => chat(race, { viewerId, name: viewerId, text, ...via ? { via } : {} });
+      race.chatLog.length = 0;
+      return { race, results: [press('a', '!boost'), press('a', '!boost'), press('b', '!missile Zed'), press('b', '!v3'), press('c', '!nuke')] };
+    };
+    const typed = run(), pressed = run('extension');
+    expect(pressed.results).toEqual(typed.results);
+    expect(pressed.results.map((r) => r.ok)).toEqual([true, false, false, true, false]);
+    for (const key of ['feed', 'cooldowns', 'hype', 'sounds'] as const) expect(pressed.race[key]).toEqual(typed.race[key]);
+    expect(pressed.race.racers.map((r) => r.boostUntil)).toEqual(typed.race.racers.map((r) => r.boostUntil)); // same random target
+    expect(typed.race.chatLog).toHaveLength(5);
+    expect(pressed.race.chatLog).toEqual([]);
+  });
+
   it('emits sounds for a join and accepted effects', () => {
     const race = createRace(course(), ARENA, 1);
     openJoinWindow(race, { joinSeconds: 1 });
@@ -1393,6 +1409,27 @@ describe('cheers', () => {
     say(race, 'a', '!rhino', 'Kane');
     untilPhase(race, 'racing');
     expect([race.queue, eventChips(race).map((c) => c.label)]).toEqual([[], ['CHRONOSPHERE · Cleo · next race']]);
+  });
+
+  it('plays an extension cheer with its event switched off, now or carried to the next race', () => {
+    const bought = (race: Race, viewerId: string) => paid(race, { viewerId, name: viewerId, event: 'chronosphere', via: 'cheer', reference: '', extension: true });
+    const race = calm();
+    race.chaos.delete('chronosphere');
+    expect(bought(race, 'Cleo')).toEqual({ ok: true, reason: 'queued' });
+    expect(cheer(race, 'Chad')).toEqual({ ok: false, reason: 'ignored' }); // a chat cheer still does nothing
+    tickRace(race);
+    expect(race.sounds).toContain('chronoSelect');
+    endRace(race); // during its build-up: carried
+    expect(bought(race, 'Cy')).toEqual({ ok: true, reason: 'next race' });
+    expect(cheer(race, 'Chad')).toEqual({ ok: false, reason: 'ignored' });
+    openJoinWindow(race, { joinSeconds: 1 });
+    say(race, 'a', '!rhino', 'Kane');
+    untilPhase(race, 'racing');
+    expect(race.queue.map((t) => t.by)).toEqual(['Cleo', 'Cy']);
+    expect(race.carried).toEqual([]);
+    race.sounds.length = 0;
+    tickRace(race);
+    expect(race.sounds).toContain('chronoSelect');
   });
 
   it('keeps a carried cheer for a real race, not an editor simulation run by bots alone', () => {

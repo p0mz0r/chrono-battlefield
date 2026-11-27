@@ -33,7 +33,7 @@ The on-stream screen between races where the operator picks the course and the r
 _Avoid_: Lobby, menu, settings
 
 **Chaos options**:
-Race setup's on/off switches for the hype meter (and with it the nuke) and for each paid event, all on by default. Each applies from the next race; with the hype meter off, neither it nor `!nuke` appears.
+Race setup's on/off switches for the hype meter (and with it the nuke) and for each paid event, all on by default. Each applies from the next race; with the hype meter off, neither it nor `!nuke` appears. A paid event's switch never stops a cheer bought in the Twitch extension: that one always plays.
 _Avoid_: Chaos meter, event settings
 
 **Join window**:
@@ -191,7 +191,7 @@ The small "EXTENSION OFFLINE" tag on stream while the game's link to the extensi
 _Avoid_: Disconnected banner, error
 
 **Twitch extension**:
-The small rail Rhino Race draws over the stream on Twitch, plus its phone view, where a viewer joins, sets off audience interactions with buttons and follows their own place without typing commands. It's an extra input next to the chat source, never a replacement for it, and works the same with either chat source. The operator installs and activates it on Twitch and switches it on in setup; it shows only while the game is open with it switched on, races and race setup alike, and draws nothing otherwise.
+The small rail Rhino Race draws over the stream on Twitch, plus its phone view, where a viewer joins, sets off audience interactions with buttons and follows their own place without typing commands. It's an extra input next to the chat source, never a replacement for it, and works the same with either chat source. The operator installs and activates it on Twitch and switches it on in setup; it shows only while the game is open with it switched on, races and race setup alike, and draws nothing otherwise. Its button presses show in the event feed like the typed commands, never in the chat panel.
 _Avoid_: Overlay, panel, plugin
 
 **Extension backend**:
