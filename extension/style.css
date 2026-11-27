@@ -22,6 +22,18 @@ button.nuke { background: linear-gradient(#ffd34e, #d8a520); color: var(--ink); 
 .fail { flex: none; width: 60px; padding: 3px; box-sizing: border-box; text-align: center; font-size: 10px; color: #ffc9c9; background: #b81c1c40; border: 1px solid #e23a3a77; }
 .sep { flex: none; width: 40px; height: 1px; background: #fff3; }
 
+/* The cooldown ring the five personal tiles fold into: gold closes clockwise round the seconds left, then the tiles flash gold back. */
+@property --p { syntax: '<number>'; inherits: false; initial-value: 1; }
+.cdslot { flex: none; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 4px 0; color: var(--dim); font-size: 10px; text-align: center; }
+.ring { position: relative; display: grid; place-content: center; width: 48px; height: 48px; border-radius: 50%;
+  background: conic-gradient(var(--gold) calc((1 - var(--p)) * 360deg), #ffffff1f 0); animation-name: ring; animation-timing-function: linear; animation-fill-mode: both; }
+.ring::before { content: ''; position: absolute; inset: 4px; border-radius: 50%; background: var(--ink); }
+.ring b { position: relative; color: #fff; font: 900 20px/1 'Barlow Condensed', sans-serif; font-variant-numeric: tabular-nums; }
+@keyframes ring { from { --p: 1; } to { --p: 0; } }
+button.back { animation: back .6s; }
+@keyframes back { from { box-shadow: inset 0 0 0 2px var(--gold); } to { box-shadow: none; } }
+.card .cd { color: var(--gold); }
+
 /* The hover card, to the rail's left. */
 .card { display: none; width: 250px; margin-right: 6px; padding: 10px; background: #080b10f2; font-size: 13px; box-shadow: 0 8px 24px #000a; box-sizing: border-box; }
 .ext:hover .card { display: block; }
