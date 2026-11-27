@@ -55,6 +55,9 @@ root.className = 'ext';
 let heard: Heard | undefined, reply: Reply | undefined, token = '', drawn = '';
 /** A press made before the viewer shared identity: sent once Twitch's prompt shares it, dropped if they decline. */
 let awaitingShare: Action | undefined;
+/** Presses made so far: only the latest one's answer shows. */
+let presses = 0;
+const NO_ANSWER = { ok: false, reason: 'No answer' };
 function draw() {
   const next = html(rail(heard, Twitch.ext.viewer.id, reply, Date.now()));
   if (next === drawn) return;
@@ -67,12 +70,17 @@ function draw() {
 /** A button press: the bare chat command to the backend, which answers with what the game did. Never retried. */
 async function press(action: Action) {
   // The game knows a viewer by their Twitch user ID, which Twitch hands over only once they share it.
-  if (Twitch.ext.viewer.id === null) { awaitingShare = action; Twitch.ext.actions.requestIdShare(); return; }
-  let result;
+  const askToShare = () => { awaitingShare = action; Twitch.ext.actions.requestIdShare(); };
+  if (Twitch.ext.viewer.id === null) return askToShare();
+  const mine = ++presses;
+  let result = NO_ANSWER;
   try {
     const answer = await fetch(PRESS_URL, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ command: `!${action}` }), signal: AbortSignal.timeout(PRESS_WAIT) });
-    result = await answer.json();
-  } catch { result = { ok: false, reason: 'No answer' }; }
+    // 403: the backend sees no shared identity (the viewer took it back). Any other refusal: the press never reached the game.
+    if (answer.status === 403) return askToShare();
+    if (answer.ok) result = await answer.json();
+  } catch { /* no reply in time, or none at all */ }
+  if (mine !== presses) return; // a newer press's answer is the one to show
   reply = { action, result, at: Date.now() };
   draw();
 }

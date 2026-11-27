@@ -68,7 +68,7 @@ describe('the rail', () => {
     expect(rail(heard({ phase: 'countdown', racers: [me], armed: true }), '42', undefined, 1000)).toMatchObject({ me, ownTank: [], randomTank: [], nuke: false });
   });
 
-  it("shows a failed press under the place with the game's reason, or the link's own", () => {
+  it("shows a failed press under the place with the game's reason, or the backend's own", () => {
     const me = { id: '42', place: 6, progress: 71, colour: '#ff4fd8', finished: false };
     const failed = (action: Action, reason: string) => rail(heard({ racers: [me] }), '42', { action, result: { ok: false, reason }, at: 1000 }, 2000);
     expect(failed('tesla', 'cooldown 12 s')).toMatchObject({ me, failure: 'Tesla failed: cooldown 12 s' });

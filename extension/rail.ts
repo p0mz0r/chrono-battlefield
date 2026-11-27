@@ -5,8 +5,8 @@ import { MAX_TANKS, type ChatResult } from '../src/race/race.js';
 const SILENCE = 10_000;
 /** Milliseconds a failed press stays on the rail. */
 const FAILURE_SHOWS = 8000;
-/** Reasons the link gives, not the game: shown as they are, not as the button's failure. */
-const LINK_REASONS = ['Game offline', 'No answer', "Twitch didn't answer"];
+/** Reasons the backend or the press itself gives, not the game: shown as they are, not as the button's failure. */
+const BACKEND_REASONS = ['Game offline', 'No answer', "Twitch didn't answer"];
 
 /** A button the rail can show, by the bare chat command it sends. */
 export type Action = 'rhino' | 'shield' | 'v3' | 'boost' | 'missile' | 'tesla' | 'nuke';
@@ -35,7 +35,7 @@ export type Rail =
 function failure(reply: Reply | undefined, now: number) {
   if (!reply || reply.result.ok || now - reply.at >= FAILURE_SHOWS) return undefined;
   const { action, result: { reason } } = reply, label = TILES[action][1];
-  if (LINK_REASONS.includes(reason)) return reason;
+  if (BACKEND_REASONS.includes(reason)) return reason;
   return reason === 'ignored' ? `${label} failed` : `${label} failed: ${reason}`;
 }
 
